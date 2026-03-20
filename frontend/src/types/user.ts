@@ -1,0 +1,27 @@
+export type Role = {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string | null;
+};
+
+export type CategoryPermission = {
+  id?: number | null;
+  category_id: number;
+  category_name?: string | null;
+  can_view: boolean;
+  can_execute: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_approve: boolean;
+};
+
+export type User = {
+  id: number;
+  name: string;
+  email: string;
+  is_active: boolean;
+  role: Role;
+  category_permissions: CategoryPermission[];
+};
