@@ -19,9 +19,9 @@ class JobStatus(StrEnum):
     PENDING = "pending"
     QUEUED = "queued"
     RUNNING = "running"
-    SUCCEEDED = "succeeded"
+    SUCCESS = "success"
     FAILED = "failed"
-    CANCELED = "canceled"
+    CANCELLED = "cancelled"
 
 
 class WorkerStatus(StrEnum):

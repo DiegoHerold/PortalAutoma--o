@@ -4,7 +4,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.schemas.automation import AutomationCreate, AutomationRead, AutomationUpdate
+from app.schemas.worker_preference import WorkerPreferenceResponse, WorkerPreferenceUpdate
 from app.services.automation_service import AutomationService
+from app.services.worker_preference_service import WorkerPreferenceService
 
 router = APIRouter()
 
@@ -59,5 +61,36 @@ def delete_automation(
 ) -> None:
     try:
         AutomationService(db).delete_automation(current_user, automation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{automation_id}/worker-preferences", response_model=list[WorkerPreferenceResponse])
+def get_worker_preferences(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> list[WorkerPreferenceResponse]:
+    """Get worker preferences for an automation."""
+    try:
+        automation = AutomationService(db).get_automation(current_user, automation_id)
+        return WorkerPreferenceService(db).get_for_automation(automation_id, automation.category_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/{automation_id}/worker-preferences", response_model=list[WorkerPreferenceResponse])
+def update_worker_preferences(
+    automation_id: int,
+    payload: WorkerPreferenceUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> list[WorkerPreferenceResponse]:
+    """Update worker preferences for an automation."""
+    try:
+        automation = AutomationService(db).get_automation(current_user, automation_id)
+        return WorkerPreferenceService(db).replace_for_automation(
+            current_user, automation_id, automation.category_id, payload.preferences
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

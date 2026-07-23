@@ -1,12 +1,18 @@
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 
-from app.core.constants import JobStatus
+from app.core.constants import JobStatus, JobPriority
 from app.core.celery_app import celery_app
+from app.core.config import get_settings
 from app.core.permissions import is_admin
 from app.models.job import Job
 from app.models.user import User
+from app.models.automation_worker_preference import AutomationWorkerPreference
 from app.repositories.automation_repository import AutomationRepository
+from app.repositories.automation_worker_preference_repository import AutomationWorkerPreferenceRepository
 from app.repositories.job_repository import JobRepository
+from app.repositories.worker_repository import WorkerRepository
 from app.schemas.job import JobCreate
 from app.services.audit_service import AuditService
 from app.services.permission_service import PermissionService
@@ -16,60 +22,231 @@ class JobDispatcherService:
     def __init__(self, db: Session) -> None:
         self.audit = AuditService(db)
         self.db = db
+        self.settings = get_settings()
         self.automations = AutomationRepository(db)
         self.jobs = JobRepository(db)
+        self.workers = WorkerRepository(db)
+        self.preferences = AutomationWorkerPreferenceRepository(db)
         self.permissions = PermissionService(db)
 
     def dispatch(self, user: User, payload: JobCreate) -> Job:
         self.permissions.ensure_automation_action(user, payload.automation_id, "can_execute")
+        
+        automation = self.automations.get(payload.automation_id)
+        if not automation:
+            raise ValueError("Automation not found")
+        
         job = Job(
             automation_id=payload.automation_id,
             requested_by_user_id=user.id,
-            status=JobStatus.QUEUED,
-            priority=payload.priority,
+            status=JobStatus.PENDING,
+            priority=payload.priority or automation.default_priority,
             payload_json=payload.payload_json,
             scheduled_for=payload.scheduled_for,
         )
         job = self.jobs.create(job)
-        celery_app.send_task(
-            "app.tasks.job_tasks.execute_job",
-            kwargs={"job_id": job.id},
-            queue=payload.priority,
-        )
+        self.db.flush()
+        
+        # Try to assign worker and dispatch
+        self._try_dispatch_job(job)
+        
         self.audit.record(
-            "job_dispatched",
+            action="job_dispatched",
             actor_email=user.email,
-            resource_type="job",
-            resource_id=str(job.id),
+            actor_type="user",
+            entity_type="job",
+            entity_id=str(job.id),
             details=f"automation_id={job.automation_id}",
         )
         self.db.commit()
         return job
 
     def dispatch_system(self, payload: JobCreate) -> Job:
+        automation = self.automations.get(payload.automation_id)
+        if not automation:
+            raise ValueError("Automation not found")
+        
         job = Job(
             automation_id=payload.automation_id,
             requested_by_user_id=None,
-            status=JobStatus.QUEUED,
-            priority=payload.priority,
+            status=JobStatus.PENDING,
+            priority=payload.priority or automation.default_priority,
             payload_json=payload.payload_json,
             scheduled_for=payload.scheduled_for,
         )
         job = self.jobs.create(job)
-        celery_app.send_task(
-            "app.tasks.job_tasks.execute_job",
-            kwargs={"job_id": job.id},
-            queue=payload.priority,
-        )
+        self.db.flush()
+        
+        # Try to assign worker and dispatch
+        self._try_dispatch_job(job)
+        
         self.audit.record(
-            "job_dispatched",
+            action="job_dispatched",
             actor_email=None,
-            resource_type="job",
-            resource_id=str(job.id),
+            actor_type="system",
+            entity_type="job",
+            entity_id=str(job.id),
             details="system trigger dispatch",
         )
         self.db.commit()
         return job
+
+    def _try_dispatch_job(self, job: Job) -> None:
+        """
+        Try to assign a worker and dispatch the job.
+        If no worker is available, set status to QUEUED.
+        """
+        # Get worker preferences for this automation
+        preferences = self.preferences.get_active_by_automation(job.automation_id)
+        
+        # Try each worker in preference order
+        for pref in preferences:
+            worker = self.workers.get(pref.worker_id)
+            if worker and self._is_worker_available(worker):
+                # Assign and dispatch
+                job.status = JobStatus.RUNNING
+                job.assigned_worker_id = worker.id
+                job.started_at = datetime.now(job.created_at.tzinfo if job.created_at else None)
+                
+                celery_app.send_task(
+                    "app.tasks.job_tasks.execute_job",
+                    kwargs={"job_id": job.id},
+                    queue=job.priority,
+                )
+                
+                self.audit.record(
+                    action="job_started",
+                    actor_email=None,
+                    actor_type="system",
+                    entity_type="job",
+                    entity_id=str(job.id),
+                    details=f"assigned to worker {worker.name}",
+                )
+                return
+        
+        # No worker available - set to QUEUED
+        job.status = JobStatus.QUEUED
+        
+        # If no preferences defined, try any compatible worker (fallback behavior)
+        if not preferences:
+            available_workers = [w for w in self.workers.list_all() if self._is_worker_available(w)]
+            if available_workers:
+                worker = available_workers[0]
+                job.status = JobStatus.RUNNING
+                job.assigned_worker_id = worker.id
+                job.started_at = datetime.now(job.created_at.tzinfo if job.created_at else None)
+                
+                celery_app.send_task(
+                    "app.tasks.job_tasks.execute_job",
+                    kwargs={"job_id": job.id},
+                    queue=job.priority,
+                )
+                
+                self.audit.record(
+                    action="job_started",
+                    actor_email=None,
+                    actor_type="system", 
+                    entity_type="job",
+                    entity_id=str(job.id),
+                    details=f"assigned to worker {worker.name} (no preferences)",
+                )
+
+    def _is_worker_available(self, worker) -> bool:
+        """Check if a worker is available to take a new job."""
+        if not worker.is_active:
+            return False
+        
+        if worker.status != "online":
+            return False
+        
+        # Check heartbeat recency
+        if worker.last_heartbeat_at:
+            heartbeat_window = timedelta(seconds=self.settings.worker_heartbeat_window_seconds)
+            now = datetime.now(worker.last_heartbeat_at.tzinfo)
+            if now - worker.last_heartbeat_at > heartbeat_window:
+                return False
+        else:
+            return False
+        
+        # Check current load
+        running_jobs = self.db.query(Job).filter(
+            and_(
+                Job.assigned_worker_id == worker.id,
+                Job.status == JobStatus.RUNNING,
+            )
+        ).count()
+        
+        return running_jobs < worker.max_concurrency
+
+    def promote_next_job(self, worker_id: int) -> Job | None:
+        """
+        Find and promote the next queued job for the given worker.
+        Called when a job finishes to process the queue.
+        """
+        worker = self.workers.get(worker_id)
+        if not worker or not self._is_worker_available(worker):
+            return None
+        
+        # Get all queued jobs that prefer this worker
+        preferences = self.preferences.get_active_by_automation(None)  # Get all preferences
+        automation_ids_for_worker = [
+            p.automation_id for p in preferences if p.worker_id == worker_id
+        ]
+        
+        # Priority order: critical > high > normal > low, then FIFO by created_at
+        priority_order = {
+            JobPriority.CRITICAL: 0,
+            JobPriority.HIGH: 1,
+            JobPriority.NORMAL: 2,
+            JobPriority.LOW: 3,
+        }
+        
+        # Get queued jobs for automations that prefer this worker
+        if automation_ids_for_worker:
+            queued_jobs = self.db.query(Job).filter(
+                and_(
+                    Job.status == JobStatus.QUEUED,
+                    Job.automation_id.in_(automation_ids_for_worker),
+                )
+            ).all()
+        else:
+            # If no preferences, get any queued jobs (fallback)
+            queued_jobs = self.db.query(Job).filter(
+                Job.status == JobStatus.QUEUED
+            ).all()
+        
+        if not queued_jobs:
+            return None
+        
+        # Sort by priority then created_at
+        queued_jobs.sort(
+            key=lambda j: (priority_order.get(j.priority, 999), j.created_at)
+        )
+        
+        next_job = queued_jobs[0]
+        
+        # Promote to running
+        next_job.status = JobStatus.RUNNING
+        next_job.assigned_worker_id = worker_id
+        next_job.started_at = datetime.now(next_job.created_at.tzinfo if next_job.created_at else None)
+        
+        celery_app.send_task(
+            "app.tasks.job_tasks.execute_job",
+            kwargs={"job_id": next_job.id},
+            queue=next_job.priority,
+        )
+        
+        self.audit.record(
+            action="job_promoted",
+            actor_email=None,
+            actor_type="system",
+            entity_type="job",
+            entity_id=str(next_job.id),
+            details=f"promoted from queue to worker {worker_id}",
+        )
+        
+        self.db.commit()
+        return next_job
 
     def list_jobs(self, user: User) -> list[Job]:
         jobs = self.jobs.list_all()
@@ -101,3 +278,69 @@ class JobDispatcherService:
         if automation is None or automation.category_id not in allowed_category_ids:
             raise ValueError("Job not found.")
         return job
+
+    def get_queue_position(self, job: Job) -> int | None:
+        """Calculate the position of a queued job in its worker's queue."""
+        if job.status != JobStatus.QUEUED or not job.assigned_worker_id:
+            return None
+        
+        priority_order = {
+            JobPriority.CRITICAL: 0,
+            JobPriority.HIGH: 1,
+            JobPriority.NORMAL: 2,
+            JobPriority.LOW: 3,
+        }
+        
+        # Get all queued jobs for the same worker
+        queued_jobs = self.db.query(Job).filter(
+            and_(
+                Job.status == JobStatus.QUEUED,
+                Job.assigned_worker_id == job.assigned_worker_id,
+            )
+        ).all()
+        
+        # Sort by priority then created_at
+        queued_jobs.sort(
+            key=lambda j: (priority_order.get(j.priority, 999), j.created_at)
+        )
+        
+        # Find position (1-based)
+        for idx, queued_job in enumerate(queued_jobs, start=1):
+            if queued_job.id == job.id:
+                return idx
+        
+        return None
+
+    def get_jobs_ahead(self, job: Job) -> list[Job]:
+        """Get all jobs ahead of this job in the queue."""
+        if job.status != JobStatus.QUEUED or not job.assigned_worker_id:
+            return []
+        
+        priority_order = {
+            JobPriority.CRITICAL: 0,
+            JobPriority.HIGH: 1,
+            JobPriority.NORMAL: 2,
+            JobPriority.LOW: 3,
+        }
+        
+        queued_jobs = self.db.query(Job).filter(
+            and_(
+                Job.status == JobStatus.QUEUED,
+                Job.assigned_worker_id == job.assigned_worker_id,
+            )
+        ).all()
+        
+        # Sort by priority then created_at
+        queued_jobs.sort(
+            key=lambda j: (priority_order.get(j.priority, 999), j.created_at)
+        )
+        
+        # Return jobs before this one
+        jobs_ahead = []
+        for queued_job in queued_jobs:
+            if queued_job.id == job.id:
+                break
+            jobs_ahead.append(queued_job)
+        
+        return jobs_ahead
+

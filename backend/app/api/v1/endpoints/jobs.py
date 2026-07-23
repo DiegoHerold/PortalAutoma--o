@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.schemas.job import JobCreate, JobRead
 from app.services.job_dispatcher_service import JobDispatcherService
+from app.services.job_enrichment_service import JobEnrichmentService
 
 router = APIRouter()
 
@@ -14,7 +15,12 @@ def list_jobs(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> list[JobRead]:
-    return JobDispatcherService(db).list_jobs(current_user)
+    """List jobs with enriched data (ETA, queue position, etc.)."""
+    dispatcher = JobDispatcherService(db)
+    enrichment = JobEnrichmentService(db)
+    
+    jobs = dispatcher.list_jobs(current_user)
+    return enrichment.enrich_jobs(jobs)
 
 
 @router.get("/{job_id}", response_model=JobRead)
@@ -23,8 +29,13 @@ def get_job(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> JobRead:
+    """Get a job with enriched data (ETA, queue position, etc.)."""
     try:
-        return JobDispatcherService(db).get_job(current_user, job_id)
+        dispatcher = JobDispatcherService(db)
+        enrichment = JobEnrichmentService(db)
+        
+        job = dispatcher.get_job(current_user, job_id)
+        return enrichment.enrich_job(job)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -35,4 +46,9 @@ def dispatch_job(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> JobRead:
-    return JobDispatcherService(db).dispatch(current_user, payload)
+    """Dispatch a new job."""
+    dispatcher = JobDispatcherService(db)
+    enrichment = JobEnrichmentService(db)
+    
+    job = dispatcher.dispatch(current_user, payload)
+    return enrichment.enrich_job(job)

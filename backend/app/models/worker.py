@@ -19,3 +19,4 @@ class Worker(BaseModel):
 
     jobs = relationship("Job", back_populates="assigned_worker")
     executions = relationship("Execution", back_populates="worker")
+    automation_preferences = relationship("AutomationWorkerPreference", back_populates="worker")

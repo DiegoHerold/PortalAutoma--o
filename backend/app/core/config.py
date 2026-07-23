@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     first_superuser_password: str = "admin123"
     first_superuser_name: str = "Administrator"
 
+    # ETA calculation settings
+    eta_percentile: int = 75
+    eta_window: int = 20
+    worker_heartbeat_window_seconds: int = 60
+
     @property
     def database_url(self) -> str:
         return (

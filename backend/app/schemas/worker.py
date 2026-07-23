@@ -12,6 +12,8 @@ class WorkerRead(BaseModel):
     max_concurrency: int
     last_heartbeat_at: datetime | None = None
     is_active: bool
+    active_jobs: int = 0
 
     class Config:
         from_attributes = True
+
