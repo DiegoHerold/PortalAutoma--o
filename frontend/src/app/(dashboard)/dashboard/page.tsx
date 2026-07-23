@@ -1,19 +1,19 @@
-import { QueueOverview } from "@/components/dashboard/queue-overview";
-import { StatsCards } from "@/components/dashboard/stats-cards";
-import { WorkersSummary } from "@/components/dashboard/workers-summary";
+import type { Metadata } from "next";
+
+import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { PageTitle } from "@/components/shared/page-title";
+
+export const metadata: Metadata = { title: "Dashboard" };
 
 export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageTitle
-        eyebrow="Controle"
+        eyebrow="Operação"
         title="Dashboard operacional"
-        description="Visao inicial do ambiente com filas por prioridade, workers e capacidade para crescimento distribuido."
+        description="Filas, workers e execuções em tempo real."
       />
-      <StatsCards />
-      <QueueOverview />
-      <WorkersSummary />
+      <DashboardView />
     </div>
   );
 }

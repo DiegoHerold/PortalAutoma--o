@@ -1,21 +1,22 @@
-import { DetailJson } from "@/components/shared/detail-json";
-import { DetailState } from "@/components/shared/detail-state";
-import { PageTitle } from "@/components/shared/page-title";
-import type { Execution } from "@/types/execution";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
-export default function ExecutionDetailPage({ params }: { params: { id: string } }) {
+import { ExecutionDetail } from "@/components/executions/execution-detail";
+import { PageTitle } from "@/components/shared/page-title";
+
+export default async function ExecutionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   return (
     <div className="space-y-6">
-      <PageTitle
-        eyebrow="Detalhe"
-        title="Execucao"
-        description="Visualize logs e resultado persistido da execucao."
-      />
-      <DetailState<Execution>
-        path={`/executions/${encodeURIComponent(params.id)}`}
-        loadingLabel="Carregando execucao..."
-        render={(data) => <DetailJson data={data} />}
-      />
+      <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+        <Link href="/executions" className="hover:text-foreground">
+          Execuções
+        </Link>
+        <ChevronRight className="h-4 w-4" />
+        <span className="tabular text-foreground">#{id}</span>
+      </nav>
+      <PageTitle eyebrow="Detalhe" title={`Execução #${id}`} description="Linha do tempo, logs e resultado." />
+      <ExecutionDetail id={id} />
     </div>
   );
 }

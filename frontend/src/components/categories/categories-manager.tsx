@@ -1,82 +1,121 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { FolderTree, Plus } from "lucide-react";
 
-import { LoadingState } from "@/components/shared/loading-state";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ErrorState } from "@/components/shared/error-state";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input, Textarea, Label, Field } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/ui/toast";
+import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
 import type { Category } from "@/types/category";
 
-type CategoryFormState = {
-  name: string;
-  slug: string;
-  description: string;
-  is_active: boolean;
-};
-
-const initialForm: CategoryFormState = {
-  name: "",
-  slug: "",
-  description: "",
-  is_active: true,
-};
-
 export function CategoriesManager() {
   const { token } = useAuth();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [form, setForm] = useState<CategoryFormState>(initialForm);
-  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+  const categories = useApi<Category[]>("/categories");
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({ name: "", slug: "", description: "", is_active: true });
 
-  async function load() {
+  async function create() {
     if (!token) return;
-    setLoading(true);
-    const data = await apiRequest<Category[]>("/categories", { token });
-    setCategories(data);
-    setLoading(false);
+    setSubmitting(true);
+    try {
+      await apiRequest<Category>("/categories", { method: "POST", token, body: JSON.stringify(form) });
+      toast({ title: "Categoria criada", kind: "success" });
+      setForm({ name: "", slug: "", description: "", is_active: true });
+      setOpen(false);
+      await categories.refetch();
+    } catch (err) {
+      toast({ title: "Falha ao criar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+    } finally {
+      setSubmitting(false);
+    }
   }
-
-  useEffect(() => {
-    void load();
-  }, [token]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!token) return;
-    await apiRequest<Category>("/categories", {
-      method: "POST",
-      token,
-      body: JSON.stringify(form),
-    });
-    setForm(initialForm);
-    await load();
-  }
-
-  if (loading) return <LoadingState label="Carregando categorias..." />;
 
   return (
-    <div className="space-y-6">
-      <form className="grid gap-3 rounded-3xl bg-white/80 p-6 shadow-sm md:grid-cols-2" onSubmit={handleSubmit}>
-        <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Nome" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-        <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Slug" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} />
-        <input className="rounded-2xl border border-slate-200 px-4 py-3 md:col-span-2" placeholder="Descricao" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={form.is_active} onChange={(event) => setForm({ ...form, is_active: event.target.checked })} />
-          Categoria ativa
-        </label>
-        <button className="rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white" type="submit">
-          Criar categoria
-        </button>
-      </form>
-      <div className="grid gap-4 md:grid-cols-2">
-        {categories.map((category) => (
-          <div key={category.id} className="rounded-3xl bg-white/80 p-5 shadow-sm">
-            <h3 className="text-lg font-semibold">{category.name}</h3>
-            <p className="mt-1 text-sm text-slate-500">{category.slug}</p>
-            <p className="mt-3 text-sm text-slate-600">{category.description ?? "Sem descricao."}</p>
-          </div>
-        ))}
+    <div className="space-y-5">
+      <div className="flex justify-end">
+        <Button onClick={() => setOpen(true)}>
+          <Plus className="h-4 w-4" /> Nova categoria
+        </Button>
       </div>
+
+      {categories.error ? (
+        <ErrorState message={categories.error} onRetry={categories.refetch} />
+      ) : categories.loading ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-lg" />
+          ))}
+        </div>
+      ) : (categories.data ?? []).length === 0 ? (
+        <EmptyState icon={FolderTree} title="Sem categorias" description="Crie a primeira categoria." />
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {categories.data!.map((c) => (
+            <Card key={c.id} className="p-5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="truncate font-display text-base font-semibold">{c.name}</h3>
+                  <p className="tabular mt-0.5 truncate text-xs text-muted-foreground">{c.slug}</p>
+                </div>
+                <Badge tone={c.is_active ? "success" : "neutral"}>{c.is_active ? "Ativa" : "Inativa"}</Badge>
+              </div>
+              <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{c.description || "Sem descrição."}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Nova categoria"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={create} disabled={submitting || !form.name}>
+              {submitting && <Spinner />} Criar
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field>
+            <Label htmlFor="c-name">Nome</Label>
+            <Input id="c-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field>
+            <Label htmlFor="c-slug">Slug</Label>
+            <Input id="c-slug" className="tabular" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
+          </Field>
+          <Field>
+            <Label htmlFor="c-desc">Descrição</Label>
+            <Textarea id="c-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+              className="h-4 w-4 accent-primary"
+            />
+            Ativa
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

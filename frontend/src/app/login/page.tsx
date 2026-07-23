@@ -1,26 +1,72 @@
+import { Boxes, Activity, GaugeCircle, ShieldCheck } from "lucide-react";
+
 import { LoginForm } from "@/components/auth/login-form";
+
+const highlights = [
+  { icon: Activity, text: "Monitoramento de execuções em tempo real" },
+  { icon: GaugeCircle, text: "Estimativa de início e término por histórico" },
+  { icon: ShieldCheck, text: "Acesso por papel e permissão por categoria" },
+];
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center px-6 py-12">
-      <div className="grid max-w-5xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-[2rem] bg-ink p-10 text-white shadow-xl">
-          <p className="text-sm uppercase tracking-[0.32em] text-teal-200">Operacao</p>
-          <h1 className="mt-6 text-4xl font-semibold leading-tight">
-            Controle execucoes, prioridades e acesso por categoria em um unico painel.
+    <main className="grid min-h-screen lg:grid-cols-2">
+      {/* Brand / operations panel */}
+      <section className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-12 text-sidebar-foreground lg:flex">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage:
+              "linear-gradient(hsl(var(--sidebar-foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--sidebar-foreground)) 1px, transparent 1px)",
+            backgroundSize: "42px 42px",
+          }}
+        />
+        <div className="relative flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Boxes className="h-5 w-5" />
+          </div>
+          <span className="font-display text-lg font-semibold text-white">Portal de Automações</span>
+        </div>
+
+        <div className="relative max-w-md">
+          <h1 className="font-display text-4xl font-semibold leading-tight text-white">
+            Orquestre automações, filas e workers em um só lugar.
           </h1>
-          <p className="mt-4 max-w-xl text-sm text-slate-200">
-            A estrutura inicial ja contempla JWT, workers, Redis, PostgreSQL, filas e guardas de rota para o portal.
+          <p className="mt-4 text-sm text-sidebar-foreground/70">
+            Dispare por gatilho, distribua para a máquina certa e acompanhe cada execução com estimativa de tempo em
+            tempo real.
           </p>
-        </section>
-        <section className="rounded-[2rem] bg-white/85 p-8 shadow-xl">
-          <h2 className="text-2xl font-semibold">Entrar</h2>
-          <p className="mt-2 text-sm text-slate-500">Use o usuario inicial do ambiente para acessar o painel.</p>
+          <ul className="mt-8 space-y-3">
+            {highlights.map(({ icon: Icon, text }) => (
+              <li key={text} className="flex items-center gap-3 text-sm text-sidebar-foreground/85">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-sidebar-accent text-primary">
+                  <Icon className="h-4 w-4" />
+                </span>
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="relative text-xs text-sidebar-foreground/50">Biason Assessoria Empresarial</p>
+      </section>
+
+      {/* Auth panel */}
+      <section className="flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 lg:hidden">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Boxes className="h-6 w-6" />
+            </div>
+            <h1 className="font-display text-2xl font-semibold">Portal de Automações</h1>
+          </div>
+          <h2 className="font-display text-2xl font-semibold tracking-tight">Entrar</h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">Acesse o painel operacional com sua conta.</p>
           <div className="mt-8">
             <LoginForm />
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </main>
   );
 }

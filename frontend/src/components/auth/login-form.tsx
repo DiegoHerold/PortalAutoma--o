@@ -3,8 +3,12 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertCircle, ArrowRight } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { Input, Label, Field } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 
 export function LoginForm() {
   const router = useRouter();
@@ -18,13 +22,12 @@ export function LoginForm() {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
-
     try {
       await signIn({ email, password });
       router.push("/dashboard");
       router.refresh();
     } catch {
-      setError("Nao foi possivel autenticar com as credenciais informadas.");
+      setError("Não foi possível autenticar com as credenciais informadas.");
     } finally {
       setSubmitting(false);
     }
@@ -32,37 +35,37 @@ export function LoginForm() {
 
   return (
     <form className="space-y-5" onSubmit={handleSubmit}>
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-slate-700" htmlFor="email">
-          E-mail
-        </label>
-        <input
-          id="email"
-          className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-accent"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-slate-700" htmlFor="password">
-          Senha
-        </label>
-        <input
+      <Field>
+        <Label htmlFor="email">E-mail</Label>
+        <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </Field>
+      <Field>
+        <Label htmlFor="password">Senha</Label>
+        <Input
           id="password"
           type="password"
-          className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none transition focus:border-accent"
+          autoComplete="current-password"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
         />
-      </div>
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-full rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70"
-      >
-        {submitting ? "Entrando..." : "Entrar no portal"}
-      </button>
+      </Field>
+      {error && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+      <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+        {submitting ? (
+          <>
+            <Spinner /> Entrando…
+          </>
+        ) : (
+          <>
+            Entrar no portal <ArrowRight className="h-4 w-4" />
+          </>
+        )}
+      </Button>
     </form>
   );
 }

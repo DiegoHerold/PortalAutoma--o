@@ -1,5 +1,9 @@
+import type { Metadata } from "next";
+
 import { JobsManager } from "@/components/jobs/jobs-manager";
 import { PageTitle } from "@/components/shared/page-title";
+
+export const metadata: Metadata = { title: "Fila de jobs" };
 
 export default function JobsPage() {
   return (
@@ -7,7 +11,7 @@ export default function JobsPage() {
       <PageTitle
         eyebrow="Fila"
         title="Jobs"
-        description="Acompanhe criacao, despacho e status de execucao por prioridade."
+        description="Despacho, prioridade e estimativa de início e término em tempo real."
       />
       <JobsManager />
     </div>

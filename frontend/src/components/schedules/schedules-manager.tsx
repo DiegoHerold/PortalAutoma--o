@@ -1,43 +1,52 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { CalendarClock } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
-import { LoadingState } from "@/components/shared/loading-state";
-import { useAuth } from "@/hooks/use-auth";
-import { apiRequest } from "@/lib/api";
+import { ErrorState } from "@/components/shared/error-state";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useApi } from "@/hooks/use-api";
+import { describeCron } from "@/lib/cron";
 import type { Schedule } from "@/types/schedule";
+import type { Automation } from "@/types/automation";
 
 export function SchedulesManager() {
-  const { token } = useAuth();
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [loading, setLoading] = useState(true);
+  const schedules = useApi<Schedule[]>("/schedules");
+  const automations = useApi<Automation[]>("/automations");
 
-  useEffect(() => {
-    if (!token) return;
-    apiRequest<Schedule[]>("/schedules", { token })
-      .then(setSchedules)
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  if (loading) return <LoadingState label="Carregando schedules..." />;
-  if (schedules.length === 0) {
+  if (schedules.error) return <ErrorState message={schedules.error} onRetry={schedules.refetch} />;
+  if (schedules.loading)
     return (
-      <EmptyState
-        title="Nenhum schedule cadastrado"
-        description="A API ja expoe a listagem e o proximo passo natural e adicionar criacao e edicao de agendamentos."
-      />
+      <div className="grid gap-4 md:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Skeleton key={i} className="h-28 rounded-lg" />
+        ))}
+      </div>
     );
-  }
+  const list = schedules.data ?? [];
+  if (list.length === 0)
+    return <EmptyState icon={CalendarClock} title="Sem agendamentos" description="Nenhum schedule cadastrado." />;
+
+  const nameOf = (id: number) => automations.data?.find((a) => a.id === id)?.name ?? `Automação #${id}`;
 
   return (
-    <div className="grid gap-4">
-      {schedules.map((schedule) => (
-        <div key={schedule.id} className="rounded-3xl bg-white/80 p-5 shadow-sm">
-          <p className="text-lg font-semibold">Automation #{schedule.automation_id}</p>
-          <p className="mt-1 text-sm text-slate-500">{schedule.cron_expression}</p>
-          <p className="mt-3 text-sm text-slate-600">{schedule.timezone}</p>
-        </div>
+    <div className="grid gap-4 md:grid-cols-2">
+      {list.map((s) => (
+        <Card key={s.id} className="p-5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="truncate font-display text-base font-semibold">{nameOf(s.automation_id)}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{describeCron(s.cron_expression)}</p>
+            </div>
+            <Badge tone={s.is_active ? "success" : "neutral"}>{s.is_active ? "Ativo" : "Inativo"}</Badge>
+          </div>
+          <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+            <code className="tabular rounded bg-muted px-2 py-1 text-xs">{s.cron_expression}</code>
+            <span className="text-xs text-muted-foreground">{s.timezone}</span>
+          </div>
+        </Card>
       ))}
     </div>
   );

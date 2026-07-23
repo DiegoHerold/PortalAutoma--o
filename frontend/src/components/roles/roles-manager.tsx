@@ -1,34 +1,43 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ShieldCheck } from "lucide-react";
 
-import { LoadingState } from "@/components/shared/loading-state";
-import { useAuth } from "@/hooks/use-auth";
-import { apiRequest } from "@/lib/api";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ErrorState } from "@/components/shared/error-state";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useApi } from "@/hooks/use-api";
 import type { Role } from "@/types/role";
 
 export function RolesManager() {
-  const { token } = useAuth();
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [loading, setLoading] = useState(true);
+  const roles = useApi<Role[]>("/roles");
 
-  useEffect(() => {
-    if (!token) return;
-    apiRequest<Role[]>("/roles", { token })
-      .then(setRoles)
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  if (loading) return <LoadingState label="Carregando papeis..." />;
+  if (roles.error) return <ErrorState message={roles.error} onRetry={roles.refetch} />;
+  if (roles.loading)
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Skeleton key={i} className="h-32 rounded-lg" />
+        ))}
+      </div>
+    );
+  const list = roles.data ?? [];
+  if (list.length === 0) return <EmptyState icon={ShieldCheck} title="Sem papéis" description="Nenhum papel cadastrado." />;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {roles.map((role) => (
-        <div key={role.id} className="rounded-3xl bg-white/80 p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">{role.name}</h3>
-          <p className="mt-1 text-sm text-slate-500">{role.slug}</p>
-          <p className="mt-3 text-sm text-slate-600">{role.description ?? "Sem descricao."}</p>
-        </div>
+      {list.map((role) => (
+        <Card key={role.id} className="p-5">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            <h3 className="font-display text-base font-semibold">{role.name}</h3>
+            <Badge tone="outline" className="tabular ml-auto">
+              {role.slug}
+            </Badge>
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">{role.description || "Sem descrição."}</p>
+        </Card>
       ))}
     </div>
   );

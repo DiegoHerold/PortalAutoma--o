@@ -1,46 +1,71 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import Link from "next/link";
+import { History } from "lucide-react";
 
-import { LoadingState } from "@/components/shared/loading-state";
-import { useAuth } from "@/hooks/use-auth";
-import { apiRequest } from "@/lib/api";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ErrorState } from "@/components/shared/error-state";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useApi } from "@/hooks/use-api";
+import { useRealtime } from "@/hooks/use-realtime";
+import { useRealtimeStatus } from "@/components/layout/realtime-provider";
+import { formatDateTime } from "@/lib/utils";
 import type { Execution } from "@/types/execution";
 
+const POLL = 5000;
+
 export function ExecutionsManager() {
-  const { token } = useAuth();
-  const [executions, setExecutions] = useState<Execution[]>([]);
-  const [loading, setLoading] = useState(true);
+  const executions = useApi<Execution[]>("/executions", { pollMs: POLL });
+  const { setState } = useRealtimeStatus();
+  const { state } = useRealtime<Execution>({
+    wsPath: "/ws/executions",
+    onMessage: () => void executions.refetch(),
+    onPoll: () => void executions.refetch(),
+    pollMs: POLL,
+  });
+  useEffect(() => setState(state), [state, setState]);
 
-  useEffect(() => {
-    if (!token) return;
-    apiRequest<Execution[]>("/executions", { token })
-      .then(setExecutions)
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  if (loading) return <LoadingState label="Carregando execucoes..." />;
+  if (executions.error) return <ErrorState message={executions.error} onRetry={executions.refetch} />;
+  if (executions.loading) return <Skeleton className="h-72 rounded-lg" />;
+  const list = executions.data ?? [];
+  if (list.length === 0)
+    return <EmptyState icon={History} title="Sem execuções" description="Nenhuma execução registrada ainda." />;
 
   return (
-    <div className="space-y-4">
-      {executions.map((execution) => (
-        <div key={execution.id} className="rounded-3xl bg-white/80 p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <h3 className="text-lg font-semibold">Execucao #{execution.id}</h3>
-            <span className="rounded-full bg-mist px-3 py-1 text-xs font-semibold uppercase">
-              {execution.execution_status}
-            </span>
-          </div>
-          <p className="mt-3 text-sm text-slate-600">{execution.result_summary ?? "Sem resumo."}</p>
-          <div className="mt-4 space-y-2">
-            {execution.logs?.map((log) => (
-              <div key={log.id} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                <span className="font-semibold">{log.level}</span>: {log.message}
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+    <div className="rounded-lg border border-border bg-card">
+      <Table>
+        <THead>
+          <TR className="hover:bg-transparent">
+            <TH>Execução</TH>
+            <TH>Job</TH>
+            <TH>Status</TH>
+            <TH>Início</TH>
+            <TH>Término</TH>
+            <TH>Resumo</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {list.map((ex) => (
+            <TR key={ex.id}>
+              <TD>
+                <Link href={`/executions/${ex.id}`} className="tabular font-medium hover:text-primary">
+                  #{ex.id}
+                </Link>
+              </TD>
+              <TD className="tabular text-sm text-muted-foreground">#{ex.job_id}</TD>
+              <TD>
+                <StatusBadge status={ex.execution_status} />
+              </TD>
+              <TD className="tabular text-sm">{formatDateTime(ex.started_at)}</TD>
+              <TD className="tabular text-sm">{formatDateTime(ex.finished_at)}</TD>
+              <TD className="max-w-[280px] truncate text-sm text-muted-foreground">{ex.result_summary ?? "—"}</TD>
+            </TR>
+          ))}
+        </TBody>
+      </Table>
     </div>
   );
 }
