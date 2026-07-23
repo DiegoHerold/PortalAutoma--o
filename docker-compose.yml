@@ -72,7 +72,10 @@ services:
     working_dir: /app
     command: sh -c "npm install --include=dev && npm run build && node .next/standalone/server.js"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      # Sem NEXT_PUBLIC_API_URL fixo: o frontend descobre o host da API em tempo
+      # de execucao (mesmo hostname/IP usado para abrir o site, porta 8000) —
+      # ver src/lib/constants.ts. Isso permite acessar via localhost OU pelo IP
+      # da maquina na rede sem precisar rebuildar com uma URL diferente.
       NODE_ENV: production
       HOSTNAME: "0.0.0.0"
     volumes:

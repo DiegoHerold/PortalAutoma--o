@@ -56,7 +56,7 @@ def confirm_import(
     return AutomationVersionRead.model_validate(version)
 
 
-@router.delete("/import/{staging_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/import/{staging_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def discard_import(
     staging_id: str,
     db: Session = Depends(get_db),

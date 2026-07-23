@@ -69,7 +69,9 @@ export function SettingsPanel() {
               <span className="inline-flex items-center gap-2 text-muted-foreground">
                 <Wifi className="h-4 w-4" /> Endpoint da API
               </span>
-              <code className="tabular rounded bg-muted px-2 py-1 text-xs">{API_BASE_URL}</code>
+              <code className="tabular rounded bg-muted px-2 py-1 text-xs" suppressHydrationWarning>
+                {API_BASE_URL}
+              </code>
             </div>
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-2 text-muted-foreground">

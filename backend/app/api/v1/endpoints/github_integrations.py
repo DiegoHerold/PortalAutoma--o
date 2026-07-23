@@ -118,7 +118,7 @@ def callback(
     return RedirectResponse(url=f"{frontend_target}?github=connected")
 
 
-@router.delete("/{integration_id}", status_code=204)
+@router.delete("/{integration_id}", status_code=204, response_model=None)
 def disconnect(integration_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
     PermissionService(db).ensure_admin_or_manager(user)
     repo = GithubIntegrationRepository(db)
