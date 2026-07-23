@@ -1,12 +1,10 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
 from sqlalchemy.orm import Session
 import json
-import asyncio
 from typing import Dict, Set
 
 from app.core.database import get_db
-from app.core.security import verify_access_token
-from app.services.realtime_service import RealtimeService
+from app.core.security import decode_token
 
 router = APIRouter()
 
@@ -62,7 +60,7 @@ async def websocket_executions(
     """
     try:
         # Verify JWT token
-        payload = verify_access_token(token)
+        payload = decode_token(token)
         user_id = str(payload.get("sub"))
         
         await manager.connect(websocket, user_id)

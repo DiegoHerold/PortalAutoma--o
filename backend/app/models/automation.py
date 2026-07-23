@@ -12,6 +12,8 @@ class Automation(BaseModel):
     description: Mapped[str | None] = mapped_column(Text())
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     executor_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    package_url: Mapped[str | None] = mapped_column(Text())
+    package_sha256: Mapped[str | None] = mapped_column(String(120))
     default_priority: Mapped[str] = mapped_column(String(20), default="normal", nullable=False)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
     max_retries: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

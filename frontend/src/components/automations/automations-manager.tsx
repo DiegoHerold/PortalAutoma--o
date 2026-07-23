@@ -18,6 +18,22 @@ import { apiRequest } from "@/lib/api";
 import type { Automation } from "@/types/automation";
 import type { Category } from "@/types/category";
 
+function toForm(automation: Automation): AutomationFormState {
+  return {
+    name: automation.name,
+    slug: automation.slug,
+    description: automation.description ?? "",
+    category_id: String(automation.category_id),
+    executor_type: automation.executor_type,
+    package_url: automation.package_url ?? "",
+    package_sha256: automation.package_sha256 ?? "",
+    default_priority: automation.default_priority,
+    timeout_seconds: automation.timeout_seconds,
+    max_retries: automation.max_retries,
+    is_active: automation.is_active,
+  };
+}
+
 export function AutomationsManager() {
   const { token } = useAuth();
   const { toast } = useToast();
@@ -28,6 +44,7 @@ export function AutomationsManager() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editing, setEditing] = useState<Automation | null>(null);
 
   const categoryName = useMemo(() => {
     const map = new Map<number, string>();
@@ -45,22 +62,50 @@ export function AutomationsManager() {
     });
   }, [automations.data, query, categoryFilter]);
 
-  async function createAutomation(form: AutomationFormState) {
+  function openCreate() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+
+  function openEdit(automation: Automation) {
+    setEditing(automation);
+    setModalOpen(true);
+  }
+
+  async function saveAutomation(form: AutomationFormState) {
     if (!token) return;
     setSubmitting(true);
     try {
-      await apiRequest<Automation>("/automations", {
-        method: "POST",
+      await apiRequest<Automation>(editing ? `/automations/${editing.id}` : "/automations", {
+        method: editing ? "PUT" : "POST",
         token,
-        body: JSON.stringify({ ...form, category_id: Number(form.category_id) }),
+        body: JSON.stringify({
+          ...form,
+          category_id: Number(form.category_id),
+          package_url: form.package_url || null,
+          package_sha256: form.package_sha256 || null,
+        }),
       });
-      toast({ title: "Automação criada", kind: "success" });
+      toast({ title: editing ? "Automacao atualizada" : "Automacao criada", kind: "success" });
+      setEditing(null);
       setModalOpen(false);
       await automations.refetch();
     } catch (err) {
-      toast({ title: "Falha ao criar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function deleteAutomation(automation: Automation) {
+    if (!token) return;
+    if (!window.confirm(`Apagar a automacao "${automation.name}"?`)) return;
+    try {
+      await apiRequest<void>(`/automations/${automation.id}`, { method: "DELETE", token });
+      toast({ title: "Automacao apagada", kind: "success" });
+      await automations.refetch();
+    } catch (err) {
+      toast({ title: "Falha ao apagar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     }
   }
 
@@ -71,7 +116,7 @@ export function AutomationsManager() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Buscar por nome ou slug…"
+            placeholder="Buscar por nome ou slug..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -84,8 +129,8 @@ export function AutomationsManager() {
             </option>
           ))}
         </Select>
-        <Button onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4" /> Nova automação
+        <Button onClick={openCreate}>
+          <Plus className="h-4 w-4" /> Nova automacao
         </Button>
       </div>
 
@@ -100,12 +145,12 @@ export function AutomationsManager() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Workflow}
-          title="Nenhuma automação"
-          description={query || categoryFilter ? "Nenhum resultado para o filtro atual." : "Crie sua primeira automação."}
+          title="Nenhuma automacao"
+          description={query || categoryFilter ? "Nenhum resultado para o filtro atual." : "Crie sua primeira automacao."}
           action={
             !query && !categoryFilter ? (
-              <Button onClick={() => setModalOpen(true)}>
-                <Plus className="h-4 w-4" /> Nova automação
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Nova automacao
               </Button>
             ) : undefined
           }
@@ -113,7 +158,13 @@ export function AutomationsManager() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((a) => (
-            <AutomationCard key={a.id} automation={a} categoryName={categoryName.get(a.category_id)} />
+            <AutomationCard
+              key={a.id}
+              automation={a}
+              categoryName={categoryName.get(a.category_id)}
+              onEdit={openEdit}
+              onDelete={deleteAutomation}
+            />
           ))}
         </div>
       )}
@@ -121,11 +172,18 @@ export function AutomationsManager() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Nova automação"
-        description="Cadastre uma automação e defina prioridade, executor e limites."
+        title={editing ? "Editar automacao" : "Nova automacao"}
+        description="Cadastre uma automacao e defina prioridade, executor e limites."
         className="max-w-2xl"
       >
-        <AutomationForm categories={categories.data ?? []} onSubmit={createAutomation} submitting={submitting} />
+        <AutomationForm
+          key={editing?.id ?? "new"}
+          categories={categories.data ?? []}
+          onSubmit={saveAutomation}
+          submitting={submitting}
+          initial={editing ? toForm(editing) : undefined}
+          submitLabel={editing ? "Salvar automacao" : "Criar automacao"}
+        />
       </Modal>
     </div>
   );

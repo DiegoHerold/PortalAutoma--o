@@ -14,6 +14,8 @@ export type AutomationFormState = {
   description: string;
   category_id: string;
   executor_type: string;
+  package_url: string;
+  package_sha256: string;
   default_priority: string;
   timeout_seconds: number;
   max_retries: number;
@@ -26,6 +28,8 @@ export const emptyAutomationForm: AutomationFormState = {
   description: "",
   category_id: "",
   executor_type: "python_script",
+  package_url: "",
+  package_sha256: "",
   default_priority: "normal",
   timeout_seconds: 300,
   max_retries: 0,
@@ -39,7 +43,7 @@ function slugify(value: string) {
   return value
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
@@ -48,15 +52,21 @@ export function AutomationForm({
   categories,
   onSubmit,
   submitting,
+  initial,
+  submitLabel = "Criar automacao",
 }: {
   categories: Category[];
   onSubmit: (form: AutomationFormState) => void | Promise<void>;
   submitting?: boolean;
+  initial?: AutomationFormState;
+  submitLabel?: string;
 }) {
-  const [form, setForm] = useState<AutomationFormState>({
-    ...emptyAutomationForm,
-    category_id: categories[0] ? String(categories[0].id) : "",
-  });
+  const [form, setForm] = useState<AutomationFormState>(
+    initial ?? {
+      ...emptyAutomationForm,
+      category_id: categories[0] ? String(categories[0].id) : "",
+    },
+  );
 
   function set<K extends keyof AutomationFormState>(key: K, value: AutomationFormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -79,7 +89,7 @@ export function AutomationForm({
               set("name", e.target.value);
               if (!form.slug || form.slug === slugify(form.name)) set("slug", slugify(e.target.value));
             }}
-            placeholder="Ex.: Conciliação bancária"
+            placeholder="Ex.: Conciliacao bancaria"
             required
           />
         </Field>
@@ -90,7 +100,7 @@ export function AutomationForm({
       </div>
 
       <Field>
-        <Label htmlFor="description">Descrição</Label>
+        <Label htmlFor="description">Descricao</Label>
         <Textarea id="description" value={form.description} onChange={(e) => set("description", e.target.value)} />
       </Field>
 
@@ -98,7 +108,7 @@ export function AutomationForm({
         <Field>
           <Label htmlFor="category">Categoria</Label>
           <Select id="category" value={form.category_id} onChange={(e) => set("category_id", e.target.value)} required>
-            <option value="">Selecione…</option>
+            <option value="">Selecione...</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -118,9 +128,31 @@ export function AutomationForm({
         </Field>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field>
+          <Label htmlFor="package-url">URL do pacote</Label>
+          <Input
+            id="package-url"
+            value={form.package_url}
+            onChange={(e) => set("package_url", e.target.value)}
+            placeholder="https://servidor/pacotes/minha-automacao.zip"
+          />
+        </Field>
+        <Field>
+          <Label htmlFor="package-sha">SHA-256</Label>
+          <Input
+            id="package-sha"
+            className="tabular"
+            value={form.package_sha256}
+            onChange={(e) => set("package_sha256", e.target.value)}
+            placeholder="sha256 opcional"
+          />
+        </Field>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-3">
         <Field>
-          <Label htmlFor="priority">Prioridade padrão</Label>
+          <Label htmlFor="priority">Prioridade padrao</Label>
           <Select id="priority" value={form.default_priority} onChange={(e) => set("default_priority", e.target.value)}>
             {PRIORITIES.map((p) => (
               <option key={p} value={p}>
@@ -140,7 +172,7 @@ export function AutomationForm({
           />
         </Field>
         <Field>
-          <Label htmlFor="retries">Máx. retries</Label>
+          <Label htmlFor="retries">Max. retries</Label>
           <Input
             id="retries"
             type="number"
@@ -163,7 +195,7 @@ export function AutomationForm({
 
       <div className="flex justify-end">
         <Button type="submit" disabled={submitting}>
-          {submitting && <Spinner />} Criar automação
+          {submitting && <Spinner />} {submitLabel}
         </Button>
       </div>
     </form>

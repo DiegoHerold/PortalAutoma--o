@@ -30,3 +30,8 @@ def on_startup() -> None:
 @app.get("/")
 def root() -> dict[str, str]:
     return {"message": settings.app_name}
+
+
+@app.get("/api/health")
+def agent_base_health() -> dict[str, str]:
+    return {"status": "ok"}

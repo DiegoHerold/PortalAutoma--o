@@ -3,6 +3,13 @@ export type Worker = {
   name: string;
   hostname: string;
   ip_address?: string | null;
+  agent_id?: string | null;
+  machine_id?: string | null;
+  agent_version?: string | null;
+  os?: string | null;
+  architecture?: string | null;
+  capabilities_json?: unknown[] | null;
+  last_payload_json?: Record<string, unknown> | null;
   status: string;
   max_concurrency: number;
   last_heartbeat_at?: string | null;

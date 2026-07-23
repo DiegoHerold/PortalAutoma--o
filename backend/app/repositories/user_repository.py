@@ -47,6 +47,10 @@ class UserRepository:
         self.db.refresh(user)
         return user
 
+    def delete(self, user: User) -> None:
+        self.db.delete(user)
+        self.db.commit()
+
     def get_permission(self, user_id: int, category_id: int) -> UserCategoryPermission | None:
         stmt = select(UserCategoryPermission).where(
             UserCategoryPermission.user_id == user_id,

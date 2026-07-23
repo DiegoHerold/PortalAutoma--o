@@ -13,3 +13,19 @@ class WorkerRepository:
 
     def get(self, worker_id: int) -> Worker | None:
         return self.db.get(Worker, worker_id)
+
+    def create(self, worker: Worker) -> Worker:
+        self.db.add(worker)
+        self.db.commit()
+        self.db.refresh(worker)
+        return worker
+
+    def update(self, worker: Worker) -> Worker:
+        self.db.add(worker)
+        self.db.commit()
+        self.db.refresh(worker)
+        return worker
+
+    def delete(self, worker: Worker) -> None:
+        self.db.delete(worker)
+        self.db.commit()

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FolderTree, Plus } from "lucide-react";
+import { FolderTree, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
@@ -18,34 +18,71 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
 import type { Category } from "@/types/category";
 
+const emptyForm = { name: "", slug: "", description: "", is_active: true };
+
 export function CategoriesManager() {
   const { token } = useAuth();
   const { toast } = useToast();
   const categories = useApi<Category[]>("/categories");
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", description: "", is_active: true });
+  const [editing, setEditing] = useState<Category | null>(null);
+  const [form, setForm] = useState(emptyForm);
 
-  async function create() {
+  function openCreate() {
+    setEditing(null);
+    setForm(emptyForm);
+    setOpen(true);
+  }
+
+  function openEdit(category: Category) {
+    setEditing(category);
+    setForm({
+      name: category.name,
+      slug: category.slug,
+      description: category.description ?? "",
+      is_active: category.is_active,
+    });
+    setOpen(true);
+  }
+
+  async function save() {
     if (!token) return;
     setSubmitting(true);
     try {
-      await apiRequest<Category>("/categories", { method: "POST", token, body: JSON.stringify(form) });
-      toast({ title: "Categoria criada", kind: "success" });
-      setForm({ name: "", slug: "", description: "", is_active: true });
+      await apiRequest<Category>(editing ? `/categories/${editing.id}` : "/categories", {
+        method: editing ? "PUT" : "POST",
+        token,
+        body: JSON.stringify(form),
+      });
+      toast({ title: editing ? "Categoria atualizada" : "Categoria criada", kind: "success" });
+      setForm(emptyForm);
+      setEditing(null);
       setOpen(false);
       await categories.refetch();
     } catch (err) {
-      toast({ title: "Falha ao criar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function remove(category: Category) {
+    if (!token) return;
+    if (!window.confirm(`Apagar a categoria "${category.name}"?`)) return;
+    try {
+      await apiRequest<void>(`/categories/${category.id}`, { method: "DELETE", token });
+      toast({ title: "Categoria apagada", kind: "success" });
+      await categories.refetch();
+    } catch (err) {
+      toast({ title: "Falha ao apagar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     }
   }
 
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
-        <Button onClick={() => setOpen(true)}>
+        <Button onClick={openCreate}>
           <Plus className="h-4 w-4" /> Nova categoria
         </Button>
       </div>
@@ -69,9 +106,17 @@ export function CategoriesManager() {
                   <h3 className="truncate font-display text-base font-semibold">{c.name}</h3>
                   <p className="tabular mt-0.5 truncate text-xs text-muted-foreground">{c.slug}</p>
                 </div>
-                <Badge tone={c.is_active ? "success" : "neutral"}>{c.is_active ? "Ativa" : "Inativa"}</Badge>
+                <div className="flex items-center gap-1">
+                  <Badge tone={c.is_active ? "success" : "neutral"}>{c.is_active ? "Ativa" : "Inativa"}</Badge>
+                  <Button size="icon" variant="ghost" onClick={() => openEdit(c)} title="Editar categoria">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => remove(c)} title="Apagar categoria">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{c.description || "Sem descrição."}</p>
+              <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{c.description || "Sem descricao."}</p>
             </Card>
           ))}
         </div>
@@ -80,14 +125,14 @@ export function CategoriesManager() {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Nova categoria"
+        title={editing ? "Editar categoria" : "Nova categoria"}
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={create} disabled={submitting || !form.name}>
-              {submitting && <Spinner />} Criar
+            <Button onClick={save} disabled={submitting || !form.name || !form.slug}>
+              {submitting && <Spinner />} {editing ? "Salvar" : "Criar"}
             </Button>
           </>
         }
@@ -102,7 +147,7 @@ export function CategoriesManager() {
             <Input id="c-slug" className="tabular" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
           </Field>
           <Field>
-            <Label htmlFor="c-desc">Descrição</Label>
+            <Label htmlFor="c-desc">Descricao</Label>
             <Textarea id="c-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <label className="flex items-center gap-2 text-sm">

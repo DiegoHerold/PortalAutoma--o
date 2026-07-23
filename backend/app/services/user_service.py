@@ -107,3 +107,26 @@ class UserService:
         if updated_user is None:
             raise ValueError("User not found.")
         return updated_user
+
+    def delete_user(self, current_user: User, user_id: int) -> None:
+        self.permissions.ensure_admin_or_manager(current_user)
+        user = self.users.get(user_id)
+        if user is None:
+            raise ValueError("User not found.")
+        if user.id == current_user.id:
+            raise ValueError("You cannot delete your own user.")
+        self.audit.record(
+            "user_deleted",
+            actor_email=current_user.email,
+            resource_type="user",
+            resource_id=str(user.id),
+            details=user.email,
+        )
+        if not user.requested_jobs:
+            for permission in list(user.category_permissions):
+                self.db.delete(permission)
+            self.users.delete(user)
+            return
+        user.is_active = False
+        self.users.update(user)
+        self.db.commit()

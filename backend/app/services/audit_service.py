@@ -17,6 +17,8 @@ class AuditService:
         actor_type: str = "user",
         entity_type: str | None = None,
         entity_id: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
         details: str | None = None,
         before: dict | None = None,
         after: dict | None = None,
@@ -30,6 +32,8 @@ class AuditService:
             actor_type: Type of actor (user, system, trigger, worker)
             entity_type: Type of entity being acted upon (resource_type)
             entity_id: ID of the entity (resource_id)
+            resource_type: Backwards-compatible alias for entity_type
+            resource_id: Backwards-compatible alias for entity_id
             details: Additional details about the action
             before: State before the change (for updates)
             after: State after the change (for updates)
@@ -38,8 +42,8 @@ class AuditService:
             event_type=action,
             actor_email=actor_email,
             actor_type=actor_type,
-            resource_type=entity_type,
-            resource_id=entity_id,
+            resource_type=entity_type or resource_type,
+            resource_id=entity_id or resource_id,
             details=details,
             before=before,
             after=after,

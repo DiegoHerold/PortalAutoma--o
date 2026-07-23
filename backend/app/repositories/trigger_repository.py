@@ -22,3 +22,13 @@ class TriggerRepository:
         self.db.commit()
         self.db.refresh(trigger)
         return trigger
+
+    def update(self, trigger: Trigger) -> Trigger:
+        self.db.add(trigger)
+        self.db.commit()
+        self.db.refresh(trigger)
+        return trigger
+
+    def delete(self, trigger: Trigger) -> None:
+        self.db.delete(trigger)
+        self.db.commit()

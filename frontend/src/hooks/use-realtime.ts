@@ -19,9 +19,7 @@ type Options<T> = {
 };
 
 function toWsUrl(path: string, token: string | null): string {
-  // Derive ws(s):// from the configured API base URL.
-  let base = API_BASE_URL.replace(/\/api\/v1$/, "");
-  base = base.replace(/^http/, "ws");
+  const base = API_BASE_URL.replace(/^http/, "ws");
   const sep = path.includes("?") ? "&" : "?";
   return `${base}${path}${token ? `${sep}token=${encodeURIComponent(token)}` : ""}`;
 }

@@ -71,6 +71,17 @@ class AutomationService:
             resource_id=str(automation.id),
             details=automation.slug,
         )
+        if automation.jobs:
+            automation.is_active = False
+            self.automations.update(automation)
+            self.db.commit()
+            return
+        for trigger in list(automation.triggers):
+            self.db.delete(trigger)
+        for schedule in list(automation.schedules):
+            self.db.delete(schedule)
+        for preference in list(automation.worker_preferences):
+            self.db.delete(preference)
         self.automations.delete(automation)
 
     def get_automation(self, user: User, automation_id: int) -> Automation:

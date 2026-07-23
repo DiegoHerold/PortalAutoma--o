@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { Plus, Users as UsersIcon, ShieldCheck, ChevronDown } from "lucide-react";
+import { ChevronDown, Pencil, Plus, ShieldCheck, Trash2, Users as UsersIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
@@ -24,6 +24,8 @@ import type { Category } from "@/types/category";
 const PERMS = ["can_view", "can_execute", "can_create", "can_edit", "can_delete", "can_approve"] as const;
 type Perm = (typeof PERMS)[number];
 
+const emptyForm = { name: "", email: "", password: "", role_id: "", is_active: true };
+
 export function UsersManager() {
   const { token } = useAuth();
   const { toast } = useToast();
@@ -35,28 +37,68 @@ export function UsersManager() {
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [draft, setDraft] = useState<User[] | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", password: "", role_id: "", is_active: true });
+  const [editing, setEditing] = useState<User | null>(null);
+  const [form, setForm] = useState(emptyForm);
 
   const list = draft ?? users.data ?? [];
 
-  async function createUser() {
+  function openCreate() {
+    setEditing(null);
+    setForm(emptyForm);
+    setModalOpen(true);
+  }
+
+  function openEdit(user: User) {
+    setEditing(user);
+    setForm({
+      name: user.name,
+      email: user.email,
+      password: "",
+      role_id: String(user.role.id),
+      is_active: user.is_active,
+    });
+    setModalOpen(true);
+  }
+
+  async function saveUser() {
     if (!token || !form.role_id) return;
     setSubmitting(true);
     try {
-      await apiRequest<User>("/users", {
-        method: "POST",
+      const body = {
+        name: form.name,
+        email: form.email,
+        role_id: Number(form.role_id),
+        is_active: form.is_active,
+        ...(editing || form.password ? { password: form.password || null } : { password: form.password }),
+      };
+      await apiRequest<User>(editing ? `/users/${editing.id}` : "/users", {
+        method: editing ? "PUT" : "POST",
         token,
-        body: JSON.stringify({ ...form, role_id: Number(form.role_id) }),
+        body: JSON.stringify(body),
       });
-      toast({ title: "Usuário criado", kind: "success" });
-      setForm({ name: "", email: "", password: "", role_id: "", is_active: true });
+      toast({ title: editing ? "Usuario atualizado" : "Usuario criado", kind: "success" });
+      setForm(emptyForm);
+      setEditing(null);
       setModalOpen(false);
       await users.refetch();
       setDraft(null);
     } catch (err) {
-      toast({ title: "Falha ao criar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function removeUser(user: User) {
+    if (!token) return;
+    if (!window.confirm(`Apagar o usuario "${user.name}"?`)) return;
+    try {
+      await apiRequest<void>(`/users/${user.id}`, { method: "DELETE", token });
+      toast({ title: "Usuario apagado", kind: "success" });
+      await users.refetch();
+      setDraft(null);
+    } catch (err) {
+      toast({ title: "Falha ao apagar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     }
   }
 
@@ -114,7 +156,7 @@ export function UsersManager() {
           }),
         }),
       });
-      toast({ title: "Permissões salvas", kind: "success" });
+      toast({ title: "Permissoes salvas", kind: "success" });
       await users.refetch();
       setDraft(null);
     } catch (err) {
@@ -125,8 +167,8 @@ export function UsersManager() {
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
-        <Button onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4" /> Novo usuário
+        <Button onClick={openCreate}>
+          <Plus className="h-4 w-4" /> Novo usuario
         </Button>
       </div>
 
@@ -135,7 +177,7 @@ export function UsersManager() {
       ) : users.loading ? (
         <Skeleton className="h-64 rounded-lg" />
       ) : list.length === 0 ? (
-        <EmptyState icon={UsersIcon} title="Sem usuários" description="Crie o primeiro usuário." />
+        <EmptyState icon={UsersIcon} title="Sem usuarios" description="Crie o primeiro usuario." />
       ) : (
         <div className="rounded-lg border border-border bg-card">
           <Table>
@@ -145,7 +187,7 @@ export function UsersManager() {
                 <TH>E-mail</TH>
                 <TH>Papel</TH>
                 <TH>Status</TH>
-                <TH className="text-right">Permissões</TH>
+                <TH className="text-right">Acoes</TH>
               </TR>
             </THead>
             <TBody>
@@ -160,15 +202,24 @@ export function UsersManager() {
                     <TD>
                       <Badge tone={user.is_active ? "success" : "neutral"}>{user.is_active ? "Ativo" : "Inativo"}</Badge>
                     </TD>
-                    <TD className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setExpanded(expanded === user.id ? null : user.id)}
-                      >
-                        <ShieldCheck className="h-4 w-4" />
-                        <ChevronDown className={cn("h-4 w-4 transition-transform", expanded === user.id && "rotate-180")} />
-                      </Button>
+                    <TD>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setExpanded(expanded === user.id ? null : user.id)}
+                          title="Permissoes"
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          <ChevronDown className={cn("h-3 w-3 transition-transform", expanded === user.id && "rotate-180")} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(user)} title="Editar usuario">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => removeUser(user)} title="Apagar usuario">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TD>
                   </TR>
                   {expanded === user.id && (
@@ -198,7 +249,7 @@ export function UsersManager() {
                           })}
                           <div className="flex justify-end">
                             <Button size="sm" onClick={() => savePermissions(user)}>
-                              Salvar permissões
+                              Salvar permissoes
                             </Button>
                           </div>
                         </div>
@@ -215,17 +266,17 @@ export function UsersManager() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Novo usuário"
+        title={editing ? "Editar usuario" : "Novo usuario"}
         footer={
           <>
             <Button variant="ghost" onClick={() => setModalOpen(false)}>
               Cancelar
             </Button>
             <Button
-              onClick={createUser}
-              disabled={submitting || !form.name || !form.email || !form.password || !form.role_id}
+              onClick={saveUser}
+              disabled={submitting || !form.name || !form.email || !form.role_id || (!editing && !form.password)}
             >
-              {submitting && <Spinner />} Criar
+              {submitting && <Spinner />} {editing ? "Salvar" : "Criar"}
             </Button>
           </>
         }
@@ -240,13 +291,13 @@ export function UsersManager() {
             <Input id="u-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Field>
           <Field>
-            <Label htmlFor="u-pass">Senha inicial</Label>
+            <Label htmlFor="u-pass">{editing ? "Nova senha (opcional)" : "Senha inicial"}</Label>
             <Input id="u-pass" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           </Field>
           <Field>
             <Label htmlFor="u-role">Papel</Label>
             <Select id="u-role" value={form.role_id} onChange={(e) => setForm({ ...form, role_id: e.target.value })}>
-              <option value="">Selecione…</option>
+              <option value="">Selecione...</option>
               {roles.data?.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
@@ -261,7 +312,7 @@ export function UsersManager() {
               onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
               className="h-4 w-4 accent-primary"
             />
-            Usuário ativo
+            Usuario ativo
           </label>
         </div>
       </Modal>

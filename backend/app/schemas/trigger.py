@@ -9,6 +9,10 @@ class TriggerCreate(BaseModel):
     is_active: bool = True
 
 
+class TriggerUpdate(TriggerCreate):
+    pass
+
+
 class TriggerRead(TriggerCreate):
     id: int
 

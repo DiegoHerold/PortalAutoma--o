@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from app.core.constants import JobStatus, JobPriority
-from app.core.celery_app import celery_app
 from app.core.config import get_settings
 from app.core.permissions import is_admin
 from app.models.job import Job
@@ -103,24 +102,18 @@ class JobDispatcherService:
         for pref in preferences:
             worker = self.workers.get(pref.worker_id)
             if worker and self._is_worker_available(worker):
-                # Assign and dispatch
-                job.status = JobStatus.RUNNING
+                # Assign to the external Automation Agent queue. The agent
+                # WebSocket gateway will promote it to running when delivered.
+                job.status = JobStatus.QUEUED
                 job.assigned_worker_id = worker.id
-                job.started_at = datetime.now(job.created_at.tzinfo if job.created_at else None)
-                
-                celery_app.send_task(
-                    "app.tasks.job_tasks.execute_job",
-                    kwargs={"job_id": job.id},
-                    queue=job.priority,
-                )
                 
                 self.audit.record(
-                    action="job_started",
+                    action="job_queued",
                     actor_email=None,
                     actor_type="system",
                     entity_type="job",
                     entity_id=str(job.id),
-                    details=f"assigned to worker {worker.name}",
+                    details=f"queued for worker {worker.name}",
                 )
                 return
         
@@ -132,23 +125,16 @@ class JobDispatcherService:
             available_workers = [w for w in self.workers.list_all() if self._is_worker_available(w)]
             if available_workers:
                 worker = available_workers[0]
-                job.status = JobStatus.RUNNING
+                job.status = JobStatus.QUEUED
                 job.assigned_worker_id = worker.id
-                job.started_at = datetime.now(job.created_at.tzinfo if job.created_at else None)
-                
-                celery_app.send_task(
-                    "app.tasks.job_tasks.execute_job",
-                    kwargs={"job_id": job.id},
-                    queue=job.priority,
-                )
                 
                 self.audit.record(
-                    action="job_started",
+                    action="job_queued",
                     actor_email=None,
                     actor_type="system", 
                     entity_type="job",
                     entity_id=str(job.id),
-                    details=f"assigned to worker {worker.name} (no preferences)",
+                    details=f"queued for worker {worker.name} (no preferences)",
                 )
 
     def _is_worker_available(self, worker) -> bool:
@@ -225,24 +211,17 @@ class JobDispatcherService:
         
         next_job = queued_jobs[0]
         
-        # Promote to running
-        next_job.status = JobStatus.RUNNING
+        # Assign to the external agent queue. Delivery happens over WebSocket.
+        next_job.status = JobStatus.QUEUED
         next_job.assigned_worker_id = worker_id
-        next_job.started_at = datetime.now(next_job.created_at.tzinfo if next_job.created_at else None)
-        
-        celery_app.send_task(
-            "app.tasks.job_tasks.execute_job",
-            kwargs={"job_id": next_job.id},
-            queue=next_job.priority,
-        )
         
         self.audit.record(
-            action="job_promoted",
+            action="job_assigned",
             actor_email=None,
             actor_type="system",
             entity_type="job",
             entity_id=str(next_job.id),
-            details=f"promoted from queue to worker {worker_id}",
+            details=f"assigned from queue to worker {worker_id}",
         )
         
         self.db.commit()
@@ -343,4 +322,3 @@ class JobDispatcherService:
             jobs_ahead.append(queued_job)
         
         return jobs_ahead
-

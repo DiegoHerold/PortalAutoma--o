@@ -69,4 +69,9 @@ class CategoryService:
             resource_id=str(category.id),
             details=category.slug,
         )
+        if category.automations or category.user_permissions:
+            category.is_active = False
+            self.categories.update(category)
+            self.db.commit()
+            return
         self.categories.delete(category)
