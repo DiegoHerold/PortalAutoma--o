@@ -17,6 +17,9 @@ class AutomationRepository:
     def get_by_slug(self, slug: str) -> Automation | None:
         return self.db.scalar(select(Automation).where(Automation.slug == slug))
 
+    def get_by_key(self, key: str) -> Automation | None:
+        return self.db.scalar(select(Automation).where(Automation.key == key))
+
     def create(self, automation: Automation) -> Automation:
         self.db.add(automation)
         self.db.commit()

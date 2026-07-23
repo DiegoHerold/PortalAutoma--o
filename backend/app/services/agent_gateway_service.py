@@ -143,7 +143,10 @@ class AgentGatewayService:
             self.db.commit()
             self._emit_job_update(job)
             return None
-        if not automation.package_url:
+        from app.services.automation_package_resolver import resolve_package_for_dispatch
+
+        package_url, package_sha256 = resolve_package_for_dispatch(self.db, automation)
+        if not package_url:
             self._fail_job(job, worker, "Automation package_url nao configurado.")
             self.db.commit()
             self._emit_job_update(job)
@@ -171,11 +174,11 @@ class AgentGatewayService:
             "command_id": command_id,
             "type": "execution.assign",
             "execution_id": external_execution_id,
-            "package_url": automation.package_url,
+            "package_url": package_url,
             "parameters": job.payload_json or {},
         }
-        if automation.package_sha256:
-            command["package_sha256"] = automation.package_sha256
+        if package_sha256:
+            command["package_sha256"] = package_sha256
         execution.result_payload_json = {"command": command}
         self.db.commit()
         self._emit_job_update(job)

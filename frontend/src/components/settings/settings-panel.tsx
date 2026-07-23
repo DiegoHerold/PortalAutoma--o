@@ -1,6 +1,7 @@
 "use client";
 
-import { Moon, Sun, User as UserIcon, Wifi } from "lucide-react";
+import Link from "next/link";
+import { Github, Moon, Sun, User as UserIcon, Wifi } from "lucide-react";
 
 import { PageTitle } from "@/components/shared/page-title";
 import { SectionCard } from "@/components/shared/section-card";
@@ -76,6 +77,17 @@ export function SettingsPanel() {
               </span>
               <span>Bearer token (JWT)</span>
             </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Integrações" description="Conexões externas para importar automações" className="lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Github className="h-4 w-4" /> GitHub App (repositório de automações)
+            </span>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/settings/integrations">Gerenciar</Link>
+            </Button>
           </div>
         </SectionCard>
       </div>

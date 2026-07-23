@@ -25,3 +25,17 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+
+def create_package_download_token(bucket: str, object_key: str, expires_seconds: int = 300) -> str:
+    """Short-lived, scope-limited token allowing an Automation Agent to download one package."""
+    expire = datetime.now(UTC) + timedelta(seconds=expires_seconds)
+    payload = {"scope": "package_download", "bucket": bucket, "object_key": object_key, "exp": expire}
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+
+def decode_package_download_token(token: str) -> dict:
+    payload = decode_token(token)
+    if payload.get("scope") != "package_download":
+        raise ValueError("Token inválido para download de pacote.")
+    return payload

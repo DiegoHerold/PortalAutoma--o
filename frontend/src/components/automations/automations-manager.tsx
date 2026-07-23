@@ -5,6 +5,7 @@ import { Plus, Search, Workflow } from "lucide-react";
 
 import { AutomationCard } from "@/components/automations/automation-card";
 import { AutomationForm, type AutomationFormState } from "@/components/automations/automation-form";
+import { NewAutomationDialog } from "@/components/automations/new-automation-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
 import { Button } from "@/components/ui/button";
@@ -42,7 +43,8 @@ export function AutomationsManager() {
 
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState<Automation | null>(null);
 
@@ -63,21 +65,20 @@ export function AutomationsManager() {
   }, [automations.data, query, categoryFilter]);
 
   function openCreate() {
-    setEditing(null);
-    setModalOpen(true);
+    setNewDialogOpen(true);
   }
 
   function openEdit(automation: Automation) {
     setEditing(automation);
-    setModalOpen(true);
+    setEditModalOpen(true);
   }
 
-  async function saveAutomation(form: AutomationFormState) {
+  async function createManual(form: AutomationFormState) {
     if (!token) return;
     setSubmitting(true);
     try {
-      await apiRequest<Automation>(editing ? `/automations/${editing.id}` : "/automations", {
-        method: editing ? "PUT" : "POST",
+      await apiRequest<Automation>("/automations", {
+        method: "POST",
         token,
         body: JSON.stringify({
           ...form,
@@ -86,9 +87,33 @@ export function AutomationsManager() {
           package_sha256: form.package_sha256 || null,
         }),
       });
-      toast({ title: editing ? "Automacao atualizada" : "Automacao criada", kind: "success" });
+      toast({ title: "Automacao criada", kind: "success" });
+      setNewDialogOpen(false);
+      await automations.refetch();
+    } catch (err) {
+      toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function saveEdit(form: AutomationFormState) {
+    if (!token || !editing) return;
+    setSubmitting(true);
+    try {
+      await apiRequest<Automation>(`/automations/${editing.id}`, {
+        method: "PUT",
+        token,
+        body: JSON.stringify({
+          ...form,
+          category_id: Number(form.category_id),
+          package_url: form.package_url || null,
+          package_sha256: form.package_sha256 || null,
+        }),
+      });
+      toast({ title: "Automacao atualizada", kind: "success" });
       setEditing(null);
-      setModalOpen(false);
+      setEditModalOpen(false);
       await automations.refetch();
     } catch (err) {
       toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
@@ -169,20 +194,29 @@ export function AutomationsManager() {
         </div>
       )}
 
+      <NewAutomationDialog
+        open={newDialogOpen}
+        onClose={() => setNewDialogOpen(false)}
+        categories={categories.data ?? []}
+        onManualSubmit={createManual}
+        submitting={submitting}
+        onImported={() => void automations.refetch()}
+      />
+
       <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editing ? "Editar automacao" : "Nova automacao"}
-        description="Cadastre uma automacao e defina prioridade, executor e limites."
+        open={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title="Editar automacao"
+        description="Atualize metadados, prioridade, executor e limites."
         className="max-w-2xl"
       >
         <AutomationForm
-          key={editing?.id ?? "new"}
+          key={editing?.id ?? "edit"}
           categories={categories.data ?? []}
-          onSubmit={saveAutomation}
+          onSubmit={saveEdit}
           submitting={submitting}
           initial={editing ? toForm(editing) : undefined}
-          submitLabel={editing ? "Salvar automacao" : "Criar automacao"}
+          submitLabel="Salvar automacao"
         />
       </Modal>
     </div>

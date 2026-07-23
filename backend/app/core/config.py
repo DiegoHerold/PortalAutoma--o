@@ -41,6 +41,39 @@ class Settings(BaseSettings):
     eta_window: int = 20
     worker_heartbeat_window_seconds: int = 60
 
+    # Public URL of this backend, used to build package download links for the
+    # Automation Agent when storage_backend="local".
+    backend_public_url: str = "http://localhost:8000"
+
+    # --- Package/artifact storage ---
+    storage_backend: Literal["local", "s3"] = "local"
+    local_storage_path: str = "/data/packages"
+    s3_endpoint_url: str | None = None
+    s3_region: str = "us-east-1"
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    s3_use_path_style: bool = True
+    packages_bucket_name: str = "automation-packages"
+
+    # --- Manual ZIP upload limits ---
+    max_upload_size_mb: int = 200
+    import_staging_ttl_seconds: int = 1800
+
+    # --- GitHub App integration ---
+    # Create the App at https://github.com/settings/apps/new (see
+    # docs/github-app-setup.md for the exact steps and required permissions).
+    github_app_id: str | None = None
+    github_app_slug: str | None = None
+    github_app_client_id: str | None = None
+    github_app_client_secret: str | None = None
+    github_app_private_key: str | None = None  # PEM contents (use \n for newlines in .env)
+    github_app_webhook_secret: str | None = None
+    github_api_base_url: str = "https://api.github.com"
+
+    @property
+    def github_app_configured(self) -> bool:
+        return bool(self.github_app_id and self.github_app_private_key)
+
     @property
     def database_url(self) -> str:
         return (

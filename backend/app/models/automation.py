@@ -9,6 +9,13 @@ class Automation(BaseModel):
 
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False, index=True)
+    # Stable technical identity sourced from the automation.yaml manifest's `id` field
+    # (e.g. "dominio.atualizar"). Distinct from `slug`/`name`, which may change.
+    # NOTE: the numeric `id` column (BaseModel) remains the immutable internal
+    # identifier used by every existing FK (jobs, triggers, schedules, worker
+    # preferences) — we deliberately did not introduce a parallel public string id
+    # to avoid touching that surface. See docs/automation-catalog.md.
+    key: Mapped[str | None] = mapped_column(String(180), unique=True, nullable=True, index=True)
     description: Mapped[str | None] = mapped_column(Text())
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     executor_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -24,3 +31,12 @@ class Automation(BaseModel):
     triggers = relationship("Trigger", back_populates="automation")
     schedules = relationship("Schedule", back_populates="automation")
     worker_preferences = relationship("AutomationWorkerPreference", back_populates="automation")
+    sources = relationship(
+        "AutomationSource", back_populates="automation", cascade="all, delete-orphan"
+    )
+    versions = relationship(
+        "AutomationVersion",
+        back_populates="automation",
+        cascade="all, delete-orphan",
+        order_by="AutomationVersion.created_at.desc()",
+    )

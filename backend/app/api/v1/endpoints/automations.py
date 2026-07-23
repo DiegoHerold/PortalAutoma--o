@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.schemas.automation import AutomationCreate, AutomationRead, AutomationUpdate
+from app.schemas.automation_import import AutomationSourceRead, AutomationVersionRead
 from app.schemas.worker_preference import WorkerPreferenceResponse, WorkerPreferenceUpdate
 from app.services.automation_service import AutomationService
+from app.services.automation_version_lifecycle_service import AutomationVersionLifecycleService
 from app.services.worker_preference_service import WorkerPreferenceService
 
 router = APIRouter()
@@ -94,3 +96,84 @@ def update_worker_preferences(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{automation_id}/sources", response_model=list[AutomationSourceRead])
+def list_automation_sources(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> list[AutomationSourceRead]:
+    try:
+        AutomationService(db).get_automation(current_user, automation_id)  # 404 + permission check
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AutomationVersionLifecycleService(db).list_sources(automation_id)
+
+
+@router.get("/{automation_id}/versions", response_model=list[AutomationVersionRead])
+def list_automation_versions(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> list[AutomationVersionRead]:
+    try:
+        AutomationService(db).get_automation(current_user, automation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AutomationVersionLifecycleService(db).list_versions(automation_id)
+
+
+@router.post("/{automation_id}/versions/{version_id}:activate", response_model=AutomationVersionRead)
+def activate_version(
+    automation_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> AutomationVersionRead:
+    automation = AutomationService(db).get_automation(current_user, automation_id)
+    from app.services.permission_service import PermissionService
+
+    PermissionService(db).ensure_category_action(current_user, automation.category_id, "can_edit")
+    try:
+        return AutomationVersionLifecycleService(db).activate(automation_id, version_id, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{automation_id}/versions/{version_id}:deprecate", response_model=AutomationVersionRead)
+def deprecate_version(
+    automation_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> AutomationVersionRead:
+    automation = AutomationService(db).get_automation(current_user, automation_id)
+    from app.services.permission_service import PermissionService
+
+    PermissionService(db).ensure_category_action(current_user, automation.category_id, "can_edit")
+    try:
+        return AutomationVersionLifecycleService(db).deprecate(automation_id, version_id, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{automation_id}:sync")
+def sync_automation_source(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> dict:
+    """
+    Re-checks the automation's GitHub source for a newer commit affecting its
+    path, without importing anything automatically (section 16). Requires the
+    GitHub App to be configured and the automation to have a github source.
+    """
+    automation = AutomationService(db).get_automation(current_user, automation_id)
+    from app.services.permission_service import PermissionService
+
+    PermissionService(db).ensure_category_action(current_user, automation.category_id, "can_view")
+    try:
+        return AutomationVersionLifecycleService(db).check_for_update(automation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

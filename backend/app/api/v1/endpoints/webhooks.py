@@ -5,8 +5,12 @@ import asyncio
 import time
 from collections import defaultdict
 
+from app.core.config import get_settings
 from app.core.database import get_db
+from app.integrations.github.client import verify_webhook_signature
 from app.models.trigger import Trigger
+from app.repositories.automation_source_repository import AutomationSourceRepository
+from app.repositories.github_integration_repository import GithubIntegrationRepository
 from app.repositories.trigger_repository import TriggerRepository
 from app.schemas.job import JobCreate
 from app.services.job_dispatcher_service import JobDispatcherService
@@ -139,3 +143,75 @@ async def webhook_trigger(
         
         db.commit()
         raise HTTPException(status_code=500, detail=f"Failed to trigger automation: {str(e)}")
+
+
+@router.post("/github")
+async def github_webhook(
+    request: Request,
+    x_github_event: str | None = Header(None),
+    x_hub_signature_256: str | None = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Receives GitHub App webhook events (push, installation,
+    installation_repositories). Marks affected AutomationSource rows as
+    "update_available" so the UI can prompt a re-import — it never triggers
+    an automatic re-import (an operator must review and confirm, same as any
+    other import), matching the task's "sem execução automática" rule.
+    """
+    settings = get_settings()
+    raw_body = await request.body()
+
+    if settings.github_app_webhook_secret:
+        if not verify_webhook_signature(raw_body, x_hub_signature_256, settings.github_app_webhook_secret):
+            raise HTTPException(status_code=401, detail="Assinatura de webhook inválida.")
+
+    payload = await request.json()
+    source_repo = AutomationSourceRepository(db)
+    integrations = GithubIntegrationRepository(db)
+
+    if x_github_event == "installation":
+        action = payload.get("action")
+        installation_id = payload.get("installation", {}).get("id")
+        integration = integrations.get_by_installation_id(installation_id) if installation_id else None
+        if integration and action == "deleted":
+            integrations.delete(integration)
+        elif integration and action == "suspend":
+            from app.utils.datetime import utcnow
+
+            integration.suspended_at = utcnow()
+            integrations.update(integration)
+        elif integration and action == "unsuspend":
+            integration.suspended_at = None
+            integrations.update(integration)
+        return JSONResponse(status_code=200, content={"ok": True})
+
+    if x_github_event == "push":
+        installation_id = payload.get("installation", {}).get("id")
+        repository = payload.get("repository", {})
+        owner = repository.get("owner", {}).get("login")
+        repo_name = repository.get("name")
+        ref = payload.get("ref", "")
+        branch = ref.removeprefix("refs/heads/")
+        changed_paths: set[str] = set()
+        for commit in payload.get("commits", []):
+            changed_paths.update(commit.get("added", []))
+            changed_paths.update(commit.get("modified", []))
+            changed_paths.update(commit.get("removed", []))
+
+        integration = integrations.get_by_installation_id(installation_id) if installation_id else None
+        if integration and owner and repo_name:
+            affected = source_repo.list_for_integration(integration.id)
+            for source in affected:
+                if source.owner != owner or source.repository != repo_name or source.branch != branch:
+                    continue
+                prefix = (source.automation_path or "").rstrip("/") + "/"
+                touched = any(p == source.automation_path or p.startswith(prefix) for p in changed_paths)
+                if touched:
+                    source.sync_status = "update_available"
+                    source_repo.update(source)
+        db.commit()
+        return JSONResponse(status_code=200, content={"ok": True})
+
+    # installation_repositories and any other event types: acknowledge only.
+    return JSONResponse(status_code=200, content={"ok": True, "ignored_event": x_github_event})

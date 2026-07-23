@@ -38,3 +38,37 @@ class ExecutorType(StrEnum):
     PYTHON_SCRIPT = "python_script"
     HTTP_REQUEST = "http_request"
     SHELL_COMMAND = "shell_command"
+
+
+class AutomationSourceType(StrEnum):
+    """Origin of an automation's code — GitHub repository or a manual ZIP upload."""
+
+    GITHUB = "github"
+    MANUAL_UPLOAD = "manual_upload"
+
+
+class AutomationVersionStatus(StrEnum):
+    """Lifecycle of an immutable AutomationVersion package."""
+
+    VALIDATING = "validating"
+    INVALID = "invalid"
+    READY = "ready"
+    PUBLISHED = "published"
+    DEPRECATED = "deprecated"
+    DISABLED = "disabled"
+
+
+class AutomationSyncStatus(StrEnum):
+    """Whether an AutomationSource is in sync with its upstream (GitHub) origin."""
+
+    SYNCED = "synced"
+    UPDATE_AVAILABLE = "update_available"
+    ERROR = "error"
+    UNKNOWN = "unknown"
+
+
+class ApplicationPackagingType(StrEnum):
+    """How the automation's code is laid out inside application/ in the package."""
+
+    SOURCE = "source"
+    WHEEL = "wheel"
