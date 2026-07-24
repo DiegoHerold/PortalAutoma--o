@@ -1,33 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import Link from "next/link";
-import { Plus, ListChecks, X } from "lucide-react";
+import { Activity, AlertCircle, Clock3, ListChecks, Plus, Search, Timer, X } from "lucide-react";
 
 import { DispatchDialog } from "@/components/jobs/dispatch-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
 import { Button } from "@/components/ui/button";
-import { Tabs } from "@/components/ui/tabs";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
-import { StatusBadge, PriorityBadge } from "@/components/ui/status-badge";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge, PriorityBadge } from "@/components/ui/status-badge";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { Tabs } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
+import { useRealtimeStatus } from "@/components/layout/realtime-provider";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { useRealtime } from "@/hooks/use-realtime";
-import { useRealtimeStatus } from "@/components/layout/realtime-provider";
 import { apiRequest } from "@/lib/api";
 import { priorityMeta } from "@/lib/status";
-import { formatTime, formatCountdown } from "@/lib/utils";
-import type { Job } from "@/types/job";
+import { formatCountdown, formatDateTime, formatDuration, formatTime } from "@/lib/utils";
 import type { Automation } from "@/types/automation";
+import type { Job } from "@/types/job";
 import type { Worker } from "@/types/worker";
 
 const CANCELLABLE = new Set(["pending", "queued", "running"]);
-
 const POLL = 4000;
-const FILTERS = ["active", "all", "queued", "running", "done"] as const;
+const FILTERS = ["active", "all", "queued", "running", "failed", "done"] as const;
 type Filter = (typeof FILTERS)[number];
 
 export function JobsManager() {
@@ -38,6 +38,7 @@ export function JobsManager() {
   const workers = useApi<Worker[]>("/workers");
   const { setState } = useRealtimeStatus();
   const [filter, setFilter] = useState<Filter>("active");
+  const [query, setQuery] = useState("");
   const [dispatchOpen, setDispatchOpen] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
@@ -66,56 +67,98 @@ export function JobsManager() {
 
   const automationName = useMemo(() => {
     const map = new Map<number, string>();
-    automations.data?.forEach((a) => map.set(a.id, a.name));
+    automations.data?.forEach((automation) => map.set(automation.id, automation.name));
     return map;
   }, [automations.data]);
   const workerName = useMemo(() => {
     const map = new Map<number, string>();
-    workers.data?.forEach((w) => map.set(w.id, w.name));
+    workers.data?.forEach((worker) => map.set(worker.id, worker.name));
     return map;
   }, [workers.data]);
 
   const list = jobs.data ?? [];
   const counts = {
-    active: list.filter((j) => ["queued", "pending", "running"].includes(j.status)).length,
-    queued: list.filter((j) => ["queued", "pending"].includes(j.status)).length,
-    running: list.filter((j) => j.status === "running").length,
-    done: list.filter((j) => ["success", "failed", "cancelled"].includes(j.status)).length,
+    active: list.filter((job) => ["queued", "pending", "running"].includes(job.status)).length,
+    queued: list.filter((job) => ["queued", "pending"].includes(job.status)).length,
+    running: list.filter((job) => job.status === "running").length,
+    failed: list.filter((job) => job.status === "failed").length,
+    done: list.filter((job) => ["success", "failed", "cancelled"].includes(job.status)).length,
     all: list.length,
   };
 
   const filtered = useMemo(() => {
-    const byFilter = (j: Job) => {
+    const q = query.trim().toLowerCase();
+    const byFilter = (job: Job) => {
       if (filter === "all") return true;
-      if (filter === "active") return ["queued", "pending", "running"].includes(j.status);
-      if (filter === "queued") return ["queued", "pending"].includes(j.status);
-      if (filter === "running") return j.status === "running";
-      return ["success", "failed", "cancelled"].includes(j.status);
+      if (filter === "active") return ["queued", "pending", "running"].includes(job.status);
+      if (filter === "queued") return ["queued", "pending"].includes(job.status);
+      if (filter === "running") return job.status === "running";
+      if (filter === "failed") return job.status === "failed";
+      return ["success", "failed", "cancelled"].includes(job.status);
     };
-    return [...list].filter(byFilter).sort((a, b) => {
-      const pr = priorityMeta(a.priority).rank - priorityMeta(b.priority).rank;
-      if (pr !== 0) return pr;
-      return (a.queue_position ?? a.id) - (b.queue_position ?? b.id);
-    });
-  }, [list, filter]);
+    const byQuery = (job: Job) => {
+      if (!q) return true;
+      const automation = job.automation_name ?? automationName.get(job.automation_id) ?? "";
+      const worker = job.assigned_worker_id
+        ? job.worker_name ?? workerName.get(job.assigned_worker_id) ?? String(job.assigned_worker_id)
+        : "aguardando";
+      return [String(job.id), automation, worker, job.status, job.priority].some((value) => value.toLowerCase().includes(q));
+    };
+    return [...list]
+      .filter((job) => byFilter(job) && byQuery(job))
+      .sort((a, b) => {
+        const priority = priorityMeta(a.priority).rank - priorityMeta(b.priority).rank;
+        if (priority !== 0) return priority;
+        return (a.queue_position ?? a.id) - (b.queue_position ?? b.id);
+      });
+  }, [list, filter, query, automationName, workerName]);
+
+  const nextQueued = filtered.find((job) => ["queued", "pending"].includes(job.status));
+  const runningJobs = list.filter((job) => job.status === "running");
+  const failedLast = list.find((job) => job.status === "failed");
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="grid gap-3 md:grid-cols-4">
+        <JobMetric icon={Activity} label="Ativos" value={counts.active} hint={`${counts.running} em execução`} />
+        <JobMetric icon={Clock3} label="Na fila" value={counts.queued} hint={nextQueued ? `Próximo: #${nextQueued.id}` : "Fila vazia"} />
+        <JobMetric
+          icon={Timer}
+          label="Tempo estimado"
+          value={runningJobs[0]?.estimated_duration_seconds ? formatDuration(runningJobs[0].estimated_duration_seconds) : "—"}
+          hint={runningJobs[0] ? `Job #${runningJobs[0].id}` : "Sem execução ativa"}
+        />
+        <JobMetric icon={AlertCircle} label="Falhas" value={counts.failed} hint={failedLast ? `Última: #${failedLast.id}` : "Sem falhas"} />
+      </div>
+
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <Tabs
           value={filter}
-          onValueChange={(v) => setFilter(v as Filter)}
+          onValueChange={(value) => setFilter(value as Filter)}
           items={[
             { value: "active", label: "Ativos", count: counts.active },
-            { value: "queued", label: "Na fila", count: counts.queued },
-            { value: "running", label: "Executando", count: counts.running },
+            { value: "queued", label: "Fila", count: counts.queued },
+            { value: "running", label: "Rodando", count: counts.running },
+            { value: "failed", label: "Falhas", count: counts.failed },
             { value: "done", label: "Concluídos", count: counts.done },
             { value: "all", label: "Todos", count: counts.all },
           ]}
+          className="max-w-full overflow-x-auto"
         />
-        <Button onClick={() => setDispatchOpen(true)}>
-          <Plus className="h-4 w-4" /> Disparar job
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative sm:w-72">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Buscar job, automação ou worker..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <Button onClick={() => setDispatchOpen(true)}>
+            <Plus className="h-4 w-4" /> Disparar job
+          </Button>
+        </div>
       </div>
 
       {jobs.error ? (
@@ -134,8 +177,8 @@ export function JobsManager() {
                 <TH>Prioridade</TH>
                 <TH>Status</TH>
                 <TH>Worker</TH>
-                <TH>Início est.</TH>
-                <TH>Término est.</TH>
+                <TH>Estimativas</TH>
+                <TH>Criado</TH>
                 <TH className="text-right">Fila</TH>
                 <TH className="text-right">Ações</TH>
               </TR>
@@ -148,8 +191,15 @@ export function JobsManager() {
                       #{job.id}
                     </Link>
                   </TD>
-                  <TD className="max-w-[200px] truncate">
-                    {job.automation_name ?? automationName.get(job.automation_id) ?? `#${job.automation_id}`}
+                  <TD className="max-w-[220px]">
+                    <span className="block truncate font-medium">
+                      {job.automation_name ?? automationName.get(job.automation_id) ?? `#${job.automation_id}`}
+                    </span>
+                    {job.error_message && (
+                      <span className="block truncate text-xs text-destructive" title={job.error_message}>
+                        {job.error_message}
+                      </span>
+                    )}
                   </TD>
                   <TD>
                     <PriorityBadge priority={job.priority} />
@@ -163,19 +213,14 @@ export function JobsManager() {
                       : "aguardando"}
                   </TD>
                   <TD className="tabular text-sm">
-                    {job.status === "running" ? (
-                      <span className="text-muted-foreground">iniciado {formatTime(job.started_at)}</span>
-                    ) : (
-                      formatEta(job.estimated_start)
-                    )}
+                    <span className="block">
+                      {job.status === "running" ? `iniciado ${formatTime(job.started_at)}` : formatEta(job.estimated_start)}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      fim {job.estimated_end ? formatCountdown(job.estimated_end) : "—"}
+                    </span>
                   </TD>
-                  <TD className="tabular text-sm">
-                    {job.estimated_end ? (
-                      <span title={formatTime(job.estimated_end)}>{formatCountdown(job.estimated_end)}</span>
-                    ) : (
-                      "—"
-                    )}
-                  </TD>
+                  <TD className="tabular text-sm text-muted-foreground">{formatDateTime(job.created_at)}</TD>
                   <TD className="tabular text-right text-sm text-muted-foreground">
                     {job.queue_position != null ? `${job.queue_position}º` : "—"}
                   </TD>
@@ -205,6 +250,29 @@ export function JobsManager() {
         automations={automations.data ?? []}
         onDispatched={() => void jobs.refetch()}
       />
+    </div>
+  );
+}
+
+function JobMetric({
+  icon: Icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string | number;
+  hint: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <p className="tabular mt-2 text-2xl font-semibold">{value}</p>
+      <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>
     </div>
   );
 }

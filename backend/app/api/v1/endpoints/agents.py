@@ -57,6 +57,17 @@ def events_batch(
 @router.websocket("/agents/ws")
 @router.websocket("/v1/agents/ws")
 async def agent_websocket(websocket: WebSocket) -> None:
+    """
+    Dispatch and receive run as two independent loops sharing one connection,
+    instead of one strict send-then-block-for-response cycle. That old shape
+    meant a worker could only ever run one automation at a time no matter how
+    its slots were configured, since claim_next_command() was never even
+    called again until the single in-flight command's response came back.
+    Now claim_next_command() keeps polling (and pushing new commands) as long
+    as the worker has free slots -- which claim_next_command() already checks
+    via worker.max_concurrency -- while responses are read and matched back to
+    their job/execution independently, as they arrive, possibly out of order.
+    """
     token = extract_bearer_token(websocket.headers.get("authorization"))
     with SessionLocal() as db:
         worker = AgentGatewayService(db).authenticate_by_token(token)
@@ -66,32 +77,39 @@ async def agent_websocket(websocket: WebSocket) -> None:
         worker_id = worker.id
 
     await websocket.accept()
-    active_command: tuple[int, int] | None = None
-    try:
-        while True:
+    send_lock = asyncio.Lock()
+    stop_dispatch = asyncio.Event()
+
+    async def dispatch_loop() -> None:
+        while not stop_dispatch.is_set():
             with SessionLocal() as db:
                 command = AgentGatewayService(db).claim_next_command(worker_id)
             if command is None:
                 await asyncio.sleep(2)
                 continue
+            payload = json.dumps(command.payload, ensure_ascii=False)
+            async with send_lock:
+                await websocket.send_text(payload)
 
-            active_command = (command.job_id, command.execution_id)
-            await websocket.send_text(json.dumps(command.payload, ensure_ascii=False))
+    dispatch_task = asyncio.create_task(dispatch_loop())
+    try:
+        while True:
             raw_response = await websocket.receive_text()
             with SessionLocal() as db:
-                AgentGatewayService(db).finish_command(worker_id, command.job_id, command.execution_id, raw_response)
-            active_command = None
+                AgentGatewayService(db).finish_command_from_response(worker_id, raw_response)
     except WebSocketDisconnect:
-        if active_command is not None:
-            with SessionLocal() as db:
-                AgentGatewayService(db).mark_lost(
-                    worker_id,
-                    active_command[0],
-                    active_command[1],
-                    "Conexao WebSocket do Automation Agent foi encerrada durante a execucao.",
-                )
+        with SessionLocal() as db:
+            AgentGatewayService(db).mark_all_lost_for_worker(
+                worker_id, "Conexao WebSocket do Automation Agent foi encerrada durante a execucao."
+            )
     except Exception as exc:
-        if active_command is not None:
-            with SessionLocal() as db:
-                AgentGatewayService(db).mark_lost(worker_id, active_command[0], active_command[1], str(exc))
+        with SessionLocal() as db:
+            AgentGatewayService(db).mark_all_lost_for_worker(worker_id, str(exc))
         await websocket.close(code=1011, reason="Falha no gateway do agente")
+    finally:
+        stop_dispatch.set()
+        dispatch_task.cancel()
+        try:
+            await dispatch_task
+        except (asyncio.CancelledError, Exception):
+            pass

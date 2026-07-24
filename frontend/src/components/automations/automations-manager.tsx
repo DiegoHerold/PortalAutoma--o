@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
+import { syncExecutionConfig } from "@/lib/automation-config";
 import type { Automation } from "@/types/automation";
 import type { Category } from "@/types/category";
 import type { Trigger } from "@/types/trigger";
@@ -41,72 +42,14 @@ function toForm(
     max_retries: automation.max_retries,
     is_active: automation.is_active,
     execution_mode: schedule ? "scheduled" : trigger ? "webhook" : "manual",
-    schedule_cron: schedule?.cron_expression ?? emptyAutomationForm.schedule_cron,
+    schedule_recurrence_type: schedule?.recurrence_type ?? emptyAutomationForm.schedule_recurrence_type,
+    schedule_time_of_day: schedule?.time_of_day ?? emptyAutomationForm.schedule_time_of_day,
+    schedule_weekdays: schedule?.weekdays ?? emptyAutomationForm.schedule_weekdays,
+    schedule_day_of_month: schedule?.day_of_month ?? emptyAutomationForm.schedule_day_of_month,
+    schedule_specific_date: schedule?.specific_date ?? emptyAutomationForm.schedule_specific_date,
     schedule_timezone: schedule?.timezone ?? emptyAutomationForm.schedule_timezone,
     worker_ids: workerIds,
   };
-}
-
-function generateSecret(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID().replace(/-/g, "");
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-}
-
-/**
- * Creates/updates/removes the Trigger and Schedule rows and replaces the
- * worker-preferences list for an automation, based on what the form says.
- * Called after the automation itself is created/updated so we have its id.
- */
-async function syncExecutionConfig(
-  token: string,
-  automationId: number,
-  slug: string,
-  form: AutomationFormState,
-  existingTrigger: Trigger | undefined,
-  existingSchedule: Schedule | undefined,
-) {
-  if (form.execution_mode === "webhook") {
-    if (!existingTrigger) {
-      const routePath = `${slug}-${Math.random().toString(36).slice(2, 8)}`;
-      await apiRequest("/triggers", {
-        method: "POST",
-        token,
-        body: JSON.stringify({
-          automation_id: automationId,
-          trigger_type: "https",
-          route_path: routePath,
-          secret_token: generateSecret(),
-          is_active: true,
-        }),
-      });
-    }
-  } else if (existingTrigger) {
-    await apiRequest(`/triggers/${existingTrigger.id}`, { method: "DELETE", token });
-  }
-
-  if (form.execution_mode === "scheduled") {
-    const body = JSON.stringify({
-      automation_id: automationId,
-      cron_expression: form.schedule_cron,
-      timezone: form.schedule_timezone,
-      is_active: true,
-    });
-    if (existingSchedule) {
-      await apiRequest(`/schedules/${existingSchedule.id}`, { method: "PUT", token, body });
-    } else {
-      await apiRequest("/schedules", { method: "POST", token, body });
-    }
-  } else if (existingSchedule) {
-    await apiRequest(`/schedules/${existingSchedule.id}`, { method: "DELETE", token });
-  }
-
-  await apiRequest(`/automations/${automationId}/worker-preferences`, {
-    method: "PUT",
-    token,
-    body: JSON.stringify({
-      preferences: form.worker_ids.map((worker_id, priority_order) => ({ worker_id, priority_order })),
-    }),
-  });
 }
 
 export function AutomationsManager() {
@@ -162,6 +105,8 @@ export function AutomationsManager() {
     setEditing(automation);
     setEditModalOpen(true);
   }
+
+  const creationDependenciesLoading = categories.loading || workers.loading;
 
   async function saveEdit(form: AutomationFormState) {
     if (!token || !editing) return;
@@ -244,7 +189,7 @@ export function AutomationsManager() {
             </option>
           ))}
         </Select>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} disabled={creationDependenciesLoading}>
           <Plus className="h-4 w-4" /> Nova automacao
         </Button>
       </div>
@@ -264,7 +209,7 @@ export function AutomationsManager() {
           description={query || categoryFilter ? "Nenhum resultado para o filtro atual." : "Crie sua primeira automacao."}
           action={
             !query && !categoryFilter ? (
-              <Button onClick={openCreate}>
+              <Button onClick={openCreate} disabled={creationDependenciesLoading}>
                 <Plus className="h-4 w-4" /> Nova automacao
               </Button>
             ) : undefined
@@ -288,7 +233,8 @@ export function AutomationsManager() {
         open={newDialogOpen}
         onClose={() => setNewDialogOpen(false)}
         categories={categories.data ?? []}
-        onImported={() => void automations.refetch()}
+        workers={workers.data ?? []}
+        onImported={() => void Promise.all([automations.refetch(), triggers.refetch(), schedules.refetch()])}
       />
 
       <Modal

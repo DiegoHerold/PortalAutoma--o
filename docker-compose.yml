@@ -57,6 +57,22 @@ services:
       - redis
       - minio
 
+  beat:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    # Ticks every minute (see app/core/celery_app.py beat_schedule) and
+    # enqueues app.tasks.schedule_tasks.sync, which is what actually
+    # dispatches Jobs for due Schedules -- without this service, Schedules
+    # are just cadastro and nothing ever fires automatically.
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - backend
+      - redis
+
   flower:
     image: mher/flower:2.0
     environment:
@@ -84,9 +100,6 @@ services:
       HOSTNAME: "0.0.0.0"
     volumes:
       - ./frontend:/app
-      # Cache do node_modules e build para melhor performance
-      - /app/node_modules
-      - /app/.next
     ports:
       - "3000:3000"
     depends_on:

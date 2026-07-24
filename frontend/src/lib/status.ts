@@ -50,6 +50,23 @@ export function priorityMeta(priority?: string | null) {
   return (priority && PRIORITY[priority]) || { label: priority || "—", tone: "neutral" as Tone, rank: 9 };
 }
 
+/** Schedule calendar occurrence statuses (upcoming/missed are calendar-only; the rest mirror JOB_STATUS). */
+export const OCCURRENCE_STATUS: Record<string, StatusMeta> = {
+  upcoming: { label: "Agendado", tone: "outline", icon: Clock, dot: "bg-muted-foreground" },
+  missed: { label: "Não executado", tone: "warning", icon: CircleDashed, dot: "bg-warning" },
+  queued: { label: "Na fila", tone: "warning", icon: Clock, dot: "bg-warning" },
+  running: { label: "Executando", tone: "info", icon: Loader, dot: "bg-info" },
+  success: { label: "Sucesso", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  failed: { label: "Falha", tone: "destructive", icon: XCircle, dot: "bg-destructive" },
+  cancelled: { label: "Cancelado", tone: "neutral", icon: Ban, dot: "bg-muted-foreground" },
+};
+
+export function occurrenceStatusMeta(status?: string | null): StatusMeta {
+  return (
+    (status && OCCURRENCE_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" }
+  );
+}
+
 export const EXECUTOR_LABELS: Record<string, string> = {
   playwright: "Playwright",
   power_automate: "Power Automate",

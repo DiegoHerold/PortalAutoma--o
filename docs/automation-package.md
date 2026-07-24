@@ -44,8 +44,29 @@ package.zip
 ├── package-metadata.json    # origem (github/manual), quem importou, quando, commit/branch
 ├── application/             # conteúdo de src/ (ou da raiz, se não houver src/)
 ├── resources/                # se existir
-└── pyproject.toml            # se existir
+├── pyproject.toml            # se existir
+└── requirements.txt          # se existir (ver "Dependências" abaixo)
 ```
+
+## Dependências (`requirements.txt`)
+
+Se o pacote tiver um `requirements.txt` na raiz (mesmo nível do
+`automation.yaml`), o Automation Agent cria um ambiente virtual Python
+isolado só para essa automação (nessa versão específica) e instala essas
+dependências nele antes de rodar — em vez de exigir que tudo já esteja
+pré-instalado no ambiente compartilhado do Agent. Isso é o que permite usar
+Playwright, pandas, pywinauto, openpyxl, ou qualquer outro pacote pip,
+inclusive versões diferentes/conflitantes entre automações diferentes.
+
+O ambiente é montado na primeira execução daquela versão e reaproveitado nas
+seguintes (só é reconstruído se o conteúdo do `requirements.txt` mudar). Se o
+`requirements.txt` listar `playwright`, o Agent roda automaticamente
+`playwright install chromium` depois do `pip install`, para baixar o
+navegador.
+
+Sem `requirements.txt`, a automação roda direto no interpretador do próprio
+Agent (mais rápido para iniciar, mas limitado ao que já está instalado nele —
+bom para scripts simples que só usam a biblioteca padrão do Python).
 
 Arquivos deliberadamente excluídos: `.git/`, `.venv/`, `__pycache__/`,
 `tests/`, `.pytest_cache/`, `node_modules/` — ver a lista completa em

@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/modal";
 import { ZipImportFlow } from "@/components/automations/zip-import-flow";
 import { GithubImportFlow } from "@/components/automations/github-import-flow";
 import type { Category } from "@/types/category";
+import type { Worker } from "@/types/worker";
 
 type Mode = "choose" | "zip" | "github";
 
@@ -14,11 +15,13 @@ export function NewAutomationDialog({
   open,
   onClose,
   categories,
+  workers,
   onImported,
 }: {
   open: boolean;
   onClose: () => void;
   categories: Category[];
+  workers: Worker[];
   onImported: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("choose");
@@ -38,7 +41,7 @@ export function NewAutomationDialog({
   };
 
   return (
-    <Modal open={open} onClose={handleClose} title={titles[mode].title} description={titles[mode].description} className="max-w-2xl">
+    <Modal open={open} onClose={handleClose} title={titles[mode].title} description={titles[mode].description} className="max-w-3xl">
       {mode !== "choose" && (
         <button
           onClick={() => setMode("choose")}
@@ -68,6 +71,7 @@ export function NewAutomationDialog({
       {mode === "zip" && (
         <ZipImportFlow
           categories={categories}
+          workers={workers}
           onImported={() => {
             onImported();
             handleClose();
@@ -77,6 +81,8 @@ export function NewAutomationDialog({
 
       {mode === "github" && (
         <GithubImportFlow
+          categories={categories}
+          workers={workers}
           onImported={() => {
             onImported();
           }}

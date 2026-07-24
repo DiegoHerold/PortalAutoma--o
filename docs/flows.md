@@ -8,14 +8,17 @@
 │  Sistema    │
 │  Externo    │
 └──────┬──────┘
-       │ POST /webhooks/trigger/{route_path}?secret=xxx
+       │ POST /webhooks/trigger/{route_path}
+       │ Header: X-Webhook-Secret: xxx  (?secret= ainda aceito, deprecated)
        │ + payload JSON
        ▼
 ┌─────────────────────────────────────────────┐
 │  Webhook Endpoint                           │
-│  - Valida secret_token                      │
+│  - Valida secret_token (header preferido)   │
 │  - Rate limit (100 req/min/IP)              │
-│  - Cria payload com webhook_data            │
+│  - Aplica parameter_mapping do Trigger, ou  │
+│    cai no payload cru (webhook_data) se não │
+│    houver mapeamento configurado            │
 └──────┬──────────────────────────────────────┘
        │ JobDispatcherService.dispatch_system()
        ▼

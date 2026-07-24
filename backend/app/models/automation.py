@@ -28,7 +28,7 @@ class Automation(BaseModel):
 
     category = relationship("Category", back_populates="automations")
     jobs = relationship("Job", back_populates="automation")
-    triggers = relationship("Trigger", back_populates="automation")
+    triggers = relationship("Trigger", back_populates="automation", foreign_keys="Trigger.automation_id")
     schedules = relationship("Schedule", back_populates="automation")
     worker_preferences = relationship("AutomationWorkerPreference", back_populates="automation")
     sources = relationship(

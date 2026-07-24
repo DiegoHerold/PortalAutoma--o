@@ -3,20 +3,24 @@
 import { useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, FileArchive, Upload } from "lucide-react";
 
+import { AutomationForm, emptyAutomationForm, type AutomationFormState } from "@/components/automations/automation-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, apiUpload } from "@/lib/api";
-import type { Category } from "@/types/category";
+import { applyImportedAutomationConfig, slugify } from "@/lib/automation-config";
 import type { AutomationImportPreview } from "@/types/automation-import";
+import type { Category } from "@/types/category";
+import type { Worker } from "@/types/worker";
 
 export function ZipImportFlow({
   categories,
+  workers,
   onImported,
 }: {
   categories: Category[];
+  workers: Worker[];
   onImported: () => void;
 }) {
   const { token } = useAuth();
@@ -25,7 +29,6 @@ export function ZipImportFlow({
 
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<AutomationImportPreview | null>(null);
-  const [categoryId, setCategoryId] = useState("");
   const [confirming, setConfirming] = useState(false);
 
   async function handleFile(file: File) {
@@ -44,20 +47,16 @@ export function ZipImportFlow({
     }
   }
 
-  async function confirm() {
+  async function confirm(form: AutomationFormState) {
     if (!token || !preview?.staging_id) return;
     setConfirming(true);
     try {
-      await apiRequest(`/automations/import/${preview.staging_id}/confirm`, {
-        method: "POST",
-        token,
-        body: JSON.stringify({ category_id: categoryId ? Number(categoryId) : null }),
-      });
+      await applyImportedAutomationConfig(token, preview.staging_id, form);
       toast({ title: "Automação importada", description: `${preview.name} v${preview.version}`, kind: "success" });
       setPreview(null);
       onImported();
     } catch (err) {
-      toast({ title: "Falha ao confirmar importação", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha ao criar automação", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setConfirming(false);
     }
@@ -108,35 +107,26 @@ export function ZipImportFlow({
           )}
 
           <p className="tabular mt-3 text-xs text-muted-foreground">
-            Pacote: {(preview.package_size / 1024).toFixed(1)} KB · sha256 {preview.package_sha256.slice(0, 12)}…
+            Pacote: {(preview.package_size / 1024).toFixed(1)} KB · sha256 {preview.package_sha256.slice(0, 12)}...
           </p>
         </div>
 
         {valid && !preview.already_imported && (
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Categoria {preview.category ? `(sugerida: ${preview.category})` : ""}
-            </label>
-            <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Detectar automaticamente</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <AutomationForm
+            key={preview.staging_id ?? preview.key}
+            categories={categories}
+            workers={workers}
+            initial={formFromPreview(preview, categories)}
+            onSubmit={confirm}
+            submitting={confirming}
+            submitLabel="Criar automação"
+          />
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-start gap-2">
           <Button variant="outline" onClick={discard}>
             Cancelar
           </Button>
-          {valid && !preview.already_imported && (
-            <Button onClick={confirm} disabled={confirming}>
-              {confirming ? "Confirmando..." : "Confirmar importação"}
-            </Button>
-          )}
         </div>
       </div>
     );
@@ -158,7 +148,7 @@ export function ZipImportFlow({
       <div>
         <p className="font-medium">Arraste um pacote .zip aqui</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Deve conter automation.yaml na raiz do pacote (ou de uma única pasta dentro dele).
+          Deve conter automation.yaml na raiz do pacote, ou dentro de uma única pasta.
         </p>
       </div>
       <input
@@ -176,9 +166,22 @@ export function ZipImportFlow({
       </Button>
       {uploading && (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CheckCircle2 className="h-3.5 w-3.5 animate-pulse" /> Validando manifesto e empacotando…
+          <CheckCircle2 className="h-3.5 w-3.5 animate-pulse" /> Validando manifesto e empacotando...
         </p>
       )}
     </div>
   );
+}
+
+function formFromPreview(preview: AutomationImportPreview, categories: Category[]): AutomationFormState {
+  const categoryId =
+    categories.find((category) => category.name.toLowerCase() === preview.category?.toLowerCase())?.id ?? categories[0]?.id;
+
+  return {
+    ...emptyAutomationForm,
+    name: preview.name || preview.key,
+    slug: slugify(preview.name || preview.key),
+    description: preview.description ?? "",
+    category_id: categoryId ? String(categoryId) : "",
+  };
 }

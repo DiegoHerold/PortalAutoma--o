@@ -1,3 +1,32 @@
+import type { Schedule } from "@/types/schedule";
+
+const WEEKDAY_NAMES = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+
+/** Friendly pt-BR description built from a Schedule's structured recurrence fields (preferred over describeCron). */
+export function describeRecurrence(schedule: Pick<Schedule, "recurrence_type" | "time_of_day" | "weekdays" | "day_of_month" | "specific_date">): string {
+  const time = schedule.time_of_day || "00:00";
+  switch (schedule.recurrence_type) {
+    case "daily":
+      return `Todo dia às ${time}`;
+    case "weekly": {
+      const days = (schedule.weekdays ?? []).slice().sort().map((d) => WEEKDAY_NAMES[d] ?? d);
+      return days.length ? `${days.join(", ")} às ${time}` : `Semanalmente às ${time}`;
+    }
+    case "monthly": {
+      const day = schedule.day_of_month;
+      const dayLabel = day === 0 ? "último dia do mês" : `dia ${day}`;
+      return `Todo ${dayLabel} às ${time}`;
+    }
+    case "once": {
+      if (!schedule.specific_date) return `Uma vez às ${time}`;
+      const [y, m, d] = schedule.specific_date.split("-");
+      return `${d}/${m}/${y} às ${time}`;
+    }
+    default:
+      return time;
+  }
+}
+
 /** Very small, friendly cron descriptor for common patterns (pt-BR). */
 export function describeCron(expr?: string | null): string {
   if (!expr) return "—";

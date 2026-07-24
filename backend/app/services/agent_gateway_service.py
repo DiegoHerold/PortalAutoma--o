@@ -184,6 +184,36 @@ class AgentGatewayService:
         self._emit_job_update(job)
         return AgentCommand(job_id=job.id, execution_id=execution.id, payload=command)
 
+    def finish_command_from_response(self, worker_id: int, raw_response: str) -> None:
+        """
+        Matches an incoming websocket response to its job/execution using the
+        execution_id embedded in the response payload itself, instead of
+        assuming responses arrive in the same order commands were sent. This
+        is what lets a worker run several automations at once over a single
+        connection: claim_next_command()/dispatch and receive_text() now run
+        as two independent loops (see agents.py), so responses can legitimately
+        come back out of order once more than one command is in flight.
+        """
+        response = json.loads(raw_response)
+        result = response.get("response") or {}
+        execution = self._execution_from_external_id(result.get("execution_id"))
+        if execution is None:
+            return
+        self.finish_command(worker_id, execution.job_id, execution.id, raw_response)
+
+    def mark_all_lost_for_worker(self, worker_id: int, message: str) -> None:
+        """Used when the websocket connection drops -- every job this worker
+        still has RUNNING has no way to ever report back, so fail them all
+        instead of leaving them stuck in RUNNING forever."""
+        jobs = self.db.scalars(
+            select(Job).where(and_(Job.assigned_worker_id == worker_id, Job.status == JobStatus.RUNNING))
+        ).all()
+        for job in jobs:
+            execution = self.db.scalar(
+                select(Execution).where(Execution.job_id == job.id).order_by(Execution.id.desc())
+            )
+            self.mark_lost(worker_id, job.id, execution.id if execution else 0, message)
+
     def finish_command(self, worker_id: int, job_id: int, execution_id: int, raw_response: str) -> None:
         worker = self.db.get(Worker, worker_id)
         job = self.db.get(Job, job_id)
@@ -228,6 +258,85 @@ class AgentGatewayService:
         worker.last_heartbeat_at = finished_at
         self.db.commit()
         self._emit_job_update(job)
+        self._dispatch_chained_triggers(job, job_status, result)
+
+    def _dispatch_chained_triggers(self, job: Job, job_status: JobStatus, result: dict) -> None:
+        """
+        A "chained" Trigger fires another automation once this one finishes,
+        based on its condition (success/failed/always). This is what lets
+        automations be composed into a pipeline natively in the Portal,
+        without needing N8N as an intermediary for simple A-finishes-then-B
+        cases.
+        """
+        from app.domain.trigger_mapping import apply_parameter_mapping
+        from app.models.trigger import Trigger
+        from app.schemas.job import JobCreate
+        from app.services.audit_service import AuditService
+        from app.services.job_dispatcher_service import JobDispatcherService
+
+        condition_for_status = {
+            JobStatus.SUCCESS: "success",
+            JobStatus.FAILED: "failed",
+        }.get(job_status)
+
+        chained_triggers = (
+            self.db.query(Trigger)
+            .filter(
+                Trigger.trigger_type == "chained",
+                Trigger.is_active.is_(True),
+                Trigger.source_automation_id == job.automation_id,
+            )
+            .all()
+        )
+        if not chained_triggers:
+            return
+
+        dispatcher = JobDispatcherService(self.db)
+        audit = AuditService(self.db)
+        source_context = {
+            "source_job_id": job.id,
+            "source_automation_id": job.automation_id,
+            "source_status": str(job_status),
+            "result": result,
+        }
+
+        for trigger in chained_triggers:
+            if trigger.condition not in ("always", condition_for_status):
+                continue
+            if trigger.automation_id == job.automation_id:
+                # Refuses to chain an automation to itself -- that would
+                # dispatch a new Job every time the previous one finishes,
+                # forever, with no way to break the loop from here.
+                continue
+
+            # Unlike the webhook path, an un-mapped chained trigger passes the
+            # source context straight through (no "webhook_data" wrapping) --
+            # there's no external payload shape to preserve here.
+            if trigger.parameter_mapping_json:
+                payload_json = apply_parameter_mapping(trigger.parameter_mapping_json, source_context)
+            else:
+                payload_json = source_context
+            try:
+                chained_job = dispatcher.dispatch_system(
+                    JobCreate(automation_id=trigger.automation_id, payload_json=payload_json),
+                    trigger_id=trigger.id,
+                )
+                audit.record(
+                    "trigger_chained",
+                    actor_type="trigger",
+                    resource_type="trigger",
+                    resource_id=str(trigger.id),
+                    details=f"job {job.id} ({job_status}) -> automation {trigger.automation_id}, new job {chained_job.id}",
+                )
+            except Exception as exc:  # noqa: BLE001 -- one bad chained trigger must not block the rest
+                audit.record(
+                    "trigger_chain_failed",
+                    actor_type="trigger",
+                    resource_type="trigger",
+                    resource_id=str(trigger.id),
+                    details=f"job {job.id} -> automation {trigger.automation_id} failed: {exc}",
+                )
+        self.db.commit()
 
     def mark_lost(self, worker_id: int, job_id: int, execution_id: int, message: str) -> None:
         worker = self.db.get(Worker, worker_id)

@@ -68,14 +68,18 @@ class JobDispatcherService:
         self.db.commit()
         return job
 
-    def dispatch_system(self, payload: JobCreate) -> Job:
+    def dispatch_system(
+        self, payload: JobCreate, schedule_id: int | None = None, trigger_id: int | None = None
+    ) -> Job:
         automation = self.automations.get(payload.automation_id)
         if not automation:
             raise ValueError("Automation not found")
-        
+
         job = Job(
             automation_id=payload.automation_id,
             requested_by_user_id=None,
+            schedule_id=schedule_id,
+            trigger_id=trigger_id,
             status=JobStatus.PENDING,
             priority=payload.priority or automation.default_priority,
             payload_json=payload.payload_json,
@@ -83,17 +87,17 @@ class JobDispatcherService:
         )
         job = self.jobs.create(job)
         self.db.flush()
-        
+
         # Try to assign worker and dispatch
         self._try_dispatch_job(job)
-        
+
         self.audit.record(
             action="job_dispatched",
             actor_email=None,
             actor_type="system",
             entity_type="job",
             entity_id=str(job.id),
-            details="system trigger dispatch",
+            details=f"schedule_id={schedule_id} trigger_id={trigger_id}" if (schedule_id or trigger_id) else "system trigger dispatch",
         )
         self.db.commit()
         return job

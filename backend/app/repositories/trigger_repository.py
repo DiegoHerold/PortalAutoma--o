@@ -17,6 +17,18 @@ class TriggerRepository:
     def get_by_route_path(self, route_path: str) -> Trigger | None:
         return self.db.scalar(select(Trigger).where(Trigger.route_path == route_path))
 
+    def get_by_route_path_normalized(self, route_path: str) -> Trigger | None:
+        """
+        route_path has been stored both with and without a leading "/" by
+        different code paths historically -- match either form instead of
+        assuming one, so an existing trigger keeps working regardless of how
+        it was originally created.
+        """
+        bare = route_path.lstrip("/")
+        return self.db.scalar(
+            select(Trigger).where(Trigger.route_path.in_([bare, f"/{bare}"]))
+        )
+
     def create(self, trigger: Trigger) -> Trigger:
         self.db.add(trigger)
         self.db.commit()

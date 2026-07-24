@@ -7,8 +7,10 @@ from collections import defaultdict
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.domain.trigger_mapping import apply_parameter_mapping
 from app.integrations.github.client import verify_webhook_signature
 from app.models.trigger import Trigger
+from app.repositories.automation_repository import AutomationRepository
 from app.repositories.automation_source_repository import AutomationSourceRepository
 from app.repositories.github_integration_repository import GithubIntegrationRepository
 from app.repositories.trigger_repository import TriggerRepository
@@ -48,65 +50,71 @@ async def webhook_trigger(
     route_path: str,
     request: Request,
     x_forwarded_for: str | None = Header(None),
+    x_webhook_secret: str | None = Header(None),
     db: Session = Depends(get_db),
 ):
     """
-    Webhook endpoint for triggering automations.
-    
-    Validates secret_token from the trigger configuration.
-    Supports n8n webhooks and other HTTP-based triggers.
+    Webhook endpoint for triggering automations (e.g. from N8N).
+
+    Preferred: send the trigger's secret in the `X-Webhook-Secret` header --
+    it never ends up in access logs or gets echoed back in a redirect.
+    `?secret=` (query string) and `secret_token` (body) are still accepted
+    for backward compatibility with triggers configured before this header
+    existed, but new integrations should use the header.
+
+    If the trigger has a parameter_mapping configured, the automation
+    receives only the mapped parameters. Otherwise it receives the raw
+    payload shape (`webhook_data`/`headers`/`query_params`), same as before.
     """
     # Get client IP for rate limiting
     client_ip = x_forwarded_for or request.client.host
-    
+
     if not check_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
-    
+
     # Get request body
     try:
         body = await request.json()
-    except:
+    except Exception:
         body = {}
-    
-    # Extract secret token from query params or body
+
+    headers = dict(request.headers)
     query_params = dict(request.query_params)
-    secret_token = query_params.get("secret") or body.get("secret_token")
-    
+    secret_token = x_webhook_secret or query_params.get("secret") or body.get("secret_token")
+
     if not secret_token:
-        raise HTTPException(status_code=400, detail="Missing secret token")
-    
+        raise HTTPException(status_code=400, detail="Missing secret token (envie no header X-Webhook-Secret)")
+
     # Find trigger by route path and validate secret
     trigger_repo = TriggerRepository(db)
-    trigger = trigger_repo.get_by_route_path(f"/{route_path}")
-    
+    trigger = trigger_repo.get_by_route_path_normalized(route_path)
+
     if not trigger:
         raise HTTPException(status_code=404, detail="Trigger not found")
-    
+
     if not trigger.is_active:
         raise HTTPException(status_code=404, detail="Trigger not active")
-    
-    # Validate secret token
-    trigger_config = trigger.config_json or {}
-    if trigger_config.get("secret_token") != secret_token:
+
+    if trigger.secret_token != secret_token:
         raise HTTPException(status_code=401, detail="Invalid secret token")
-    
+
     try:
-        # Create job payload
+        automation = AutomationRepository(db).get(trigger.automation_id)
+        if automation is None:
+            raise HTTPException(status_code=404, detail="Automation not found")
+
+        payload_json = apply_parameter_mapping(trigger.parameter_mapping_json, body, headers, query_params)
+
         job_payload = JobCreate(
             automation_id=trigger.automation_id,
-            priority=trigger_config.get("priority", "normal"),
-            payload_json={
-                "webhook_data": body,
-                "headers": dict(request.headers),
-                "query_params": query_params,
-                "trigger_id": trigger.id,
-            }
+            priority=automation.default_priority,
+            payload_json=payload_json,
         )
-        
+
         # Dispatch job
         dispatcher = JobDispatcherService(db)
-        job = dispatcher.dispatch_system(job_payload)
-        
+        job = dispatcher.dispatch_system(job_payload, trigger_id=trigger.id)
+
         # Audit the trigger
         audit_service = AuditService(db)
         audit_service.record(
@@ -117,9 +125,9 @@ async def webhook_trigger(
             entity_id=str(job.id),
             details=f"Triggered by webhook {route_path} (trigger {trigger.id})",
         )
-        
+
         db.commit()
-        
+
         return JSONResponse(
             status_code=200,
             content={
@@ -128,7 +136,9 @@ async def webhook_trigger(
                 "message": "Automation triggered successfully"
             }
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         # Audit the failed trigger
         audit_service = AuditService(db)
@@ -140,7 +150,7 @@ async def webhook_trigger(
             entity_id=str(trigger.id),
             details=f"Failed to trigger webhook {route_path}: {str(e)}",
         )
-        
+
         db.commit()
         raise HTTPException(status_code=500, detail=f"Failed to trigger automation: {str(e)}")
 

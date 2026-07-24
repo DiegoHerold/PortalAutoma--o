@@ -17,6 +17,7 @@ import { WorkerPreferences } from "@/components/automations/worker-preferences";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
+import { describeRecurrence } from "@/lib/cron";
 import { executorLabel } from "@/lib/status";
 import { formatDuration } from "@/lib/utils";
 import type { Automation } from "@/types/automation";
@@ -217,7 +218,7 @@ export function AutomationDetail({ id }: { id: string }) {
             <ul className="divide-y divide-border">
               {automationSchedules.map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-2 px-5 py-3">
-                  <span className="tabular text-sm">{s.cron_expression}</span>
+                  <span className="text-sm">{describeRecurrence(s)}</span>
                   <Badge tone={s.is_active ? "success" : "neutral"}>{s.timezone}</Badge>
                 </li>
               ))}
@@ -268,6 +269,17 @@ function TriggerRow({ trigger }: { trigger: Trigger }) {
       /* ignore */
     }
   }
+  if (trigger.trigger_type === "chained") {
+    return (
+      <li className="px-5 py-3">
+        <Badge tone="primary">encadeamento</Badge>
+        <p className="mt-1.5 truncate text-xs text-muted-foreground">
+          Disparado quando a automação de origem terminar ({trigger.condition ?? "success"}).
+        </p>
+      </li>
+    );
+  }
+
   return (
     <li className="px-5 py-3">
       <div className="flex items-center justify-between gap-2">

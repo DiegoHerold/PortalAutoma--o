@@ -108,7 +108,7 @@ def build_package(
             # else: no src/ layout found — package still valid if entrypoint
             # validation was skipped/soft; application/ will simply be empty.
 
-        for extra_name in ("pyproject.toml", "README.md"):
+        for extra_name in ("pyproject.toml", "README.md", "requirements.txt"):
             extra_path = source_root / extra_name
             if extra_path.is_file():
                 zf.write(extra_path, arcname=extra_name)
