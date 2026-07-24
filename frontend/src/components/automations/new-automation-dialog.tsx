@@ -1,29 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, FileArchive, Github, PencilLine } from "lucide-react";
+import { ArrowLeft, FileArchive, Github } from "lucide-react";
 
 import { Modal } from "@/components/ui/modal";
-import { AutomationForm, type AutomationFormState } from "@/components/automations/automation-form";
 import { ZipImportFlow } from "@/components/automations/zip-import-flow";
 import { GithubImportFlow } from "@/components/automations/github-import-flow";
 import type { Category } from "@/types/category";
 
-type Mode = "choose" | "manual" | "zip" | "github";
+type Mode = "choose" | "zip" | "github";
 
 export function NewAutomationDialog({
   open,
   onClose,
   categories,
-  onManualSubmit,
-  submitting,
   onImported,
 }: {
   open: boolean;
   onClose: () => void;
   categories: Category[];
-  onManualSubmit: (form: AutomationFormState) => Promise<void>;
-  submitting: boolean;
   onImported: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("choose");
@@ -34,8 +29,10 @@ export function NewAutomationDialog({
   }
 
   const titles: Record<Mode, { title: string; description: string }> = {
-    choose: { title: "Nova automação", description: "Como você quer adicionar esta automação?" },
-    manual: { title: "Cadastro manual", description: "Defina metadados e um pacote existente manualmente." },
+    choose: {
+      title: "Nova automação",
+      description: "Toda automação precisa de um pacote executável — importe do GitHub ou envie um ZIP.",
+    },
     zip: { title: "Enviar pacote ZIP", description: "Envie um pacote com automation.yaml para validação e importação." },
     github: { title: "Importar do GitHub", description: "Conecte um repositório e selecione as automações a importar." },
   };
@@ -52,7 +49,7 @@ export function NewAutomationDialog({
       )}
 
       {mode === "choose" && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <ChoiceCard
             icon={Github}
             title="Importar do GitHub"
@@ -65,22 +62,7 @@ export function NewAutomationDialog({
             description="Envie manualmente um pacote com automation.yaml."
             onClick={() => setMode("zip")}
           />
-          <ChoiceCard
-            icon={PencilLine}
-            title="Formulário manual"
-            description="Cadastre metadados apontando para um pacote existente."
-            onClick={() => setMode("manual")}
-          />
         </div>
-      )}
-
-      {mode === "manual" && (
-        <AutomationForm
-          categories={categories}
-          onSubmit={onManualSubmit}
-          submitting={submitting}
-          submitLabel="Criar automação"
-        />
       )}
 
       {mode === "zip" && (

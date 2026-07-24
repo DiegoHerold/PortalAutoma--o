@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, ListChecks } from "lucide-react";
+import { Plus, ListChecks, X } from "lucide-react";
 
 import { DispatchDialog } from "@/components/jobs/dispatch-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -12,26 +12,49 @@ import { Tabs } from "@/components/ui/tabs";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { StatusBadge, PriorityBadge } from "@/components/ui/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
+import { useAuth } from "@/hooks/use-auth";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useRealtimeStatus } from "@/components/layout/realtime-provider";
+import { apiRequest } from "@/lib/api";
 import { priorityMeta } from "@/lib/status";
 import { formatTime, formatCountdown } from "@/lib/utils";
 import type { Job } from "@/types/job";
 import type { Automation } from "@/types/automation";
 import type { Worker } from "@/types/worker";
 
+const CANCELLABLE = new Set(["pending", "queued", "running"]);
+
 const POLL = 4000;
 const FILTERS = ["active", "all", "queued", "running", "done"] as const;
 type Filter = (typeof FILTERS)[number];
 
 export function JobsManager() {
+  const { token } = useAuth();
+  const { toast } = useToast();
   const jobs = useApi<Job[]>("/jobs", { pollMs: POLL });
   const automations = useApi<Automation[]>("/automations");
   const workers = useApi<Worker[]>("/workers");
   const { setState } = useRealtimeStatus();
   const [filter, setFilter] = useState<Filter>("active");
   const [dispatchOpen, setDispatchOpen] = useState(false);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  async function cancelJob(job: Job) {
+    if (!token) return;
+    if (!window.confirm(`Cancelar o job #${job.id}?`)) return;
+    setCancellingId(job.id);
+    try {
+      await apiRequest(`/jobs/${job.id}:cancel`, { method: "POST", token });
+      toast({ title: `Job #${job.id} cancelado`, kind: "success" });
+      await jobs.refetch();
+    } catch (err) {
+      toast({ title: "Falha ao cancelar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+    } finally {
+      setCancellingId(null);
+    }
+  }
 
   const { state } = useRealtime<Job>({
     wsPath: "/ws/executions",
@@ -114,6 +137,7 @@ export function JobsManager() {
                 <TH>Início est.</TH>
                 <TH>Término est.</TH>
                 <TH className="text-right">Fila</TH>
+                <TH className="text-right">Ações</TH>
               </TR>
             </THead>
             <TBody>
@@ -154,6 +178,19 @@ export function JobsManager() {
                   </TD>
                   <TD className="tabular text-right text-sm text-muted-foreground">
                     {job.queue_position != null ? `${job.queue_position}º` : "—"}
+                  </TD>
+                  <TD className="text-right">
+                    {CANCELLABLE.has(job.status) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void cancelJob(job)}
+                        disabled={cancellingId === job.id}
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <X className="h-3.5 w-3.5" /> Cancelar
+                      </Button>
+                    )}
                   </TD>
                 </TR>
               ))}

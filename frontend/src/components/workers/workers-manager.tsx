@@ -19,9 +19,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useRealtimeStatus } from "@/components/layout/realtime-provider";
 import { apiRequest } from "@/lib/api";
-import { API_BASE_URL } from "@/lib/constants";
 import { cn, relativeFromNow } from "@/lib/utils";
 import type { Worker } from "@/types/worker";
+
+type InstallerConfig = { central_api_url: string; central_websocket_url: string };
 
 const POLL = 5000;
 const emptyForm = {
@@ -37,6 +38,7 @@ export function WorkersManager() {
   const { token } = useAuth();
   const { toast } = useToast();
   const workers = useApi<Worker[]>("/workers", { pollMs: POLL });
+  const installer = useApi<InstallerConfig>("/workers/installer-config");
   const { setState } = useRealtimeStatus();
   const { state } = useRealtime<Worker>({
     wsPath: "/ws/executions",
@@ -106,8 +108,11 @@ export function WorkersManager() {
   if (workers.error) return <ErrorState message={workers.error} onRetry={workers.refetch} />;
 
   const list = workers.data ?? [];
-  const centralApiUrl = API_BASE_URL.replace(/\/v1\/?$/, "");
-  const centralWebSocketUrl = `${API_BASE_URL.replace(/^http/, "ws")}/agents/ws`;
+  // Sempre vem do backend/.env (BACKEND_PUBLIC_URL), nunca do host do navegador —
+  // um worker em outra maquina precisa do endereco real do servidor, nao do que
+  // o admin usou pra abrir o Portal. Trocar de maquina/rede = editar so o .env.
+  const centralApiUrl = installer.data?.central_api_url ?? "";
+  const centralWebSocketUrl = installer.data?.central_websocket_url ?? "";
   const installerConfig = JSON.stringify(
     {
       agent_name: "",
@@ -135,11 +140,17 @@ export function WorkersManager() {
           <div className="min-w-0">
             <h2 className="font-display text-base font-semibold">Configuracao do instalador</h2>
             <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-              <span className="tabular truncate">central_api_url: {centralApiUrl}</span>
-              <span className="tabular truncate">central_websocket_url: {centralWebSocketUrl}</span>
+              {installer.loading ? (
+                <span>Carregando...</span>
+              ) : (
+                <>
+                  <span className="tabular truncate">central_api_url: {centralApiUrl}</span>
+                  <span className="tabular truncate">central_websocket_url: {centralWebSocketUrl}</span>
+                </>
+              )}
             </div>
           </div>
-          <Button variant="outline" onClick={copyInstallerConfig}>
+          <Button variant="outline" onClick={copyInstallerConfig} disabled={installer.loading}>
             <Copy className="h-4 w-4" /> Copiar JSON
           </Button>
         </div>

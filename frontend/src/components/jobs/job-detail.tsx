@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { X } from "lucide-react";
 
 import { SectionCard } from "@/components/shared/section-card";
 import { ErrorState } from "@/components/shared/error-state";
@@ -8,16 +10,39 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge, PriorityBadge } from "@/components/ui/status-badge";
 import { DetailJson } from "@/components/shared/detail-json";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/api";
 import { formatDateTime, formatCountdown } from "@/lib/utils";
 import type { Job } from "@/types/job";
 
+const CANCELLABLE = new Set(["pending", "queued", "running"]);
+
 export function JobDetail({ id }: { id: string }) {
+  const { token } = useAuth();
+  const { toast } = useToast();
   const job = useApi<Job>(`/jobs/${id}`, { pollMs: 4000 });
+  const [cancelling, setCancelling] = useState(false);
 
   if (job.error) return <ErrorState message={job.error} onRetry={job.refetch} />;
   if (job.loading || !job.data) return <Skeleton className="h-64 rounded-lg" />;
   const j = job.data;
+
+  async function cancelJob() {
+    if (!token) return;
+    if (!window.confirm(`Cancelar o job #${j.id}?`)) return;
+    setCancelling(true);
+    try {
+      await apiRequest(`/jobs/${j.id}:cancel`, { method: "POST", token });
+      toast({ title: `Job #${j.id} cancelado`, kind: "success" });
+      await job.refetch();
+    } catch (err) {
+      toast({ title: "Falha ao cancelar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -56,10 +81,15 @@ export function JobDetail({ id }: { id: string }) {
             />
           </div>
         </SectionCard>
-        {j.status === "queued" && (
+        {CANCELLABLE.has(j.status) && (
           <SectionCard title="Ações">
-            <Button variant="outline" className="w-full" asChild>
-              <Link href="/jobs">Voltar à fila</Link>
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={() => void cancelJob()}
+              disabled={cancelling}
+            >
+              <X className="h-4 w-4" /> {cancelling ? "Cancelando..." : "Cancelar job"}
             </Button>
           </SectionCard>
         )}

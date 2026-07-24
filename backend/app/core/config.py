@@ -48,7 +48,18 @@ class Settings(BaseSettings):
     # --- Package/artifact storage ---
     storage_backend: Literal["local", "s3"] = "local"
     local_storage_path: str = "/data/packages"
+    # Internal address the backend itself uses to talk to MinIO/S3 (put, head,
+    # delete...). Inside Docker Compose this is the service name, e.g.
+    # "http://minio:9000" — fast and reliable on the Docker network, but not
+    # reachable from any other machine.
     s3_endpoint_url: str | None = None
+    # Address baked into the presigned download URLs handed to the Automation
+    # Agent, which runs on a *different* physical machine and can't resolve
+    # Docker service names. Falls back to s3_endpoint_url if unset, which only
+    # works when everything runs on the same host. Set this to the same
+    # host/IP as BACKEND_PUBLIC_URL with MinIO's published port, e.g.
+    # "http://192.168.1.35:9000". Changing machines = editing this one value.
+    s3_public_endpoint_url: str | None = None
     s3_region: str = "us-east-1"
     s3_access_key: str | None = None
     s3_secret_key: str | None = None

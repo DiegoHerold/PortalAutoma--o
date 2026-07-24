@@ -84,6 +84,18 @@ class AutomationImportService:
 
         source = self._create_source(automation.id, staged, user)
 
+        # Se esta automação ainda não tem nenhuma versão publicada (primeira
+        # importação), publica esta versão automaticamente — não faz sentido
+        # exigir um clique extra em "Publicar" antes de a automação conseguir
+        # rodar pela primeira vez, e isso vinha causando jobs presos com
+        # "package_url não configurado" (a automação existia, mas nenhuma
+        # versão dela estava com status "published", que é o que o dispatcher
+        # de fato usa para resolver o pacote). Atualizações subsequentes
+        # continuam exigindo publicação manual, de propósito — ver
+        # "Verificar atualização" na página da automação.
+        is_first_version = self.versions.get_latest_published(automation.id) is None
+        initial_status = AutomationVersionStatus.PUBLISHED if is_first_version else AutomationVersionStatus.READY
+
         version = AutomationVersion(
             automation_id=automation.id,
             source_id=source.id,
@@ -102,7 +114,7 @@ class AutomationImportService:
             artifact_sha256=staged["package"]["sha256"],
             source_commit_sha=staged.get("commit_sha"),
             source_path=staged.get("automation_path"),
-            status=AutomationVersionStatus.READY,
+            status=initial_status,
             validation_errors=staged.get("errors") or None,
             published_at=utcnow(),
         )
@@ -114,12 +126,14 @@ class AutomationImportService:
             actor_type="user",
             entity_type="automation_version",
             entity_id=str(version.id),
-            details=f"{automation_key}@{manifest['version']} via {staged['source_type']}",
+            details=f"{automation_key}@{manifest['version']} via {staged['source_type']}"
+            + (" (auto-publicada: primeira versão)" if is_first_version else ""),
             after={
                 "automation_id": automation.id,
                 "version": manifest["version"],
                 "source_type": staged["source_type"],
                 "artifact_sha256": staged["package"]["sha256"],
+                "status": str(initial_status),
             },
         )
         self.db.commit()

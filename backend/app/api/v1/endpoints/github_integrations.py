@@ -34,6 +34,19 @@ def _client_or_400() -> GithubAppClient:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _resolve_installation_id(db: Session, integration_id: int) -> int:
+    """
+    `integration_id` (path param) is our local GithubIntegration.id (DB primary
+    key). The GitHub API needs the actual `installation_id` GitHub assigned to
+    this installation — a different number. Every call into GithubAppClient
+    must use the resolved value, never the raw path param.
+    """
+    integration = GithubIntegrationRepository(db).get(integration_id)
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Integração não encontrada.")
+    return integration.installation_id
+
+
 @router.get("", response_model=list[GithubIntegrationRead])
 def list_integrations(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
@@ -53,7 +66,11 @@ def connect(db: Session = Depends(get_db), user: User = Depends(get_current_user
     PermissionService(db).ensure_admin_or_manager(user)
     client = _client_or_400()
     state = create_access_token(str(user.id))
-    return GithubConnectResponse(install_url=f"{client.install_url()}?state={state}")
+    try:
+        install_url = client.install_url()
+    except GithubAppNotConfiguredError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GithubConnectResponse(install_url=f"{install_url}?state={state}")
 
 
 @router.get("/callback")
@@ -133,9 +150,10 @@ def list_repositories(
     integration_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> list[GithubRepositoryRead]:
     PermissionService(db).ensure_admin_or_manager(user)
+    installation_id = _resolve_installation_id(db, integration_id)
     client = _client_or_400()
     try:
-        repos = client.list_repositories(integration_id)
+        repos = client.list_repositories(installation_id)
     except GithubApiError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return [GithubRepositoryRead(**r.__dict__) for r in repos]
@@ -150,9 +168,10 @@ def list_branches(
     user: User = Depends(get_current_user),
 ) -> list[str]:
     PermissionService(db).ensure_admin_or_manager(user)
+    installation_id = _resolve_installation_id(db, integration_id)
     client = _client_or_400()
     try:
-        return client.list_branches(integration_id, owner, repository)
+        return client.list_branches(installation_id, owner, repository)
     except GithubApiError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 

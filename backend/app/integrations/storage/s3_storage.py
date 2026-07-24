@@ -15,16 +15,34 @@ class S3PackageStorage(PackageStorage):
 
     def __init__(self) -> None:
         self.settings = get_settings()
+        boto_config = BotoConfig(
+            signature_version="s3v4",
+            s3={"addressing_style": "path" if self.settings.s3_use_path_style else "auto"},
+        )
+        # Internal client: put/head/delete, talks to MinIO over the Docker
+        # network using the service name (fast, doesn't need to be publicly
+        # reachable).
         self._client = boto3.client(
             "s3",
             endpoint_url=self.settings.s3_endpoint_url or None,
             region_name=self.settings.s3_region,
             aws_access_key_id=self.settings.s3_access_key or None,
             aws_secret_access_key=self.settings.s3_secret_key or None,
-            config=BotoConfig(
-                signature_version="s3v4",
-                s3={"addressing_style": "path" if self.settings.s3_use_path_style else "auto"},
-            ),
+            config=boto_config,
+        )
+        # Public client: only used to mint presigned download URLs, which get
+        # handed to the Automation Agent on a different machine. Must point at
+        # an address that machine can actually resolve/reach — see
+        # s3_public_endpoint_url in app.core.config for why this is separate
+        # from the internal client above.
+        public_endpoint = self.settings.s3_public_endpoint_url or self.settings.s3_endpoint_url
+        self._public_client = boto3.client(
+            "s3",
+            endpoint_url=public_endpoint or None,
+            region_name=self.settings.s3_region,
+            aws_access_key_id=self.settings.s3_access_key or None,
+            aws_secret_access_key=self.settings.s3_secret_key or None,
+            config=boto_config,
         )
 
     def _ensure_bucket(self, bucket: str) -> None:
@@ -42,7 +60,7 @@ class S3PackageStorage(PackageStorage):
         return StoredObject(bucket=bucket, object_key=object_key, size=size, content_type=content_type)
 
     def get_download_url(self, bucket: str, object_key: str, expires_in_seconds: int = 300) -> str:
-        return self._client.generate_presigned_url(
+        return self._public_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": object_key},
             ExpiresIn=expires_in_seconds,

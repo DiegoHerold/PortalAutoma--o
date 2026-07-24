@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Plus, Search, Workflow } from "lucide-react";
 
 import { AutomationCard } from "@/components/automations/automation-card";
-import { AutomationForm, type AutomationFormState } from "@/components/automations/automation-form";
+import { AutomationForm, emptyAutomationForm, type AutomationFormState } from "@/components/automations/automation-form";
 import { NewAutomationDialog } from "@/components/automations/new-automation-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
@@ -18,8 +18,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
 import type { Automation } from "@/types/automation";
 import type { Category } from "@/types/category";
+import type { Trigger } from "@/types/trigger";
+import type { Schedule } from "@/types/schedule";
+import type { Worker, WorkerPreference } from "@/types/worker";
 
-function toForm(automation: Automation): AutomationFormState {
+function toForm(
+  automation: Automation,
+  trigger: Trigger | undefined,
+  schedule: Schedule | undefined,
+  workerIds: number[],
+): AutomationFormState {
   return {
     name: automation.name,
     slug: automation.slug,
@@ -32,7 +40,73 @@ function toForm(automation: Automation): AutomationFormState {
     timeout_seconds: automation.timeout_seconds,
     max_retries: automation.max_retries,
     is_active: automation.is_active,
+    execution_mode: schedule ? "scheduled" : trigger ? "webhook" : "manual",
+    schedule_cron: schedule?.cron_expression ?? emptyAutomationForm.schedule_cron,
+    schedule_timezone: schedule?.timezone ?? emptyAutomationForm.schedule_timezone,
+    worker_ids: workerIds,
   };
+}
+
+function generateSecret(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID().replace(/-/g, "");
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+/**
+ * Creates/updates/removes the Trigger and Schedule rows and replaces the
+ * worker-preferences list for an automation, based on what the form says.
+ * Called after the automation itself is created/updated so we have its id.
+ */
+async function syncExecutionConfig(
+  token: string,
+  automationId: number,
+  slug: string,
+  form: AutomationFormState,
+  existingTrigger: Trigger | undefined,
+  existingSchedule: Schedule | undefined,
+) {
+  if (form.execution_mode === "webhook") {
+    if (!existingTrigger) {
+      const routePath = `${slug}-${Math.random().toString(36).slice(2, 8)}`;
+      await apiRequest("/triggers", {
+        method: "POST",
+        token,
+        body: JSON.stringify({
+          automation_id: automationId,
+          trigger_type: "https",
+          route_path: routePath,
+          secret_token: generateSecret(),
+          is_active: true,
+        }),
+      });
+    }
+  } else if (existingTrigger) {
+    await apiRequest(`/triggers/${existingTrigger.id}`, { method: "DELETE", token });
+  }
+
+  if (form.execution_mode === "scheduled") {
+    const body = JSON.stringify({
+      automation_id: automationId,
+      cron_expression: form.schedule_cron,
+      timezone: form.schedule_timezone,
+      is_active: true,
+    });
+    if (existingSchedule) {
+      await apiRequest(`/schedules/${existingSchedule.id}`, { method: "PUT", token, body });
+    } else {
+      await apiRequest("/schedules", { method: "POST", token, body });
+    }
+  } else if (existingSchedule) {
+    await apiRequest(`/schedules/${existingSchedule.id}`, { method: "DELETE", token });
+  }
+
+  await apiRequest(`/automations/${automationId}/worker-preferences`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify({
+      preferences: form.worker_ids.map((worker_id, priority_order) => ({ worker_id, priority_order })),
+    }),
+  });
 }
 
 export function AutomationsManager() {
@@ -40,6 +114,9 @@ export function AutomationsManager() {
   const { toast } = useToast();
   const automations = useApi<Automation[]>("/automations");
   const categories = useApi<Category[]>("/categories");
+  const workers = useApi<Worker[]>("/workers");
+  const triggers = useApi<Trigger[]>("/triggers");
+  const schedules = useApi<Schedule[]>("/schedules");
 
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -48,11 +125,24 @@ export function AutomationsManager() {
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState<Automation | null>(null);
 
+  const editingPreferences = useApi<WorkerPreference[]>(
+    editing ? `/automations/${editing.id}/worker-preferences` : null,
+  );
+
   const categoryName = useMemo(() => {
     const map = new Map<number, string>();
     categories.data?.forEach((c) => map.set(c.id, c.name));
     return map;
   }, [categories.data]);
+
+  const editingTrigger = useMemo(
+    () => (editing ? triggers.data?.find((t) => t.automation_id === editing.id) : undefined),
+    [triggers.data, editing],
+  );
+  const editingSchedule = useMemo(
+    () => (editing ? schedules.data?.find((s) => s.automation_id === editing.id) : undefined),
+    [schedules.data, editing],
+  );
 
   const filtered = useMemo(() => {
     const list = automations.data ?? [];
@@ -73,30 +163,6 @@ export function AutomationsManager() {
     setEditModalOpen(true);
   }
 
-  async function createManual(form: AutomationFormState) {
-    if (!token) return;
-    setSubmitting(true);
-    try {
-      await apiRequest<Automation>("/automations", {
-        method: "POST",
-        token,
-        body: JSON.stringify({
-          ...form,
-          category_id: Number(form.category_id),
-          package_url: form.package_url || null,
-          package_sha256: form.package_sha256 || null,
-        }),
-      });
-      toast({ title: "Automacao criada", kind: "success" });
-      setNewDialogOpen(false);
-      await automations.refetch();
-    } catch (err) {
-      toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function saveEdit(form: AutomationFormState) {
     if (!token || !editing) return;
     setSubmitting(true);
@@ -105,16 +171,32 @@ export function AutomationsManager() {
         method: "PUT",
         token,
         body: JSON.stringify({
-          ...form,
+          name: form.name,
+          slug: form.slug,
+          description: form.description,
           category_id: Number(form.category_id),
+          executor_type: form.executor_type,
           package_url: form.package_url || null,
           package_sha256: form.package_sha256 || null,
+          default_priority: form.default_priority,
+          timeout_seconds: form.timeout_seconds,
+          max_retries: form.max_retries,
+          is_active: form.is_active,
         }),
       });
+      try {
+        await syncExecutionConfig(token, editing.id, form.slug, form, editingTrigger, editingSchedule);
+      } catch (syncErr) {
+        toast({
+          title: "Automação salva, mas houve falha ao salvar gatilho/agendamento/workers",
+          description: syncErr instanceof Error ? syncErr.message : undefined,
+          kind: "warning",
+        });
+      }
       toast({ title: "Automacao atualizada", kind: "success" });
       setEditing(null);
       setEditModalOpen(false);
-      await automations.refetch();
+      await Promise.all([automations.refetch(), triggers.refetch(), schedules.refetch()]);
     } catch (err) {
       toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
@@ -124,13 +206,21 @@ export function AutomationsManager() {
 
   async function deleteAutomation(automation: Automation) {
     if (!token) return;
-    if (!window.confirm(`Apagar a automacao "${automation.name}"?`)) return;
+    if (!window.confirm(`Apagar a automacao "${automation.name}"? Esta ação não pode ser desfeita.`)) return;
     try {
       await apiRequest<void>(`/automations/${automation.id}`, { method: "DELETE", token });
       toast({ title: "Automacao apagada", kind: "success" });
       await automations.refetch();
     } catch (err) {
-      toast({ title: "Falha ao apagar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      const message = err instanceof Error ? err.message : undefined;
+      const blocked = message?.toLowerCase().includes("cancele");
+      toast({
+        title: blocked ? "Automação tem execuções ativas" : "Falha ao apagar",
+        description: blocked
+          ? "Cancele os jobs em andamento ou na fila (na tela de Jobs) antes de apagar esta automação."
+          : message,
+        kind: "error",
+      });
     }
   }
 
@@ -198,8 +288,6 @@ export function AutomationsManager() {
         open={newDialogOpen}
         onClose={() => setNewDialogOpen(false)}
         categories={categories.data ?? []}
-        onManualSubmit={createManual}
-        submitting={submitting}
         onImported={() => void automations.refetch()}
       />
 
@@ -207,17 +295,32 @@ export function AutomationsManager() {
         open={editModalOpen}
         onClose={() => setEditModalOpen(false)}
         title="Editar automacao"
-        description="Atualize metadados, prioridade, executor e limites."
+        description="Atualize metadados, prioridade, executor, disparo e workers."
         className="max-w-2xl"
       >
+        {editing && editingPreferences.loading ? (
+          <Skeleton className="h-64 rounded-lg" />
+        ) : (
         <AutomationForm
           key={editing?.id ?? "edit"}
           categories={categories.data ?? []}
+          workers={workers.data ?? []}
+          webhookPreview={editingTrigger?.route_path ?? null}
           onSubmit={saveEdit}
           submitting={submitting}
-          initial={editing ? toForm(editing) : undefined}
+          initial={
+            editing
+              ? toForm(
+                  editing,
+                  editingTrigger,
+                  editingSchedule,
+                  (editingPreferences.data ?? []).sort((a, b) => a.priority_order - b.priority_order).map((p) => p.worker_id),
+                )
+              : undefined
+          }
           submitLabel="Salvar automacao"
         />
+        )}
       </Modal>
     </div>
   );

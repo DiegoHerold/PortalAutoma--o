@@ -1,12 +1,32 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.schemas.worker import WorkerCreate, WorkerRead, WorkerUpdate
 from app.services.worker_service import WorkerService
 
 router = APIRouter()
+
+
+@router.get("/installer-config")
+def installer_config(_=Depends(get_current_user)) -> dict:
+    """
+    Address the Automation Agent installer should use to reach this server.
+    Always derived from BACKEND_PUBLIC_URL (backend/.env) — never from the
+    browser's own URL — so a worker on a different machine gets the real
+    server address regardless of which host the admin happened to browse
+    from. Changing machines/networks is a single .env edit + backend
+    restart, nothing to rebuild or hunt for in code.
+    """
+    settings = get_settings()
+    base = settings.backend_public_url.rstrip("/")
+    ws_base = base.replace("https://", "wss://").replace("http://", "ws://")
+    return {
+        "central_api_url": f"{base}/api",
+        "central_websocket_url": f"{ws_base}/api/v1/agents/ws",
+    }
 
 
 @router.get("", response_model=list[WorkerRead])

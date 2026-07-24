@@ -6,7 +6,7 @@ from app.dependencies import get_current_user
 from app.schemas.automation import AutomationCreate, AutomationRead, AutomationUpdate
 from app.schemas.automation_import import AutomationSourceRead, AutomationVersionRead
 from app.schemas.worker_preference import WorkerPreferenceResponse, WorkerPreferenceUpdate
-from app.services.automation_service import AutomationService
+from app.services.automation_service import AutomationHasActiveJobsError, AutomationService
 from app.services.automation_version_lifecycle_service import AutomationVersionLifecycleService
 from app.services.worker_preference_service import WorkerPreferenceService
 
@@ -63,6 +63,8 @@ def delete_automation(
 ) -> None:
     try:
         AutomationService(db).delete_automation(current_user, automation_id)
+    except AutomationHasActiveJobsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

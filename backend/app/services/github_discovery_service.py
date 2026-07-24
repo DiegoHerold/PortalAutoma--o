@@ -44,11 +44,24 @@ class GithubDiscoveryService:
         self.sources = AutomationSourceRepository(db)
         self.storage = get_package_storage()
 
+    def _resolve_installation_id(self, integration_id: int) -> int:
+        """
+        `integration_id` is our local GithubIntegration.id (DB primary key) —
+        the GitHub API needs the actual `installation_id` GitHub assigned to
+        the installation, a different number. Resolve once per call, never
+        pass the DB id straight into GithubAppClient.
+        """
+        integration = self.integrations.get(integration_id)
+        if integration is None:
+            raise ValueError("Integração GitHub não encontrada.")
+        return integration.installation_id
+
     def discover(self, integration_id: int, owner: str, repository: str, branch: str) -> list[dict]:
         """Returns discovery items per automation.yaml found (section 5), no side effects."""
+        installation_id = self._resolve_installation_id(integration_id)
         try:
             workspace_yaml = self.client.get_file_content(
-                integration_id, owner, repository, WORKSPACE_MANIFEST_FILENAME, branch
+                installation_id, owner, repository, WORKSPACE_MANIFEST_FILENAME, branch
             )
         except Exception as exc:  # noqa: BLE001
             raise ValueError(
@@ -59,17 +72,17 @@ class GithubDiscoveryService:
         if workspace is None:
             raise ValueError(f"{WORKSPACE_MANIFEST_FILENAME} inválido: {'; '.join(ws_result.errors)}")
 
-        tree = self.client.list_repository_tree(integration_id, owner, repository, branch)
+        tree = self.client.list_repository_tree(installation_id, owner, repository, branch)
         all_paths = [e.path for e in tree if e.type == "blob"]
         manifest_paths = discover_manifest_paths(all_paths, workspace)
 
-        commit_sha = self.client.get_latest_commit_sha(integration_id, owner, repository, branch)
+        commit_sha = self.client.get_latest_commit_sha(installation_id, owner, repository, branch)
 
         seen_ids: dict[str, str] = {}
         items: list[dict] = []
         for manifest_path in manifest_paths:
             item = self._describe_manifest(
-                integration_id, owner, repository, branch, manifest_path, commit_sha
+                installation_id, owner, repository, branch, manifest_path, commit_sha
             )
             key = item.get("key")
             if key and key in seen_ids:
@@ -83,11 +96,11 @@ class GithubDiscoveryService:
         return items
 
     def _describe_manifest(
-        self, integration_id: int, owner: str, repo: str, branch: str, manifest_path: str, commit_sha: str
+        self, installation_id: int, owner: str, repo: str, branch: str, manifest_path: str, commit_sha: str
     ) -> dict:
         automation_path = str(Path(manifest_path).parent)
         try:
-            raw_yaml = self.client.get_file_content(integration_id, owner, repo, manifest_path, branch)
+            raw_yaml = self.client.get_file_content(installation_id, owner, repo, manifest_path, branch)
         except Exception as exc:  # noqa: BLE001
             return {
                 "key": None,
@@ -137,13 +150,14 @@ class GithubDiscoveryService:
         user: User,
     ) -> dict:
         """Downloads one automation folder, validates + packages it, and stages it for confirm()."""
-        commit_sha = self.client.get_latest_commit_sha(integration_id, owner, repository, branch)
+        installation_id = self._resolve_installation_id(integration_id)
+        commit_sha = self.client.get_latest_commit_sha(installation_id, owner, repository, branch)
         automation_path = str(Path(manifest_path).parent)
 
         with tempfile.TemporaryDirectory(prefix="github_import_") as tmp:
             tmp_dir = Path(tmp)
             self.client.download_directory(
-                integration_id, owner, repository, branch, automation_path, tmp_dir
+                installation_id, owner, repository, branch, automation_path, tmp_dir
             )
 
             manifest_file = tmp_dir / "automation.yaml"

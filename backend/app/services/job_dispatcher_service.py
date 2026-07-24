@@ -6,6 +6,7 @@ from app.core.constants import JobStatus, JobPriority
 from app.core.config import get_settings
 from app.core.permissions import is_admin
 from app.models.job import Job
+from app.models.log import ExecutionLog
 from app.models.user import User
 from app.models.automation_worker_preference import AutomationWorkerPreference
 from app.repositories.automation_repository import AutomationRepository
@@ -15,6 +16,13 @@ from app.repositories.worker_repository import WorkerRepository
 from app.schemas.job import JobCreate
 from app.services.audit_service import AuditService
 from app.services.permission_service import PermissionService
+from app.utils.datetime import utcnow
+
+FINAL_JOB_STATUSES = {JobStatus.SUCCESS, JobStatus.FAILED, JobStatus.CANCELLED}
+
+
+class JobNotCancellableError(Exception):
+    """Raised when trying to cancel a job that has already reached a final state."""
 
 
 class JobDispatcherService:
@@ -226,6 +234,66 @@ class JobDispatcherService:
         
         self.db.commit()
         return next_job
+
+    def cancel_job(self, user: User, job_id: int) -> Job:
+        """
+        Cancel a job that hasn't finished yet (pending/queued/running).
+
+        For pending/queued jobs this simply removes them from the queue. For a
+        running job there is no live "abort" channel to the Automation Agent
+        today, so this is best-effort: it marks the job (and any associated
+        execution) as cancelled on the Portal side, which frees up the worker's
+        counted capacity immediately and stops the Portal from waiting on it.
+        If the agent is genuinely still running the process in the background,
+        it will simply have nowhere to report back to once it finishes.
+        """
+        job = self.jobs.get(job_id)
+        if job is None:
+            raise ValueError("Job not found.")
+        self.permissions.ensure_automation_action(user, job.automation_id, "can_execute")
+
+        if job.status in FINAL_JOB_STATUSES:
+            raise JobNotCancellableError(
+                f"Job já está em estado final ({job.status}) e não pode ser cancelado."
+            )
+
+        now = utcnow()
+        previous_status = job.status
+        job.status = JobStatus.CANCELLED
+        job.started_at = job.started_at or now
+        job.finished_at = now
+        job.error_message = f"Cancelado manualmente por {user.email}."
+
+        for execution in job.executions:
+            if execution.execution_status not in {"success", "failed", "cancelled"}:
+                execution.execution_status = "cancelled"
+                execution.finished_at = now
+                execution.result_summary = job.error_message
+                self.db.add(
+                    ExecutionLog(
+                        execution_id=execution.id,
+                        level="WARNING",
+                        message=f"Execução cancelada manualmente por {user.email}.",
+                    )
+                )
+
+        self.audit.record(
+            action="job_cancelled",
+            actor_email=user.email,
+            actor_type="user",
+            entity_type="job",
+            entity_id=str(job.id),
+            details=f"previous_status={previous_status}",
+        )
+        self.db.commit()
+        self.db.refresh(job)
+        try:
+            from app.services.realtime_service import RealtimeService
+
+            RealtimeService(self.db).emit_job_update(job)
+        except Exception:
+            pass
+        return job
 
     def list_jobs(self, user: User) -> list[Job]:
         jobs = self.jobs.list_all()

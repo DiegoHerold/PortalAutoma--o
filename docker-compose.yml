@@ -31,7 +31,7 @@ services:
     build:
       context: ./backend
     env_file:
-      - ./backend/.env.example
+      - ./backend/.env
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - ./backend:/app
@@ -47,7 +47,7 @@ services:
     build:
       context: ./backend
     env_file:
-      - ./backend/.env.example
+      - ./backend/.env
     command: celery -A app.core.celery_app.celery_app worker --loglevel=info -Q critical,high,normal,low
     volumes:
       - ./backend:/app
@@ -70,7 +70,11 @@ services:
   frontend:
     image: node:20-alpine
     working_dir: /app
-    command: sh -c "npm install --include=dev && npm run build && node .next/standalone/server.js"
+    # output: "standalone" nao copia _next/static nem public/ para dentro da
+    # pasta standalone sozinho (e um passo manual, documentado pelo proprio
+    # Next.js) — sem isso, TODO chunk JS/CSS responde 404 e a pagina quebra
+    # com ChunkLoadError, mesmo com o build "funcionando".
+    command: sh -c "npm install --include=dev && npm run build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && node .next/standalone/server.js"
     environment:
       # Sem NEXT_PUBLIC_API_URL fixo: o frontend descobre o host da API em tempo
       # de execucao (mesmo hostname/IP usado para abrir o site, porta 8000) —
