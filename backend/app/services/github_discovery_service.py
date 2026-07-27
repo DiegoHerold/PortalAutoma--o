@@ -8,9 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.domain.automation_manifest import (
     discover_manifest_paths,
-    parse_automation_manifest,
     parse_workspace_manifest,
-    validate_entrypoint_on_disk,
 )
 from app.domain.automation_package import build_package
 from app.integrations.github.client import GithubAppClient
@@ -21,6 +19,8 @@ from app.repositories.automation_source_repository import AutomationSourceReposi
 from app.repositories.automation_version_repository import AutomationVersionRepository
 from app.repositories.github_integration_repository import GithubIntegrationRepository
 from app.services.import_staging_store import create_staging_entry
+from modules.catalog.domain.manifest import parse_automation_manifest, validate_entrypoint_on_disk
+from modules.catalog.infrastructure.package_validation import ZipPackageValidator
 
 WORKSPACE_MANIFEST_FILENAME = "automation-workspace.yaml"
 
@@ -185,6 +185,11 @@ class GithubDiscoveryService:
                     "created_by": user.email,
                 },
             )
+            package_validation = ZipPackageValidator().validate_zip_package(
+                package_result.zip_path,
+                self.settings.max_upload_size_mb * 1024 * 1024,
+            )
+            errors.extend(_issue_to_message(issue) for issue in package_validation["issues"])
             object_key = f"{manifest.id}/{manifest.version}/package.zip"
             stored = self.storage.put(
                 self.settings.packages_bucket_name, object_key, package_result.zip_path
@@ -207,6 +212,7 @@ class GithubDiscoveryService:
                 "timeout_seconds": manifest.timeout_seconds,
                 "raw": manifest.raw,
             },
+            "raw_manifest_yaml": raw_manifest_yaml,
             "package": {
                 "bucket": stored.bucket,
                 "object_key": stored.object_key,
@@ -271,3 +277,10 @@ class GithubDiscoveryService:
             "package_sha256": package_result.sha256,
             "package_size": package_result.size,
         }
+
+
+def _issue_to_message(issue: dict) -> str:
+    path = issue.get("path")
+    message = issue.get("message", "Package validation failed.")
+    code = issue.get("code", "PACKAGE_VALIDATION_FAILED")
+    return f"{code}: {path}: {message}" if path else f"{code}: {message}"

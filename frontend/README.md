@@ -1,6 +1,11 @@
 # Frontend
 
-Painel Next.js do portal de automacoes com layout inicial, login, guards e paginas base.
+Painel Next.js do Portal de Automacoes. O frontend e interface operacional do
+Control Plane e deve falar com o backend por REST e, futuramente, SSE para
+atualizacoes em tempo real.
+
+O frontend nao acessa banco diretamente e nao deve decidir estado oficial de
+execucoes, Agents ou ofertas.
 
 ## Rodando localmente
 

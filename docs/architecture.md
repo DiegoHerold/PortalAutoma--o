@@ -1,171 +1,235 @@
-# Architecture
+# Arquitetura Oficial
 
-## Overview
-Portal de Automações é um sistema de orquestração e execução de automações com suporte a múltiplos workers, priorização de filas e estimativa de tempo de execução (ETA).
+Status: vigente.
 
-## Stack Tecnológica
+Este documento substitui a arquitetura anterior baseada em `Worker -> Job ->
+Execution` como modelo conceitual principal. O codigo atual ainda preserva
+nomes legados por compatibilidade, mas novas implementacoes devem seguir os
+contextos e contratos abaixo.
 
-### Backend
-- **FastAPI**: Framework web para APIs RESTful
-- **SQLAlchemy 2**: ORM com Mapped types para type safety
-- **PostgreSQL**: Banco de dados relacional
-- **Redis**: Cache, pub/sub para WebSockets e backend do Celery
-- **Celery**: Sistema de filas para execução assíncrona de jobs
-- **Alembic**: Gerenciamento de migrations do banco
-- **JWT**: Autenticação e autorização
+## Visao
 
-### Frontend
-- **Next.js 15**: Framework React com App Router
-- **TypeScript**: Type safety no frontend
-- **Tailwind CSS**: Estilização
-- **shadcn/ui**: Componentes UI
+O sistema tem dois planos:
 
-### Infraestrutura
-- **Docker Compose**: Orquestração de containers
-- **Nginx**: Reverse proxy e suporte a WebSockets
-- **Flower**: Monitoramento do Celery
+- Portal de Automacoes: control plane.
+- Automation Agent: execution plane.
 
-## Camadas da Aplicação
+```mermaid
+flowchart TB
+    subgraph Portal["Portal de Automacoes - control plane"]
+        API["API REST"]
+        UI["Frontend operacional"]
+        Gateway["Agent Gateway"]
+        Workers["Workers internos"]
+        Scheduler["Scheduler"]
+        DB[("PostgreSQL\nfonte oficial")]
+        Objects[("MinIO/S3\npacotes, runtimes, artefatos")]
+    end
 
-```
-┌─────────────────────────────────────────────┐
-│           Frontend (Next.js)                │
-│   - UI Components                           │
-│   - Real-time WebSocket client              │
-│   - State management                        │
-└─────────────────────────────────────────────┘
-                    │
-                    │ HTTP/WS
-                    ▼
-┌─────────────────────────────────────────────┐
-│         API Layer (FastAPI)                 │
-│   - REST endpoints                          │
-│   - WebSocket endpoint (/ws/executions)     │
-│   - Authentication & Authorization          │
-└─────────────────────────────────────────────┘
-                    │
-        ┌───────────┴───────────┐
-        │                       │
-        ▼                       ▼
-┌──────────────┐      ┌──────────────────┐
-│   Services   │      │   Repositories   │
-│              │      │                  │
-│ - Dispatcher │◄─────┤ - Job           │
-│ - ETA calc   │      │ - Worker        │
-│ - Audit      │      │ - Automation    │
-│ - Realtime   │      │ - Preferences   │
-└──────────────┘      └──────────────────┘
-        │                       │
-        ▼                       ▼
-┌─────────────────────────────────────────────┐
-│          Database (PostgreSQL)              │
-│   - Jobs, Workers, Automations              │
-│   - Audit logs, Execution history           │
-│   - Worker preferences                      │
-└─────────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────────┐
-│       Task Queue (Celery + Redis)           │
-│   - Job execution tasks                     │
-│   - Priority queues (critical/high/normal/  │
-│     low)                                    │
-│   - Worker pool management                  │
-└─────────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────────┐
-│            Workers                          │
-│   - Local agent                             │
-│   - Remote workers                          │
-│   - Heartbeat monitoring                    │
-└─────────────────────────────────────────────┘
+    subgraph Agent["Automation Agent - execution plane"]
+        Probe["Descoberta local"]
+        Capacity["Capacidade e pools"]
+        Runner["Executor"]
+        Spool["Spool offline"]
+        Cache["Cache de runtime/pacote"]
+    end
+
+    UI --> API
+    API --> DB
+    Gateway --> DB
+    Workers --> DB
+    Scheduler --> DB
+    Agent <-->|"WebSocket: comandos, ofertas, eventos recentes, ACK"| Gateway
+    Agent <-->|"HTTPS: downloads, uploads, lotes grandes"| Objects
 ```
 
-## Principais Componentes
+Regras:
 
-### Job Dispatcher
-Responsável por atribuir jobs aos workers baseado em:
-- **Lista de preferência ordenada**: Cada automação pode ter uma lista de workers preferidos
-- **Disponibilidade real**: Status online, heartbeat recente, capacidade disponível
-- **Fallback**: Se nenhum worker preferido está disponível, job fica em fila
+- O Portal decide o que precisa ser executado.
+- O Portal seleciona Agents candidatos.
+- O Agent faz a validacao final de admissao e pode rejeitar uma oferta.
+- O Portal e a fonte oficial dos estados persistentes.
+- O Agent e a fonte das observacoes locais da maquina e da execucao.
+- WebSocket, Redis, Celery e mensageria nao sao fontes de verdade.
 
-### ETA Calculation Service
-Calcula estimativas de duração e tempo de início/término usando:
-- **Percentil configurável** (default p75) do histórico de execuções
-- **Histórico por par (automação, worker)** para maior precisão
-- **Fallback**: automação em qualquer worker → timeout da automação
+## Stack encontrada
 
-### Real-time Service
-Sistema de atualizações em tempo real via WebSocket:
-- **Redis pub/sub**: Suporte a múltiplas instâncias do backend
-- **Broadcast de eventos**: Mudanças de status de jobs e recálculo de ETA
-- **Autenticação**: JWT via query parameter
+- Backend: FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, Redis, Celery, JWT.
+- Frontend: Next.js 15, React, TypeScript, Tailwind CSS.
+- Infra: Docker Compose, Nginx, Redis, PostgreSQL, Flower, MinIO/S3 ou storage local.
+- Agent atual: protocolo exposto pelo Portal em `agents.py` e
+  `agent_gateway_service.py`; o repo externo do Agent nao esta presente neste
+  workspace.
 
-### Audit Service
-Registro completo de ações no sistema:
-- CRUD de entidades (Automations, Workers, Users, etc.)
-- Transições de status de jobs
-- Login/logout e tentativas de autenticação
-- Campos: actor, actor_type, action, entity_type, before/after JSON
+## Monolito modular
 
-## Segurança
+O Portal deve permanecer um monolito modular. Pontos de entrada como API,
+Gateway, Workers e Scheduler podem rodar em processos diferentes, mas
+pertencem ao mesmo sistema, repositorio e conjunto de modulos.
 
-### Autenticação
-- **JWT tokens** com tempo de expiração configurável
-- Tokens incluem `sub` (user ID) e `roles`
+```mermaid
+flowchart LR
+    Access --> API
+    Catalog --> API
+    Fleet --> Gateway
+    Orchestration --> API
+    Dispatch --> Scheduler
+    Telemetry --> Gateway
+    Storage --> API
+    Governance --> API
+    Dispatch --> Orchestration
+    Telemetry --> Orchestration
+    Catalog --> Dispatch
+    Fleet --> Dispatch
+```
 
-### Autorização
-- **Roles globais**: admin, manager, operator, viewer
-- **Permissões por categoria**: can_view, can_create, can_edit, can_delete, can_execute
-- Admin tem acesso total
+Estrutura-alvo:
 
-### Webhooks
-- **Secret token** validação para gatilhos externos
-- **Rate limiting**: 100 requisições por minuto por IP
-- **Auditoria** de todas as chamadas
+```text
+backend/
+  modules/
+    access/
+    catalog/
+    fleet/
+    orchestration/
+    dispatch/
+    telemetry/
+    storage/
+    governance/
+  api/
+  gateway/
+  workers/
+  infrastructure/
+  shared/
+```
 
-## Fluxos de Dados
+Cada modulo deve conter, quando aplicavel:
 
-### Fluxo de Dispatch de Job
-1. User/System cria job → API recebe request
-2. Dispatcher busca lista de preferência da automação
-3. Para cada worker na lista (ordem de prioridade):
-   - Verifica disponibilidade (status, heartbeat, concurrency)
-   - Se disponível: atribui job e envia para Celery
-   - Se não: tenta próximo
-4. Se nenhum disponível: job fica em `queued`
-5. Emite evento WebSocket com status e ETA
+```text
+domain/
+application/
+infrastructure/
+api/
+tests/
+```
 
-### Fluxo de Execução de Job
-1. Celery task recebe job
-2. Worker executa automação
-3. Atualiza status para `running` → emite WS
-4. Ao terminar: atualiza para `success/failed` → emite WS
-5. Dispatcher promove próximo job da fila
-6. Recalcula ETAs dos jobs restantes → emite WS
+## Contextos oficiais
 
-### Fluxo de Webhook Trigger
-1. Requisição POST em `/webhooks/trigger/{route_path}`
-2. Valida secret_token
-3. Cria job via `dispatch_system`
-4. Auditoria do disparo
-5. Retorna job_id
+- Access: usuarios, organizacoes, equipes, auth, sessoes, papeis, permissoes.
+- Catalog: automacoes, versoes, manifests, schemas, pacotes, runtimes,
+  publicacao, compatibilidade.
+- Fleet: Agents, AgentInstances, capabilities, machine profiles, recursos,
+  sessoes, pools, diagnosticos, atualizacoes, estado administrativo.
+- Orchestration: Execution, TaskExecution, ExecutionAttempt, fluxos,
+  agendamentos, retries, timeout, cancelamento e resultados.
+- Dispatch: filas, selecao, ofertas, reservas, commits, locks, leases,
+  rejeicoes e redistribuicao.
+- Telemetry: eventos, logs, metricas, sequencias, deduplicacao, ACK, gaps,
+  timeline e tempo real.
+- Storage: artefatos, pacotes, runtimes, uploads, downloads, URLs temporarias,
+  retencao e diagnosticos.
+- Governance: segredos, auditoria, politicas, limites, seguranca e retencao.
 
-## Configurações
+## Ownership de dados
 
-Via `app/core/config.py` (Settings):
-- `eta_percentile`: Percentil para cálculo de ETA (default: 75)
-- `eta_window`: Número de execuções para calcular ETA (default: 20)
-- `worker_heartbeat_window_seconds`: Janela de heartbeat (default: 60)
-- `access_token_expire_minutes`: Expiração do JWT
-- Database, Redis, Celery URLs
+- Catalog: Automation, AutomationVersion, AutomationPackage, Runtime,
+  RuntimeVersion.
+- Fleet: Agent, AgentInstance, AgentCapability, AgentResourceSnapshot,
+  AgentConfiguration.
+- Orchestration: Execution, TaskExecution, ExecutionAttempt, FlowExecution,
+  ScheduleExecution.
+- Dispatch: ExecutionOffer, ResourceReservation, ResourceLock, ExecutionLease.
+- Telemetry: ExecutionEvent, ExecutionLog, ExecutionMetric,
+  EventAcknowledgement.
+- Storage: Artifact, UploadSession, StoredObject.
 
-## Filas do Celery
+Um modulo nao altera diretamente entidade pertencente a outro modulo. Use casos
+de uso, comandos internos ou eventos internos. Controllers e handlers
+WebSocket nao contem regras de dominio nem transicoes diretas de estado.
 
-- **critical**: Prioridade máxima
-- **high**: Alta prioridade
-- **normal**: Prioridade padrão
-- **low**: Baixa prioridade
+## Modelo de execucao
 
-Dentro da mesma prioridade: FIFO por `created_at`
+```mermaid
+erDiagram
+    Execution ||--|{ TaskExecution : contains
+    TaskExecution ||--o{ ExecutionAttempt : retries
+    ExecutionAttempt ||--o{ ExecutionOffer : negotiates
+    ExecutionAttempt ||--o| ExecutionLease : owns
+    ExecutionAttempt ||--o{ ExecutionEvent : emits
+    Execution ||--|| ExecutionOrigin : has
+```
+
+- Execution representa a solicitacao completa (`automation` ou `flow`).
+- TaskExecution representa uma tarefa logica.
+- ExecutionAttempt representa uma tentativa fisica em uma maquina.
+- ExecutionOffer representa a oferta enviada a um Agent.
+- Rejeicao de oferta nao e falha da automacao.
+- Tentativas anteriores nunca sao sobrescritas.
+
+## Estados do Agent
+
+Nao use um unico campo para conectividade, saude, administracao e ocupacao.
+
+- Conectividade: `connecting`, `online`, `stale`, `disconnected`, `offline`.
+- Administrativo: `pending_registration`, `enabled`, `draining`,
+  `maintenance`, `updating`, `disabled`.
+- Saude: `healthy`, `degraded`, `error`.
+- Ocupacao calculada: `idle`, `busy`, `saturated`.
+
+`busy` nao substitui conectividade. Ocupacao e calculada a partir de pools,
+execucoes, reservas e locks.
+
+## Comunicacao Portal-Agent
+
+```mermaid
+sequenceDiagram
+    participant P as Portal
+    participant A as Agent
+    A->>P: connect + hello
+    P-->>A: protocol accepted + config
+    P->>A: execution.offer
+    A-->>P: execution.accepted ou execution.rejected
+    P->>A: execution.commit
+    A-->>P: execution.started
+    A-->>P: events + ACK
+    A-->>P: artifact.created
+    A->>P: HTTPS artifact upload
+    A-->>P: execution.completed
+```
+
+WebSocket: handshake, heartbeat, ofertas, aceite, rejeicao, commit,
+cancelamento, comandos administrativos, eventos recentes, ACK e renovacao de
+lease.
+
+HTTPS/S3/MinIO: downloads de runtimes e pacotes, uploads de artefatos e
+diagnosticos, sincronizacao de lotes grandes e recuperacao apos longos
+periodos offline.
+
+## Armazenamento
+
+PostgreSQL e a fonte oficial para catalogo, fleet, execucoes, tentativas,
+ofertas, comandos, leases, eventos, outbox e inbox.
+
+MinIO/S3 guarda pacotes, runtimes, artefatos e diagnosticos. Binarios grandes
+nao devem ser armazenados no PostgreSQL.
+
+Redis pode ser usado como cache, pub/sub, presenca acelerada ou rate limiting,
+mas nunca como fonte oficial. RabbitMQ ou outro broker so deve ser introduzido
+com necessidade comprovada.
+
+## Fluxos
+
+Fluxos comecam como DAGs confiaveis: sequencia, paralelismo, dependencias,
+condicoes simples, input/output mapping, retry, timeout, cancelamento, skip e
+continuar apos falha. Editor visual complexo fica fora da primeira entrega.
+
+## Decisoes relacionadas
+
+Veja `docs/adrs/` para as decisoes formais e `docs/migration.md` para a
+evolucao segura dos modelos legados.
+
+Documentos complementares:
+
+- `docs/modules.md`
+- `docs/state-machines.md`
+- `contracts/`

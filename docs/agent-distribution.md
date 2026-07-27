@@ -1,5 +1,8 @@
 # Distribuição para o Automation Agent (não implementado nesta sessão)
 
+Status: compatibilidade. Use `docs/agent-lifecycle.md`, `docs/protocol.md` e
+`docs/security.md` como fonte oficial para novas implementacoes do Agent.
+
 Por decisão explícita do usuário, esta sessão implementou **apenas o lado
 Portal** do catálogo de automações. O executável/processo do Automation Agent
 que roda nas máquinas Windows e realmente executa o código da automação não

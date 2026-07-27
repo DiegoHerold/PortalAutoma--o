@@ -1,0 +1,39 @@
+{
+  "portal_to_agent": [
+    "agent.configuration.update",
+    "agent.capabilities.request",
+    "agent.diagnostic.request",
+    "agent.drain.request",
+    "agent.update.request",
+    "execution.offer",
+    "execution.commit",
+    "execution.cancel",
+    "execution.lease.renew",
+    "execution.status.request",
+    "runtime.prepare",
+    "package.prepare",
+    "cache.cleanup"
+  ],
+  "agent_to_portal": [
+    "agent.connected",
+    "agent.resumed",
+    "agent.heartbeat",
+    "agent.profile.updated",
+    "agent.capacity.updated",
+    "agent.capabilities.updated",
+    "agent.diagnostic.result",
+    "agent.update.progress",
+    "execution.accepted",
+    "execution.rejected",
+    "execution.started",
+    "execution.event.batch",
+    "execution.completed",
+    "execution.failed",
+    "execution.cancelled",
+    "execution.timed_out",
+    "execution.recovered",
+    "artifact.created",
+    "artifact.uploaded",
+    "artifact.failed"
+  ]
+}

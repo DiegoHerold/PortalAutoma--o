@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/portal-to-agent/execution-commit.schema.json",
+  "title": "execution.commit payload",
+  "type": "object",
+  "required": ["execution_offer_id", "execution_attempt_id", "lease_id", "lease_expires_at"],
+  "additionalProperties": false,
+  "properties": {
+    "execution_offer_id": { "type": "string" },
+    "execution_attempt_id": { "type": "string" },
+    "lease_id": { "type": "string" },
+    "lease_expires_at": { "type": "string", "format": "date-time" },
+    "command_sequence": { "type": "integer", "minimum": 1 }
+  }
+}

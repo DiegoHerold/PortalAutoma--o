@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/portal-to-agent/agent-command.schema.json",
+  "title": "generic portal-to-agent command payload",
+  "type": "object",
+  "required": ["command_sequence", "message_type"],
+  "additionalProperties": true,
+  "properties": {
+    "command_sequence": { "type": "integer", "minimum": 1 },
+    "message_type": { "type": "string" },
+    "expires_at": { "type": "string", "format": "date-time" }
+  }
+}

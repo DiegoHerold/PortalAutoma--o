@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/capabilities/capability.schema.json",
+  "title": "AgentCapability",
+  "type": "object",
+  "required": ["key", "status", "observed_at"],
+  "additionalProperties": false,
+  "properties": {
+    "key": { "type": "string" },
+    "status": { "enum": ["available", "unavailable", "degraded", "unknown"] },
+    "version": { "type": "string" },
+    "attributes": { "type": "object" },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "source": { "type": "string" }
+  }
+}

@@ -25,7 +25,7 @@ def installer_config(_=Depends(get_current_user)) -> dict:
     ws_base = base.replace("https://", "wss://").replace("http://", "ws://")
     return {
         "central_api_url": f"{base}/api",
-        "central_websocket_url": f"{ws_base}/api/v1/agents/ws",
+        "central_websocket_url": f"{ws_base}/api/v1/agent-gateway/connect",
     }
 
 

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/protocol/v1/envelope.schema.json",
+  "title": "Portal-Agent message envelope",
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "message_id",
+    "message_type",
+    "sent_at",
+    "agent_id",
+    "agent_instance_id",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "const": "1.0" },
+    "message_id": { "type": "string", "minLength": 8 },
+    "correlation_id": { "type": "string" },
+    "causation_id": { "type": "string" },
+    "message_type": { "type": "string", "minLength": 3 },
+    "sent_at": { "type": "string", "format": "date-time" },
+    "agent_id": { "type": "string" },
+    "agent_instance_id": { "type": "string" },
+    "payload": { "type": "object" }
+  }
+}

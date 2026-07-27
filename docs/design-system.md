@@ -1,5 +1,9 @@
 # Design System — Portal de Automações
 
+Status: vigente para UI atual. Os nomes visuais `Job` e `Worker` continuam
+temporariamente por compatibilidade, mas a UX deve migrar para `Execution`,
+`TaskExecution`, `Agent` e `AgentInstance` conforme `docs/migration.md`.
+
 Guia da camada visual do frontend. Direção: **console de operações** — sóbrio, denso na medida certa, com identidade própria (grafite + marigold) que foge do visual genérico de SaaS/IA. Zero dependências de UI externas (sem Radix/shadcn instalados): a camada de componentes é própria, mas usa o mesmo modelo de _CSS variables_ do shadcn, o que torna trivial migrar depois.
 
 ## Tokens de cor

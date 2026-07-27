@@ -31,7 +31,12 @@ export function jobStatusMeta(status?: string | null): StatusMeta {
 export const WORKER_STATUS: Record<string, StatusMeta> = {
   online: { label: "Online", tone: "success", icon: CheckCircle2, dot: "bg-success" },
   busy: { label: "Ocupado", tone: "info", icon: Loader, dot: "bg-info" },
+  connecting: { label: "Conectando", tone: "info", icon: Loader, dot: "bg-info" },
+  stale: { label: "Atrasado", tone: "warning", icon: Clock, dot: "bg-warning" },
+  disconnected: { label: "Desconectado", tone: "warning", icon: CircleDashed, dot: "bg-warning" },
   offline: { label: "Offline", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" },
+  disabled: { label: "Desabilitado", tone: "neutral", icon: Ban, dot: "bg-muted-foreground" },
+  maintenance: { label: "Manutencao", tone: "warning", icon: Clock, dot: "bg-warning" },
 };
 
 export function workerStatusMeta(status?: string | null): StatusMeta {

@@ -19,10 +19,15 @@ celery_app.conf.task_routes = {
 # Import so Celery Beat (and the worker's task registry) knows about it --
 # Beat only schedules tasks that have already been imported/registered.
 from app.tasks import schedule_tasks  # noqa: E402,F401
+from app.tasks import housekeeping_tasks  # noqa: E402,F401
 
 celery_app.conf.beat_schedule = {
     "sync-schedules-every-minute": {
         "task": "app.tasks.schedule_tasks.sync",
+        "schedule": 60.0,
+    },
+    "detect-stale-agents-every-minute": {
+        "task": "app.tasks.housekeeping_tasks.detect_stale_agents",
         "schedule": 60.0,
     },
 }

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/agent-to-portal/agent-heartbeat.schema.json",
+  "title": "agent.heartbeat payload",
+  "type": "object",
+  "required": ["agent_id", "agent_instance_id", "observed_at"],
+  "additionalProperties": false,
+  "properties": {
+    "agent_id": { "type": "string" },
+    "agent_instance_id": { "type": "string" },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "connectivity": { "enum": ["connecting", "online", "stale", "disconnected", "offline"] },
+    "health": { "enum": ["healthy", "degraded", "error"] },
+    "running_attempts": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

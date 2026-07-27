@@ -1,5 +1,9 @@
 # Catálogo de automações (GitHub + upload manual)
 
+Status: vigente para Catalog, com nomenclatura legada preservada onde o codigo
+atual ainda usa `jobs`, `workers` e preferencias antigas. A arquitetura oficial
+do dominio esta em `docs/domain-model.md`.
+
 Visão geral do subsistema que importa automações de `biason-automations` (via
 GitHub App) ou de um pacote `.zip` enviado manualmente, valida seus
 manifestos sem executar código, empacota tudo de forma imutável e disponibiliza

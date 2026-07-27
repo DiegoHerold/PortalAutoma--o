@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     eta_window: int = 20
     worker_heartbeat_window_seconds: int = 60
 
+    # --- Agent Gateway limits ---
+    agent_gateway_max_message_bytes: int = 64 * 1024
+    agent_gateway_max_messages_per_second: int = 20
+    agent_gateway_max_heartbeat_payload_bytes: int = 24 * 1024
+    agent_gateway_max_capabilities_per_message: int = 200
+    agent_gateway_max_attribute_depth: int = 6
+    agent_gateway_max_pending_commands_per_agent: int = 50
+    agent_gateway_handshake_timeout_seconds: int = 15
+    agent_gateway_idle_timeout_seconds: int = 120
+
     # Public URL of this backend, used to build package download links for the
     # Automation Agent when storage_backend="local".
     backend_public_url: str = "http://localhost:8000"

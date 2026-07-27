@@ -1,5 +1,6 @@
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.models.base import BaseModel
 
@@ -25,6 +26,9 @@ class Automation(BaseModel):
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
     max_retries: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="active", nullable=False, index=True)
+    tags_json: Mapped[list | None] = mapped_column(JSONB)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     category = relationship("Category", back_populates="automations")
     jobs = relationship("Job", back_populates="automation")

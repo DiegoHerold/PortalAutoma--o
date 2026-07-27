@@ -1,0 +1,26 @@
+{
+  "protocol_version": "1.0",
+  "message_id": "msg_offer_001",
+  "message_type": "execution.offer",
+  "sent_at": "2026-07-27T10:00:00Z",
+  "agent_id": "agt_123",
+  "agent_instance_id": "agi_456",
+  "payload": {
+    "execution_offer_id": "off_001",
+    "execution_attempt_id": "att_001",
+    "task_execution_id": "task_001",
+    "automation_version_id": "av_001",
+    "runtime": { "id": "python", "version": "3.12" },
+    "package": {
+      "id": "pkg_001",
+      "download_url": "https://storage.local/pkg_001.zip",
+      "sha256": "abc123",
+      "size_bytes": 1024
+    },
+    "input": {},
+    "required_capabilities": [{ "key": "browser.playwright" }],
+    "required_pools": ["browser"],
+    "resource_locks": ["agent:agt_123:windows_desktop"],
+    "expires_at": "2026-07-27T10:01:00Z"
+  }
+}

@@ -11,6 +11,17 @@ export type Worker = {
   capabilities_json?: unknown[] | null;
   last_payload_json?: Record<string, unknown> | null;
   status: string;
+  connectivity_status?: string | null;
+  administrative_status?: string | null;
+  health_status?: string | null;
+  occupancy_status?: string | null;
+  desired_version?: string | null;
+  cpu_percentage?: number | null;
+  memory_percentage?: number | null;
+  disk_free_mb?: number | null;
+  interactive_session?: Record<string, unknown> | null;
+  pools?: Record<string, unknown> | null;
+  alerts?: string[] | null;
   max_concurrency: number;
   last_heartbeat_at?: string | null;
   is_active: boolean;

@@ -9,17 +9,15 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.domain.automation_manifest import (
-    locate_single_manifest,
-    parse_automation_manifest,
-    validate_entrypoint_on_disk,
-)
+from app.domain.automation_manifest import locate_single_manifest
 from app.domain.automation_package import build_package, find_single_root_dir, safe_extract_zip
 from app.integrations.storage.factory import get_package_storage
 from app.models.user import User
 from app.repositories.automation_repository import AutomationRepository
 from app.repositories.automation_version_repository import AutomationVersionRepository
 from app.services.import_staging_store import create_staging_entry
+from modules.catalog.domain.manifest import parse_automation_manifest, validate_entrypoint_on_disk
+from modules.catalog.infrastructure.package_validation import ZipPackageValidator
 
 
 class ManualUploadError(ValueError):
@@ -114,10 +112,14 @@ class ManualUploadService:
                         "created_by": user.email,
                     },
                 )
+                package_validation = ZipPackageValidator().validate_zip_package(package_result.zip_path, max_bytes)
+                errors.extend(_issue_to_message(issue) for issue in package_validation["issues"])
                 object_key = f"{manifest.id}/{manifest.version}/package.zip"
                 stored = self.storage.put(
                     self.settings.packages_bucket_name, object_key, package_result.zip_path
                 )
+
+            validation_status = "valid" if not errors else "invalid"
 
             if manifest is None or package_result is None:
                 # Manifest present but too broken to even parse — surface errors,
@@ -158,6 +160,7 @@ class ManualUploadService:
                     "timeout_seconds": manifest.timeout_seconds,
                     "raw": manifest.raw,
                 },
+                "raw_manifest_yaml": raw_manifest_yaml,
                 "package": {
                     "bucket": stored.bucket,
                     "object_key": stored.object_key,
@@ -199,3 +202,10 @@ class ManualUploadService:
                 "package_sha256": package_result.sha256,
                 "package_size": package_result.size,
             }
+
+
+def _issue_to_message(issue: dict) -> str:
+    path = issue.get("path")
+    message = issue.get("message", "Package validation failed.")
+    code = issue.get("code", "PACKAGE_VALIDATION_FAILED")
+    return f"{code}: {path}: {message}" if path else f"{code}: {message}"

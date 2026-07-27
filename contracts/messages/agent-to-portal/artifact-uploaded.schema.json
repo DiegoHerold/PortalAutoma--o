@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/agent-to-portal/artifact-uploaded.schema.json",
+  "title": "artifact.uploaded payload",
+  "$ref": "../../artifacts/artifact.schema.json"
+}

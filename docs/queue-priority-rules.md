@@ -1,5 +1,13 @@
 # Regras de Fila e Prioridade
 
+Status: compatibilidade operacional do modelo legado `Worker`/`Job`.
+
+Este documento descreve o comportamento atual de filas e prioridade. A
+arquitetura oficial de selecao esta em `docs/scheduler.md`: o Scheduler deve
+selecionar Agents por compatibilidade, disponibilidade e classificacao
+explicavel, criar `ExecutionOffer` e aguardar aceite/rejeicao do Agent. Celery
+pode continuar como mecanismo interno, mas nao e fonte oficial de estado.
+
 ## Níveis de Prioridade
 
 O sistema suporta 4 níveis de prioridade para jobs:

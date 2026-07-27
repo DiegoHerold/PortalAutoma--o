@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/artifacts/artifact.schema.json",
+  "title": "Artifact",
+  "type": "object",
+  "required": ["artifact_id", "execution_attempt_id", "name", "content_type", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "artifact_id": { "type": "string" },
+    "execution_attempt_id": { "type": "string" },
+    "name": { "type": "string" },
+    "content_type": { "type": "string" },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "sha256": { "type": "string" },
+    "status": { "enum": ["created", "uploading", "available", "failed", "expired"] },
+    "storage_object_id": { "type": "string" }
+  }
+}

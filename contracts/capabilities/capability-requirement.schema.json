@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/capabilities/capability-requirement.schema.json",
+  "title": "CapabilityRequirement",
+  "type": "object",
+  "required": ["key"],
+  "additionalProperties": false,
+  "properties": {
+    "key": { "type": "string" },
+    "version": { "type": "string" },
+    "attributes": { "type": "object" }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/events/execution-event.schema.json",
+  "title": "ExecutionEvent",
+  "type": "object",
+  "required": ["event_id", "event_sequence", "event_type", "occurred_at", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": { "type": "string" },
+    "event_sequence": { "type": "integer", "minimum": 1 },
+    "event_type": {
+      "enum": [
+        "execution.started",
+        "execution.completed",
+        "execution.failed",
+        "execution.cancelled",
+        "execution.timed_out",
+        "task.started",
+        "task.progress",
+        "task.completed",
+        "task.failed",
+        "log",
+        "warning",
+        "error",
+        "metric",
+        "process.started",
+        "process.exited",
+        "artifact.created",
+        "artifact.available",
+        "artifact.failed",
+        "diagnostic"
+      ]
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "level": { "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] },
+    "payload": { "type": "object" }
+  }
+}

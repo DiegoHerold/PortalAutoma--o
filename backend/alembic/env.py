@@ -8,8 +8,11 @@ from app.core.database import Base
 from app.models import (
     audit,
     automation,
+    automation_source,
+    automation_version,
     category,
     execution,
+    github_integration,
     job,
     log,
     role,
@@ -19,6 +22,13 @@ from app.models import (
     user_category_permission,
     worker,
 )
+from modules.catalog.infrastructure.orm import models as catalog_models
+from modules.dispatch.infrastructure.orm import models as dispatch_models
+from modules.fleet.infrastructure.orm import models as fleet_models
+from modules.governance.infrastructure.orm import models as governance_models
+from modules.shared.infrastructure.orm import models as shared_models
+from modules.storage.infrastructure.orm import models as storage_models
+from modules.telemetry.infrastructure.orm import models as telemetry_models
 
 config = context.config
 settings = get_settings()

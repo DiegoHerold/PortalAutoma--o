@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/portal-to-agent/execution-cancel.schema.json",
+  "title": "execution.cancel payload",
+  "type": "object",
+  "required": ["execution_attempt_id", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "execution_attempt_id": { "type": "string" },
+    "reason": { "type": "string" },
+    "requested_by": { "type": "string" }
+  }
+}

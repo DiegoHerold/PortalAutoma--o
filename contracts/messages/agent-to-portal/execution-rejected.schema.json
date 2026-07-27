@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/agent-to-portal/execution-rejected.schema.json",
+  "title": "execution.rejected payload",
+  "type": "object",
+  "required": ["execution_offer_id", "execution_attempt_id", "agent_id", "agent_instance_id", "rejection_code", "rejected_at"],
+  "additionalProperties": false,
+  "properties": {
+    "execution_offer_id": { "type": "string" },
+    "execution_attempt_id": { "type": "string" },
+    "agent_id": { "type": "string" },
+    "agent_instance_id": { "type": "string" },
+    "rejection_code": {
+      "enum": [
+        "INSUFFICIENT_MEMORY",
+        "INSUFFICIENT_DISK",
+        "INTERACTIVE_SESSION_UNAVAILABLE",
+        "INTERACTIVE_SESSION_LOCKED",
+        "CAPABILITY_UNAVAILABLE",
+        "RESOURCE_LOCKED",
+        "AGENT_DRAINING",
+        "AGENT_OVERLOADED",
+        "RUNTIME_PREPARATION_FAILED",
+        "PACKAGE_PREPARATION_FAILED"
+      ]
+    },
+    "rejection_details": { "type": "object" },
+    "rejected_at": { "type": "string", "format": "date-time" }
+  }
+}

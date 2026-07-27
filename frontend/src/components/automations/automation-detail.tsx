@@ -27,11 +27,13 @@ import type { Schedule } from "@/types/schedule";
 import type { AutomationSource, AutomationVersion } from "@/types/automation-import";
 
 const versionStatusTone: Record<string, "neutral" | "success" | "warning" | "destructive" | "info"> = {
+  draft: "neutral",
   validating: "info",
   invalid: "destructive",
   ready: "neutral",
   published: "success",
   deprecated: "warning",
+  blocked: "destructive",
   disabled: "destructive",
 };
 

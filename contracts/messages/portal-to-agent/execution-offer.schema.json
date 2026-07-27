@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/portal-to-agent/execution-offer.schema.json",
+  "title": "execution.offer payload",
+  "type": "object",
+  "required": [
+    "execution_offer_id",
+    "execution_attempt_id",
+    "task_execution_id",
+    "automation_version_id",
+    "runtime",
+    "package",
+    "input",
+    "required_capabilities",
+    "required_pools",
+    "expires_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "execution_offer_id": { "type": "string" },
+    "execution_attempt_id": { "type": "string" },
+    "task_execution_id": { "type": "string" },
+    "automation_version_id": { "type": "string" },
+    "runtime": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "package": {
+      "type": "object",
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string" },
+        "download_url": { "type": "string" },
+        "sha256": { "type": "string" },
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "input": { "type": "object" },
+    "required_capabilities": {
+      "type": "array",
+      "items": { "$ref": "../../capabilities/capability-requirement.schema.json" }
+    },
+    "required_pools": {
+      "type": "array",
+      "items": { "enum": ["interactive", "background", "browser"] }
+    },
+    "resource_locks": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "expires_at": { "type": "string", "format": "date-time" }
+  }
+}

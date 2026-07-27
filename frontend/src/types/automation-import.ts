@@ -22,8 +22,9 @@ export type AutomationVersion = {
   id: number;
   automation_id: number;
   version: string;
-  status: "validating" | "invalid" | "ready" | "published" | "deprecated" | "disabled";
+  status: "draft" | "validating" | "invalid" | "ready" | "published" | "deprecated" | "blocked" | "disabled";
   runtime_id: string;
+  runtime_version?: string | null;
   entrypoint_type: string;
   application_type: string;
   artifact_bucket: string;

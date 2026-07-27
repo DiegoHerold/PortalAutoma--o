@@ -1,0 +1,1 @@
+"""Dispatch infrastructure adapters."""

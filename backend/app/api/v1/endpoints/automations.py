@@ -1,4 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import hashlib
+import json
+from dataclasses import asdict, is_dataclass
+from typing import Any
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -9,6 +14,9 @@ from app.schemas.worker_preference import WorkerPreferenceResponse, WorkerPrefer
 from app.services.automation_service import AutomationHasActiveJobsError, AutomationService
 from app.services.automation_version_lifecycle_service import AutomationVersionLifecycleService
 from app.services.worker_preference_service import WorkerPreferenceService
+from modules.shared.application.idempotency import IdempotencyRecord, IdempotencyReplayStatus
+from modules.shared.infrastructure.repositories import SqlAlchemyIdempotencyStore
+from modules.catalog.domain.errors import DuplicateAutomationKeyError
 
 router = APIRouter()
 
@@ -38,8 +46,20 @@ def create_automation(
     payload: AutomationCreate,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> AutomationRead:
-    return AutomationService(db).create_automation(current_user, payload)
+    replay = _reserve_idempotency(db, "automation:create", idempotency_key, payload.model_dump())
+    if replay is not None:
+        return AutomationRead.model_validate(replay)
+    try:
+        result = AutomationService(db).create_automation(current_user, payload)
+    except DuplicateAutomationKeyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    response = AutomationRead.model_validate(result, from_attributes=True)
+    _save_idempotency(db, "automation:create", idempotency_key, response.model_dump(mode="json"), str(response.id))
+    return response
 
 
 @router.put("/{automation_id}", response_model=AutomationRead)
@@ -179,3 +199,42 @@ def sync_automation_source(
         return AutomationVersionLifecycleService(db).check_for_update(automation_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _reserve_idempotency(db: Session, scope: str, key: str | None, payload: dict[str, Any]) -> dict[str, Any] | None:
+    if not key:
+        return None
+    store = SqlAlchemyIdempotencyStore(db)
+    request_hash = _payload_hash(payload)
+    existing = store.get(scope, key)
+    if existing is not None:
+        if existing.request_hash != request_hash:
+            raise HTTPException(status_code=409, detail="Idempotency-Key reutilizada com payload diferente.")
+        if existing.response_payload is not None:
+            return existing.response_payload
+    status = store.reserve(IdempotencyRecord(key=key, scope=scope, request_hash=request_hash))
+    if status == IdempotencyReplayStatus.CONFLICT:
+        raise HTTPException(status_code=409, detail="Idempotency-Key reutilizada com payload diferente.")
+    return None
+
+
+def _save_idempotency(db: Session, scope: str, key: str | None, payload: dict[str, Any], resource_id: str | None) -> None:
+    if not key:
+        return
+    SqlAlchemyIdempotencyStore(db).save_response(scope, key, 201, _jsonable(payload), resource_id)
+    db.commit()
+
+
+def _payload_hash(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _jsonable(value: Any) -> Any:
+    if is_dataclass(value):
+        return _jsonable(asdict(value))
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    return value

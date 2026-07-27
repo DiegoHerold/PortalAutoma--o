@@ -1,4 +1,6 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import select
+from uuid import uuid4
 
 from app.core.config import get_settings
 from app.core.constants import GlobalRoleSlug
@@ -11,6 +13,7 @@ from app.models.worker import Worker
 from app.repositories.category_repository import CategoryRepository
 from app.repositories.role_repository import RoleRepository
 from app.repositories.user_repository import UserRepository
+from modules.catalog.infrastructure.orm.models import RuntimeRecord, RuntimeVersionRecord
 
 DEFAULT_CATEGORIES = (
     ("rh", "RH"),
@@ -37,6 +40,7 @@ class BootstrapService:
         self._ensure_categories()
         self._ensure_admin()
         self._ensure_admin_permissions()
+        self._ensure_default_runtimes()
         self._ensure_default_worker()
 
     def _ensure_roles(self) -> None:
@@ -120,4 +124,44 @@ class BootstrapService:
                 is_active=True,
             )
         )
+        self.db.commit()
+
+    def _ensure_default_runtimes(self) -> None:
+        defaults = (
+            ("python-desktop", "Python Desktop", "Interactive Python automation runtime."),
+            ("python-background", "Python Background", "Headless/background Python automation runtime."),
+            ("powershell-standard", "PowerShell Standard", "PowerShell automation runtime."),
+            ("node-browser", "Node Browser", "Node.js browser automation runtime."),
+            ("standalone-executable", "Standalone Executable", "Prebuilt executable runtime."),
+        )
+        for key, name, description in defaults:
+            runtime = self.db.scalar(select(RuntimeRecord).where(RuntimeRecord.key == key))
+            if runtime is None:
+                runtime = RuntimeRecord(id=str(uuid4()), key=key, name=name, description=description, status="active")
+                self.db.add(runtime)
+                self.db.flush()
+            for version in ("1", "1.0.0"):
+                existing_version = self.db.scalar(
+                    select(RuntimeVersionRecord).where(
+                        RuntimeVersionRecord.runtime_id == runtime.id,
+                        RuntimeVersionRecord.version == version,
+                        RuntimeVersionRecord.operating_system == "windows",
+                        RuntimeVersionRecord.architecture == "x64",
+                    )
+                )
+                if existing_version is None:
+                    self.db.add(
+                        RuntimeVersionRecord(
+                            id=str(uuid4()),
+                            runtime_id=runtime.id,
+                            version=version,
+                            operating_system="windows",
+                            architecture="x64",
+                            status="published",
+                            minimum_agent_version=None,
+                            supported_entrypoints=["python-function", "powershell-script", "executable"],
+                            supported_execution_modes=["interactive", "background"],
+                            metadata_json={"seeded": True},
+                        )
+                    )
         self.db.commit()

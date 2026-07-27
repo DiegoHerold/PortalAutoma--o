@@ -1,0 +1,33 @@
+{
+  "agent_id": "agt_123",
+  "agent_instance_id": "agi_456",
+  "observed_at": "2026-07-27T10:00:00Z",
+  "revision": 7,
+  "ttl_seconds": 60,
+  "pools": {
+    "interactive": {
+      "recommended_total": 1,
+      "administrator_total": 1,
+      "effective_total": 1,
+      "used": 0,
+      "reserved": 1,
+      "available": 0
+    },
+    "background": {
+      "recommended_total": 2,
+      "administrator_total": 2,
+      "effective_total": 2,
+      "used": 1,
+      "reserved": 0,
+      "available": 1
+    },
+    "browser": {
+      "recommended_total": 2,
+      "administrator_total": 1,
+      "effective_total": 1,
+      "used": 0,
+      "reserved": 0,
+      "available": 1
+    }
+  }
+}

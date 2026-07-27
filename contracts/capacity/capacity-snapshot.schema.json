@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/capacity/capacity-snapshot.schema.json",
+  "title": "Agent capacity snapshot",
+  "type": "object",
+  "required": ["agent_id", "agent_instance_id", "observed_at", "revision", "ttl_seconds", "pools"],
+  "additionalProperties": false,
+  "properties": {
+    "agent_id": { "type": "string" },
+    "agent_instance_id": { "type": "string" },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "ttl_seconds": { "type": "integer", "minimum": 1 },
+    "pools": {
+      "type": "object",
+      "required": ["interactive", "background", "browser"],
+      "additionalProperties": false,
+      "properties": {
+        "interactive": { "$ref": "pool-capacity.schema.json" },
+        "background": { "$ref": "pool-capacity.schema.json" },
+        "browser": { "$ref": "pool-capacity.schema.json" }
+      }
+    }
+  }
+}

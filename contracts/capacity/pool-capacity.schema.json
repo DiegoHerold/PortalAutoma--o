@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/capacity/pool-capacity.schema.json",
+  "title": "PoolCapacity",
+  "type": "object",
+  "required": [
+    "recommended_total",
+    "administrator_total",
+    "effective_total",
+    "used",
+    "reserved",
+    "available"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "recommended_total": { "type": "integer", "minimum": 0 },
+    "administrator_total": { "type": "integer", "minimum": 0 },
+    "effective_total": { "type": "integer", "minimum": 0 },
+    "used": { "type": "integer", "minimum": 0 },
+    "reserved": { "type": "integer", "minimum": 0 },
+    "available": { "type": "integer", "minimum": 0 }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "automation_version": ["draft", "validating", "published", "deprecated", "blocked"],
+  "execution": ["created", "pending", "running", "succeeded", "partially_succeeded", "failed", "cancelling", "cancelled", "timed_out"],
+  "task_execution": ["pending", "ready", "queued", "running", "succeeded", "failed", "cancelled", "timed_out", "skipped"],
+  "execution_attempt": ["created", "offered", "accepted", "committed", "preparing", "running", "succeeded", "failed", "cancelled", "timed_out", "lost", "rejected", "expired"],
+  "execution_offer": ["pending", "accepted", "rejected", "expired", "committed", "cancelled"],
+  "agent_connectivity": ["connecting", "online", "stale", "disconnected", "offline"],
+  "agent_administrative": ["pending_registration", "enabled", "draining", "maintenance", "updating", "disabled"],
+  "agent_health": ["healthy", "degraded", "error"],
+  "agent_occupancy": ["idle", "busy", "saturated"]
+}

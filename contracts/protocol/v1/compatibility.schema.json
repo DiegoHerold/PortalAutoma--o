@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/protocol/v1/compatibility.schema.json",
+  "title": "Protocol compatibility negotiation",
+  "type": "object",
+  "required": [
+    "agent_protocol_versions",
+    "portal_protocol_versions",
+    "selected_protocol_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "agent_protocol_versions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "portal_protocol_versions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "selected_protocol_version": { "type": "string" },
+    "minimum_supported_version": { "type": "string" },
+    "maximum_supported_version": { "type": "string" },
+    "upgrade_required": { "type": "boolean" }
+  }
+}

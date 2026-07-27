@@ -22,6 +22,9 @@ class AutomationVersion(BaseModel):
     source_id: Mapped[int | None] = mapped_column(ForeignKey("automation_sources.id"))
 
     version: Mapped[str] = mapped_column(String(50), nullable=False)
+    manifest_id: Mapped[str | None] = mapped_column(ForeignKey("automation_manifests.id"))
+    package_id: Mapped[str | None] = mapped_column(ForeignKey("automation_packages.id"))
+    runtime_version_id: Mapped[str | None] = mapped_column(ForeignKey("runtime_versions.id"))
     manifest: Mapped[dict] = mapped_column(JSONB, nullable=False)
     manifest_schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
@@ -41,10 +44,19 @@ class AutomationVersion(BaseModel):
 
     source_commit_sha: Mapped[str | None] = mapped_column(String(64))
     source_path: Mapped[str | None] = mapped_column(Text())
+    release_notes: Mapped[str | None] = mapped_column(Text())
+    source_repository: Mapped[str | None] = mapped_column(Text())
+    source_branch: Mapped[str | None] = mapped_column(String(200))
+    source_tag: Mapped[str | None] = mapped_column(String(200))
+    build_id: Mapped[str | None] = mapped_column(String(120))
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    published_by: Mapped[str | None] = mapped_column(String(255))
 
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="validating")
     validation_errors: Mapped[list | None] = mapped_column(JSONB)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deprecated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     automation = relationship("Automation", back_populates="versions")
     source = relationship("AutomationSource", back_populates="versions")

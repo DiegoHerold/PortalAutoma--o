@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/agent-to-portal/execution-accepted.schema.json",
+  "title": "execution.accepted payload",
+  "type": "object",
+  "required": ["execution_offer_id", "execution_attempt_id", "agent_id", "agent_instance_id", "accepted_at"],
+  "additionalProperties": false,
+  "properties": {
+    "execution_offer_id": { "type": "string" },
+    "execution_attempt_id": { "type": "string" },
+    "agent_id": { "type": "string" },
+    "agent_instance_id": { "type": "string" },
+    "accepted_at": { "type": "string", "format": "date-time" },
+    "reserved_pools": { "type": "object" },
+    "resource_reservations": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

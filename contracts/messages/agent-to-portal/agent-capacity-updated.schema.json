@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/agent-to-portal/agent-capacity-updated.schema.json",
+  "title": "agent.capacity.updated payload",
+  "$ref": "../../capacity/capacity-snapshot.schema.json"
+}
