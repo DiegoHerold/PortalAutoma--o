@@ -18,6 +18,15 @@ from modules.fleet.application.use_cases import (
 from modules.fleet.application.use_cases._shared import apply_agent_update, new_id, utcnow
 from modules.fleet.domain.errors import FleetError
 from modules.fleet.infrastructure.adapters import build_fleet_adapters
+from modules.dispatch.domain.errors import DispatchError
+from modules.orchestration.application.use_cases import (
+    AcceptExecutionOffer,
+    CommitExecutionOffer,
+    HandleExecutionStarted,
+    RejectExecutionOffer,
+)
+from modules.orchestration.domain.errors import OrchestrationError
+from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
 from modules.telemetry.infrastructure.repositories.sqlalchemy_inbox import InboxPayloadConflictError
 
 
@@ -31,12 +40,12 @@ SUPPORTED_AGENT_MESSAGES = {
     "agent.diagnostic.result",
     "agent.update.progress",
     "agent.command.ack",
-}
-
-DEFERRED_EXECUTION_MESSAGES = {
     "execution.accepted",
     "execution.rejected",
     "execution.started",
+}
+
+DEFERRED_EXECUTION_MESSAGES = {
     "execution.event.batch",
     "execution.completed",
     "execution.failed",
@@ -106,6 +115,12 @@ def route_agent_message(db: Session, envelope: dict[str, Any], protocol_version:
             result = _record_diagnostic_result(adapters, agent_id, agent_instance_id, payload)
         elif message_type == "agent.update.progress":
             result = _record_update_progress(adapters, agent_id, payload)
+        elif message_type == "execution.accepted":
+            result = _handle_execution_accepted(db, agent_id, agent_instance_id, payload)
+        elif message_type == "execution.rejected":
+            result = _handle_execution_rejected(db, agent_id, agent_instance_id, payload)
+        elif message_type == "execution.started":
+            result = _handle_execution_started(db, agent_id, agent_instance_id, payload)
         elif message_type in {"agent.connected", "agent.resumed"}:
             result = {"ok": True, "pending_commands": [item.id for item in adapters.commands.pending_for_agent(agent_id, limits.max_pending_commands_per_agent)]}
             adapters.transaction.commit()
@@ -114,9 +129,91 @@ def route_agent_message(db: Session, envelope: dict[str, Any], protocol_version:
         adapters.inbox.mark_processed(envelope["message_id"])
         adapters.transaction.commit()
         return {"ok": True, "message_id": envelope["message_id"], "message_type": message_type, "result": _json(result)}
-    except FleetError:
+    except (FleetError, OrchestrationError, DispatchError, ValueError) as exc:
         adapters.transaction.rollback()
-        raise
+        raise EnvelopeValidationFailed(str(exc)) from exc
+
+
+def _handle_execution_accepted(db: Session, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    _require_payload_fields(payload, ["execution_offer_id", "execution_attempt_id", "agent_id", "agent_instance_id", "accepted_at"])
+    _ensure_payload_agent(payload, agent_id, agent_instance_id)
+    offer_id = str(payload.get("execution_offer_id") or "")
+    attempt_id = str(payload.get("execution_attempt_id") or "")
+    adapters = build_orchestration_adapters(db)
+    accepted = AcceptExecutionOffer(
+        adapters.attempts,
+        adapters.offers,
+        adapters.reservations,
+        adapters.outbox,
+        adapters.transaction,
+    ).execute(offer_id=offer_id, attempt_id=attempt_id, agent_id=agent_id, agent_instance_id=agent_instance_id)
+    adapters.commands.acknowledge_by_payload(agent_id, "execution.offer", "execution_offer_id", offer_id, "accepted", datetime.utcnow())
+    committed = CommitExecutionOffer(
+        adapters.attempts,
+        adapters.offers,
+        adapters.commands,
+        adapters.outbox,
+        adapters.transaction,
+    ).execute(offer_id=offer_id, attempt_id=attempt_id, agent_id=agent_id, agent_instance_id=agent_instance_id)
+    return {"execution_offer_id": accepted.id, "status": accepted.status, "commit_command_id": committed.get("command_id")}
+
+
+def _handle_execution_rejected(db: Session, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    _require_payload_fields(payload, ["execution_offer_id", "execution_attempt_id", "agent_id", "agent_instance_id", "rejection_code", "rejected_at"])
+    _ensure_payload_agent(payload, agent_id, agent_instance_id)
+    adapters = build_orchestration_adapters(db)
+    offer = RejectExecutionOffer(
+        adapters.attempts,
+        adapters.offers,
+        adapters.reservations,
+        adapters.outbox,
+        adapters.transaction,
+    ).execute(
+        offer_id=str(payload.get("execution_offer_id") or ""),
+        attempt_id=str(payload.get("execution_attempt_id") or ""),
+        agent_id=agent_id,
+        agent_instance_id=agent_instance_id,
+        rejection_code=str(payload.get("rejection_code") or ""),
+        rejection_details=payload.get("rejection_details") if isinstance(payload.get("rejection_details"), dict) else {},
+    )
+    adapters.commands.acknowledge_by_payload(agent_id, "execution.offer", "execution_offer_id", offer.id, "rejected", datetime.utcnow())
+    adapters.transaction.commit()
+    return {"execution_offer_id": offer.id, "status": offer.status, "rejection_code": offer.rejection_code}
+
+
+def _handle_execution_started(db: Session, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    _require_payload_fields(payload, ["execution_attempt_id", "agent_id", "agent_instance_id", "started_at"])
+    _ensure_payload_agent(payload, agent_id, agent_instance_id)
+    adapters = build_orchestration_adapters(db)
+    details = HandleExecutionStarted(
+        adapters.executions,
+        adapters.tasks,
+        adapters.attempts,
+        adapters.offers,
+        adapters.reservations,
+        adapters.outbox,
+        adapters.transaction,
+    ).execute(
+        attempt_id=str(payload.get("execution_attempt_id") or ""),
+        offer_id=str(payload.get("execution_offer_id") or "") or None,
+        agent_id=agent_id,
+        agent_instance_id=agent_instance_id,
+        started_at=payload.get("started_at"),
+    )
+    return {"execution_id": details.execution.id, "execution_attempt_id": details.current_attempt.id if details.current_attempt else None, "status": details.execution.status}
+
+
+def _ensure_payload_agent(payload: dict[str, Any], agent_id: str, agent_instance_id: str) -> None:
+    if payload.get("agent_id") not in (None, agent_id):
+        raise EnvelopeValidationFailed("Payload Agent differs from the authenticated Agent.")
+    if payload.get("agent_instance_id") not in (None, agent_instance_id):
+        raise EnvelopeValidationFailed("Payload AgentInstance differs from the active connection.")
+
+
+def _require_payload_fields(payload: dict[str, Any], fields: list[str]) -> None:
+    missing = [field for field in fields if payload.get(field) in (None, "")]
+    if missing:
+        raise EnvelopeValidationFailed(f"Payload is missing fields: {', '.join(missing)}.")
 
 
 def _record_diagnostic_result(adapters, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> dict[str, Any]:

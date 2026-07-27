@@ -30,5 +30,9 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.housekeeping_tasks.detect_stale_agents",
         "schedule": 60.0,
     },
+    "expire-execution-offers-every-30-seconds": {
+        "task": "app.tasks.housekeeping_tasks.expire_execution_offers",
+        "schedule": 30.0,
+    },
 }
 celery_app.conf.timezone = "UTC"

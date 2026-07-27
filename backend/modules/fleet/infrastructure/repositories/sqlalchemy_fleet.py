@@ -640,6 +640,28 @@ class SqlAlchemyAgentCommandRepository:
         self.db.flush()
         return _command_to_dto(row)
 
+    def acknowledge_by_payload(self, agent_id: str, message_type: str, payload_key: str, payload_value: str, status: str, acknowledged_at: datetime) -> AgentCommandDTO | None:
+        row = self.db.scalar(
+            select(AgentCommandRecord)
+            .where(
+                AgentCommandRecord.agent_id == agent_id,
+                AgentCommandRecord.message_type == message_type,
+                AgentCommandRecord.status.in_(["pending", "sent"]),
+                AgentCommandRecord.payload[payload_key].as_string() == payload_value,
+            )
+            .order_by(AgentCommandRecord.command_sequence.desc())
+            .limit(1)
+            .with_for_update()
+        )
+        if row is None:
+            return None
+        row.status = "acknowledged" if status in {"received", "accepted", "completed"} else "failed"
+        row.acknowledged_at = acknowledged_at
+        row.last_error = None if row.status == "acknowledged" else status
+        self.db.add(row)
+        self.db.flush()
+        return _command_to_dto(row)
+
 
 def _copy_agent(agent: AgentDTO, row: AgentRecord) -> None:
     row.name = agent.name

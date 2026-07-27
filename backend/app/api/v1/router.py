@@ -21,6 +21,7 @@ from app.api.v1.endpoints import (
 )
 from modules.catalog.api.routes import router as catalog_module_router
 from modules.fleet.api.routes import router as fleet_module_router
+from modules.orchestration.api.routes import router as orchestration_module_router
 from gateway.bootstrap import router as agent_gateway_router
 
 api_router = APIRouter()
@@ -33,6 +34,7 @@ api_router.include_router(categories.router, prefix="/categories", tags=["catego
 api_router.include_router(automations.router, prefix="/automations", tags=["automations"])
 api_router.include_router(automation_imports.router, prefix="/automations", tags=["automation-imports"])
 api_router.include_router(catalog_module_router, tags=["catalog"])
+api_router.include_router(orchestration_module_router, tags=["orchestration"])
 api_router.include_router(triggers.router, prefix="/triggers", tags=["triggers"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(executions.router, prefix="/executions", tags=["executions"])

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/messages/agent-to-portal/execution-started.schema.json",
+  "title": "execution.started payload",
+  "type": "object",
+  "required": ["execution_attempt_id", "agent_id", "agent_instance_id", "started_at"],
+  "additionalProperties": false,
+  "properties": {
+    "execution_offer_id": { "type": "string" },
+    "execution_attempt_id": { "type": "string" },
+    "agent_id": { "type": "string" },
+    "agent_instance_id": { "type": "string" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "workspace_id": { "type": "string" }
+  }
+}

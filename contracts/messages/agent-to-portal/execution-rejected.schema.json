@@ -14,14 +14,19 @@
       "enum": [
         "INSUFFICIENT_MEMORY",
         "INSUFFICIENT_DISK",
+        "INSUFFICIENT_CPU_CAPACITY",
         "INTERACTIVE_SESSION_UNAVAILABLE",
         "INTERACTIVE_SESSION_LOCKED",
         "CAPABILITY_UNAVAILABLE",
         "RESOURCE_LOCKED",
         "AGENT_DRAINING",
+        "AGENT_DISABLED",
         "AGENT_OVERLOADED",
+        "RUNTIME_UNAVAILABLE",
+        "PACKAGE_UNAVAILABLE",
         "RUNTIME_PREPARATION_FAILED",
-        "PACKAGE_PREPARATION_FAILED"
+        "PACKAGE_PREPARATION_FAILED",
+        "PROTOCOL_INCOMPATIBLE"
       ]
     },
     "rejection_details": { "type": "object" },
