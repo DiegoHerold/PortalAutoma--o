@@ -17,6 +17,7 @@ from modules.orchestration.application.dto import (
     ExecutionDTO,
     ExecutionDetailsDTO,
     ExecutionOfferDTO,
+    ExecutionSummaryDTO,
     ResourceReservationDTO,
     TaskExecutionDTO,
 )
@@ -185,6 +186,63 @@ class ListExecutions:
 
     def execute(self, limit: int = 100, offset: int = 0) -> list[ExecutionDTO]:
         return self.executions.list(limit=limit, offset=offset)
+
+
+class ListExecutionSummaries:
+    """Enriched list for UI consumption (automation name, priority, assigned
+    Agent) — replaces the legacy Job list mirror without introducing a new
+    queue/ETA engine: estimativas that the old JobEnrichmentService already
+    stopped computing (always None) stay out of this response too."""
+
+    def __init__(
+        self,
+        executions: ExecutionRepository,
+        tasks: TaskExecutionRepository,
+        attempts: ExecutionAttemptRepository,
+        automation_versions: AutomationVersionReader,
+        agent_selection: AgentSelectionPort,
+    ) -> None:
+        self.executions = executions
+        self.tasks = tasks
+        self.attempts = attempts
+        self.automation_versions = automation_versions
+        self.agent_selection = agent_selection
+
+    def execute(self, limit: int = 100, offset: int = 0) -> list[ExecutionSummaryDTO]:
+        executions = self.executions.list(limit=limit, offset=offset)
+        summaries: list[ExecutionSummaryDTO] = []
+        for execution in executions:
+            tasks = self.tasks.list_for_execution(execution.id)
+            first_task = tasks[0] if tasks else None
+            version = (
+                self.automation_versions.get_published_snapshot(first_task.automation_version_id)
+                if first_task
+                else None
+            )
+            agent_id: str | None = None
+            agent_name: str | None = None
+            worker_id: int | None = None
+            if first_task:
+                attempts = self.attempts.list_for_execution(execution.id)
+                current_attempt = attempts[-1] if attempts else None
+                if current_attempt:
+                    summary = self.agent_selection.get_agent_summary(current_attempt.agent_id)
+                    if summary:
+                        agent_id = summary.get("id")
+                        agent_name = summary.get("name")
+                        worker_id = summary.get("worker_id")
+            summaries.append(
+                ExecutionSummaryDTO(
+                    execution=execution,
+                    automation_id=version.automation_id if version else None,
+                    automation_name=version.automation_name if version else None,
+                    priority=first_task.priority if first_task else None,
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    worker_id=worker_id,
+                )
+            )
+        return summaries
 
 
 class GetExecutionDetails:

@@ -9,10 +9,19 @@ import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
+import { priorityScoreFromLabel } from "@/lib/status";
 import type { Automation } from "@/types/automation";
-import type { Job } from "@/types/job";
+import type { Execution } from "@/types/execution";
 
 const PRIORITIES = ["critical", "high", "normal", "low"];
+
+type AutomationVersion = {
+  id: number;
+  automation_id: number;
+  version: string;
+  status: string;
+  published_at: string | null;
+};
 
 export function DispatchDialog({
   open,
@@ -47,10 +56,27 @@ export function DispatchDialog({
     setPayloadError(null);
     setSubmitting(true);
     try {
-      await apiRequest<Job>("/jobs", {
+      // /executions requires a specific automation_version_id (an Execution
+      // is always tied to one published version) — resolve the latest
+      // published version of the chosen automation first, same as the old
+      // JobDispatcherService did server-side via get_latest_published_version.
+      const versions = await apiRequest<AutomationVersion[]>(`/automations/${automationId}/versions`, { token });
+      const published = versions
+        .filter((v) => v.status === "published")
+        .sort((a, b) => new Date(b.published_at ?? 0).getTime() - new Date(a.published_at ?? 0).getTime());
+      const version = published[0];
+      if (!version) {
+        toast({ title: "Falha ao despachar", description: "Esta automação não tem versão publicada.", kind: "error" });
+        return;
+      }
+      await apiRequest<Execution>("/executions", {
         method: "POST",
         token,
-        body: JSON.stringify({ automation_id: Number(automationId), priority, payload_json: parsed }),
+        body: JSON.stringify({
+          automation_version_id: version.id,
+          priority: priorityScoreFromLabel(priority),
+          parameters: parsed,
+        }),
       });
       toast({ title: "Job despachado", kind: "success" });
       onClose();

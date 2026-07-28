@@ -19,9 +19,10 @@ from modules.orchestration.api.schemas import (
     ExecutionCreateRequest,
     ExecutionDetailsResponse,
     ExecutionResponse,
+    ExecutionSummaryResponse,
 )
 from modules.orchestration.application.dto import ActorDTO, CreateAutomationExecutionCommand
-from modules.orchestration.application.use_cases import CreateAutomationExecution, GetExecutionDetails, ListExecutions, RequestExecutionCancellation
+from modules.orchestration.application.use_cases import CreateAutomationExecution, GetExecutionDetails, ListExecutions, ListExecutionSummaries, RequestExecutionCancellation
 from modules.orchestration.domain.errors import AutomationVersionNotExecutable, IdempotencyConflict, OrchestrationError
 from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
 from modules.storage.infrastructure.adapters import build_storage_adapters
@@ -110,16 +111,22 @@ def create_execution(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.get("", response_model=list[ExecutionResponse])
+@router.get("", response_model=list[ExecutionSummaryResponse])
 def list_executions(
     db: Session = Depends(get_db),
     user: Any = Depends(get_current_user),
     limit: int = 100,
     offset: int = 0,
-) -> list[ExecutionResponse]:
+) -> list[ExecutionSummaryResponse]:
     adapters = build_orchestration_adapters(db)
-    executions = ListExecutions(adapters.executions).execute(limit=limit, offset=offset)
-    return [ExecutionResponse.model_validate(_jsonable(asdict(item))) for item in executions]
+    summaries = ListExecutionSummaries(
+        adapters.executions,
+        adapters.tasks,
+        adapters.attempts,
+        adapters.automation_versions,
+        adapters.agent_selection,
+    ).execute(limit=limit, offset=offset)
+    return [ExecutionSummaryResponse.model_validate(item.to_payload()) for item in summaries]
 
 
 @router.get("/{execution_id}/tasks")

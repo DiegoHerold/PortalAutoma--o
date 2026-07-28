@@ -100,6 +100,20 @@ class ExecutionOfferResponse(BaseModel):
     commit_token_expires_at: datetime | None = None
 
 
+class ExecutionSummaryResponse(ExecutionResponse):
+    """Flat superset of ExecutionResponse: adds Jobs-page enrichment fields
+    without breaking existing GET /executions consumers that only read the
+    base ExecutionResponse fields (id, status, completed_at, legacy_job_id...).
+    """
+
+    automation_id: int | None = None
+    automation_name: str | None = None
+    priority: int | None = None
+    agent_id: str | None = None
+    agent_name: str | None = None
+    worker_id: int | None = None
+
+
 class ExecutionDetailsResponse(BaseModel):
     execution: ExecutionResponse
     tasks: list[TaskExecutionResponse]

@@ -72,6 +72,33 @@ export function priorityMeta(priority?: string | null) {
   return (priority && PRIORITY[priority]) || { label: priority || "—", tone: "neutral" as Tone, rank: 9 };
 }
 
+/**
+ * backend/modules/orchestration stores priority as a plain int score (not a
+ * label) — mirrors the same scale the legacy Job dispatcher used
+ * (app/services/job_dispatcher_service.py::_priority_to_int) so existing
+ * dispatch behavior/sort order is preserved.
+ */
+export function priorityLabelFromScore(score?: number | null): string {
+  if (score == null) return "normal";
+  if (score >= 100) return "critical";
+  if (score >= 50) return "high";
+  if (score >= 0) return "normal";
+  return "low";
+}
+
+export function priorityScoreFromLabel(label: string): number {
+  switch (label) {
+    case "critical":
+      return 100;
+    case "high":
+      return 50;
+    case "low":
+      return -10;
+    default:
+      return 0;
+  }
+}
+
 /** Schedule calendar occurrence statuses (upcoming/missed are calendar-only; the rest mirror JOB_STATUS). */
 export const OCCURRENCE_STATUS: Record<string, StatusMeta> = {
   upcoming: { label: "Agendado", tone: "outline", icon: Clock, dot: "bg-muted-foreground" },

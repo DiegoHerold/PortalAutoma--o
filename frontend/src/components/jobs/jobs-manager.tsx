@@ -19,35 +19,39 @@ import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { useRealtime } from "@/hooks/use-realtime";
 import { apiRequest } from "@/lib/api";
-import { priorityMeta } from "@/lib/status";
-import { formatCountdown, formatDateTime, formatDuration, formatTime } from "@/lib/utils";
+import { priorityLabelFromScore, priorityMeta } from "@/lib/status";
+import { formatDateTime, formatTime } from "@/lib/utils";
 import type { Automation } from "@/types/automation";
-import type { Job } from "@/types/job";
+import type { Execution } from "@/types/execution";
 import type { Worker } from "@/types/worker";
 
-const CANCELLABLE = new Set(["pending", "queued", "running"]);
+const CANCELLABLE = new Set(["created", "pending", "queued", "ready", "offered", "accepted", "committed", "preparing", "running"]);
 const POLL = 4000;
 const FILTERS = ["active", "all", "queued", "running", "failed", "done"] as const;
 type Filter = (typeof FILTERS)[number];
 
+function jobStatus(execution: Execution): string {
+  return execution.status ?? "pending";
+}
+
 export function JobsManager() {
   const { token } = useAuth();
   const { toast } = useToast();
-  const jobs = useApi<Job[]>("/jobs", { pollMs: POLL });
+  const jobs = useApi<Execution[]>("/executions", { pollMs: POLL });
   const automations = useApi<Automation[]>("/automations");
   const workers = useApi<Worker[]>("/workers");
   const { setState } = useRealtimeStatus();
   const [filter, setFilter] = useState<Filter>("active");
   const [query, setQuery] = useState("");
   const [dispatchOpen, setDispatchOpen] = useState(false);
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  async function cancelJob(job: Job) {
+  async function cancelJob(job: Execution) {
     if (!token) return;
     if (!window.confirm(`Cancelar o job #${job.id}?`)) return;
-    setCancellingId(job.id);
+    setCancellingId(String(job.id));
     try {
-      await apiRequest(`/jobs/${job.id}:cancel`, { method: "POST", token });
+      await apiRequest(`/executions/${job.id}/cancel`, { method: "POST", token });
       toast({ title: `Job #${job.id} cancelado`, kind: "success" });
       await jobs.refetch();
     } catch (err) {
@@ -57,7 +61,7 @@ export function JobsManager() {
     }
   }
 
-  const { state } = useRealtime<Job>({
+  const { state } = useRealtime<Execution>({
     wsPath: "/ws/executions",
     onMessage: () => void jobs.refetch(),
     onPoll: () => void jobs.refetch(),
@@ -78,44 +82,47 @@ export function JobsManager() {
 
   const list = jobs.data ?? [];
   const counts = {
-    active: list.filter((job) => ["queued", "pending", "running"].includes(job.status)).length,
-    queued: list.filter((job) => ["queued", "pending"].includes(job.status)).length,
-    running: list.filter((job) => job.status === "running").length,
-    failed: list.filter((job) => job.status === "failed").length,
-    done: list.filter((job) => ["success", "failed", "cancelled"].includes(job.status)).length,
+    active: list.filter((job) => ["queued", "pending", "created", "ready", "offered", "accepted", "committed", "preparing", "running"].includes(jobStatus(job))).length,
+    queued: list.filter((job) => ["queued", "pending", "created", "ready"].includes(jobStatus(job))).length,
+    running: list.filter((job) => jobStatus(job) === "running").length,
+    failed: list.filter((job) => jobStatus(job) === "failed").length,
+    done: list.filter((job) => ["success", "succeeded", "failed", "cancelled"].includes(jobStatus(job))).length,
     all: list.length,
   };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const byFilter = (job: Job) => {
+    const byFilter = (job: Execution) => {
+      const status = jobStatus(job);
       if (filter === "all") return true;
-      if (filter === "active") return ["queued", "pending", "running"].includes(job.status);
-      if (filter === "queued") return ["queued", "pending"].includes(job.status);
-      if (filter === "running") return job.status === "running";
-      if (filter === "failed") return job.status === "failed";
-      return ["success", "failed", "cancelled"].includes(job.status);
+      if (filter === "active") return ["queued", "pending", "created", "ready", "offered", "accepted", "committed", "preparing", "running"].includes(status);
+      if (filter === "queued") return ["queued", "pending", "created", "ready"].includes(status);
+      if (filter === "running") return status === "running";
+      if (filter === "failed") return status === "failed";
+      return ["success", "succeeded", "failed", "cancelled"].includes(status);
     };
-    const byQuery = (job: Job) => {
+    const byQuery = (job: Execution) => {
       if (!q) return true;
-      const automation = job.automation_name ?? automationName.get(job.automation_id) ?? "";
-      const worker = job.assigned_worker_id
-        ? job.worker_name ?? workerName.get(job.assigned_worker_id) ?? String(job.assigned_worker_id)
+      const automation = job.automation_name ?? (job.automation_id != null ? automationName.get(job.automation_id) : undefined) ?? "";
+      const worker = job.worker_id
+        ? job.agent_name ?? workerName.get(job.worker_id) ?? String(job.worker_id)
         : "aguardando";
-      return [String(job.id), automation, worker, job.status, job.priority].some((value) => value.toLowerCase().includes(q));
+      return [String(job.id), automation, worker, jobStatus(job), priorityLabelFromScore(job.priority)].some((value) =>
+        value.toLowerCase().includes(q),
+      );
     };
     return [...list]
       .filter((job) => byFilter(job) && byQuery(job))
       .sort((a, b) => {
-        const priority = priorityMeta(a.priority).rank - priorityMeta(b.priority).rank;
+        const priority = priorityMeta(priorityLabelFromScore(a.priority)).rank - priorityMeta(priorityLabelFromScore(b.priority)).rank;
         if (priority !== 0) return priority;
-        return (a.queue_position ?? a.id) - (b.queue_position ?? b.id);
+        return new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime();
       });
   }, [list, filter, query, automationName, workerName]);
 
-  const nextQueued = filtered.find((job) => ["queued", "pending"].includes(job.status));
-  const runningJobs = list.filter((job) => job.status === "running");
-  const failedLast = list.find((job) => job.status === "failed");
+  const nextQueued = filtered.find((job) => ["queued", "pending", "created", "ready"].includes(jobStatus(job)));
+  const runningJobs = list.filter((job) => jobStatus(job) === "running");
+  const failedLast = list.find((job) => jobStatus(job) === "failed");
 
   return (
     <div className="space-y-5">
@@ -125,7 +132,7 @@ export function JobsManager() {
         <JobMetric
           icon={Timer}
           label="Tempo estimado"
-          value={runningJobs[0]?.estimated_duration_seconds ? formatDuration(runningJobs[0].estimated_duration_seconds) : "—"}
+          value="—"
           hint={runningJobs[0] ? `Job #${runningJobs[0].id}` : "Sem execução ativa"}
         />
         <JobMetric icon={AlertCircle} label="Falhas" value={counts.failed} hint={failedLast ? `Última: #${failedLast.id}` : "Sem falhas"} />
@@ -193,44 +200,36 @@ export function JobsManager() {
                   </TD>
                   <TD className="max-w-[220px]">
                     <span className="block truncate font-medium">
-                      {job.automation_name ?? automationName.get(job.automation_id) ?? `#${job.automation_id}`}
+                      {job.automation_name ?? (job.automation_id != null ? automationName.get(job.automation_id) : undefined) ?? (job.automation_id != null ? `#${job.automation_id}` : "—")}
                     </span>
-                    {job.error_message && (
-                      <span className="block truncate text-xs text-destructive" title={job.error_message}>
-                        {job.error_message}
+                    {job.failure_summary && (
+                      <span className="block truncate text-xs text-destructive" title={job.failure_summary}>
+                        {job.failure_summary}
                       </span>
                     )}
                   </TD>
                   <TD>
-                    <PriorityBadge priority={job.priority} />
+                    <PriorityBadge priority={priorityLabelFromScore(job.priority)} />
                   </TD>
                   <TD>
-                    <StatusBadge status={job.status} />
+                    <StatusBadge status={jobStatus(job)} />
                   </TD>
                   <TD className="text-sm text-muted-foreground">
-                    {job.assigned_worker_id
-                      ? job.worker_name ?? workerName.get(job.assigned_worker_id) ?? `#${job.assigned_worker_id}`
-                      : "aguardando"}
+                    {job.worker_id ? job.agent_name ?? workerName.get(job.worker_id) ?? `#${job.worker_id}` : "aguardando"}
                   </TD>
                   <TD className="tabular text-sm">
-                    <span className="block">
-                      {job.status === "running" ? `iniciado ${formatTime(job.started_at)}` : formatEta(job.estimated_start)}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      fim {job.estimated_end ? formatCountdown(job.estimated_end) : "—"}
-                    </span>
+                    <span className="block">{jobStatus(job) === "running" ? `iniciado ${formatTime(job.started_at)}` : "—"}</span>
+                    <span className="block text-xs text-muted-foreground">fim —</span>
                   </TD>
                   <TD className="tabular text-sm text-muted-foreground">{formatDateTime(job.created_at)}</TD>
-                  <TD className="tabular text-right text-sm text-muted-foreground">
-                    {job.queue_position != null ? `${job.queue_position}º` : "—"}
-                  </TD>
+                  <TD className="tabular text-right text-sm text-muted-foreground">—</TD>
                   <TD className="text-right">
-                    {CANCELLABLE.has(job.status) && (
+                    {CANCELLABLE.has(jobStatus(job)) && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => void cancelJob(job)}
-                        disabled={cancellingId === job.id}
+                        disabled={cancellingId === String(job.id)}
                         className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                       >
                         <X className="h-3.5 w-3.5" /> Cancelar
@@ -275,9 +274,4 @@ function JobMetric({
       <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>
     </div>
   );
-}
-
-function formatEta(iso?: string | null): string {
-  if (!iso) return "—";
-  return formatTime(iso);
 }

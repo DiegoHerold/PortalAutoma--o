@@ -184,6 +184,40 @@ class CreateAutomationExecutionCommand:
 
 
 @dataclass(frozen=True)
+class ExecutionSummaryDTO:
+    """Enriched read model for list views (replaces the legacy Job mirror).
+
+    to_payload() flattens `execution`'s fields to the top level and adds the
+    enrichment fields as siblings, so the wire format stays a strict
+    superset of ExecutionDTO/ExecutionResponse — existing consumers of
+    GET /executions that only read the base fields (id, status, started_at,
+    completed_at, failure_summary, legacy_job_id...) keep working unchanged.
+    """
+
+    execution: ExecutionDTO
+    automation_id: int | None
+    automation_name: str | None
+    priority: int | None
+    agent_id: str | None
+    agent_name: str | None
+    worker_id: int | None
+
+    def to_payload(self) -> dict[str, Any]:
+        payload = _json(asdict(self.execution))
+        payload.update(
+            {
+                "automation_id": self.automation_id,
+                "automation_name": self.automation_name,
+                "priority": self.priority,
+                "agent_id": self.agent_id,
+                "agent_name": self.agent_name,
+                "worker_id": self.worker_id,
+            }
+        )
+        return payload
+
+
+@dataclass(frozen=True)
 class ExecutionDetailsDTO:
     execution: ExecutionDTO
     tasks: list[TaskExecutionDTO]

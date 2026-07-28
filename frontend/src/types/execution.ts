@@ -37,6 +37,14 @@ export type Execution = {
   result_summary?: string | null;
   result_payload_json?: Record<string, unknown> | null;
   logs?: ExecutionLogEntry[];
+
+  // Enrichment fields added to GET /executions (Jobs page parity — see
+  // backend/modules/orchestration/api/schemas.py ExecutionSummaryResponse).
+  automation_id?: number | null;
+  automation_name?: string | null;
+  priority?: number | null;
+  agent_id?: string | null;
+  agent_name?: string | null;
 };
 
 export type ExecutionAttempt = {
@@ -61,7 +69,11 @@ export type ExecutionDetails = {
   tasks: Array<{
     id: string;
     execution_id: string;
+    automation_version_id?: number;
     status: string;
+    priority?: number;
+    parameters?: Record<string, unknown>;
+    input?: Record<string, unknown>;
     requirements_snapshot?: Record<string, unknown>;
     retry_policy?: Record<string, unknown>;
     timeout_policy?: Record<string, unknown>;

@@ -13,21 +13,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useApi } from "@/hooks/use-api";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useRealtimeStatus } from "@/components/layout/realtime-provider";
-import { PRIORITY } from "@/lib/status";
+import { PRIORITY, priorityLabelFromScore } from "@/lib/status";
 import { cn } from "@/lib/utils";
-import type { Job } from "@/types/job";
+import type { Execution } from "@/types/execution";
 import type { Worker } from "@/types/worker";
 import type { Automation } from "@/types/automation";
 
 const POLL = 5000;
 
 export function DashboardView() {
-  const jobs = useApi<Job[]>("/jobs", { pollMs: POLL });
+  const jobs = useApi<Execution[]>("/executions", { pollMs: POLL });
   const workers = useApi<Worker[]>("/workers", { pollMs: POLL });
   const automations = useApi<Automation[]>("/automations");
   const { setState } = useRealtimeStatus();
 
-  const { state } = useRealtime<Job>({
+  const { state } = useRealtime<Execution>({
     wsPath: "/ws/executions",
     onMessage: () => {
       void jobs.refetch();
@@ -47,23 +47,23 @@ export function DashboardView() {
 
   const kpis = useMemo(() => {
     const running = jobList.filter((j) => j.status === "running").length;
-    const queued = jobList.filter((j) => j.status === "queued" || j.status === "pending").length;
-    const success = jobList.filter((j) => j.status === "success").length;
+    const queued = jobList.filter((j) => ["queued", "pending", "created", "ready"].includes(j.status ?? "")).length;
+    const success = jobList.filter((j) => ["success", "succeeded"].includes(j.status ?? "")).length;
     const failed = jobList.filter((j) => j.status === "failed").length;
     const online = workerList.filter((w) => w.status === "online" || w.status === "busy").length;
     return { running, queued, success, failed, online };
   }, [jobList, workerList]);
 
   const queueByPriority = useMemo(() => {
-    const active = jobList.filter((j) => j.status === "queued" || j.status === "pending");
+    const active = jobList.filter((j) => ["queued", "pending", "created", "ready"].includes(j.status ?? ""));
     return Object.keys(PRIORITY).map((p) => ({
       priority: p,
-      count: active.filter((j) => j.priority === p).length,
+      count: active.filter((j) => priorityLabelFromScore(j.priority) === p).length,
     }));
   }, [jobList]);
 
   const activeJobs = jobList
-    .filter((j) => ["running", "queued", "pending"].includes(j.status))
+    .filter((j) => ["running", "queued", "pending", "created", "ready"].includes(j.status ?? ""))
     .slice(0, 6);
 
   const loading = jobs.loading || workers.loading;
@@ -111,12 +111,14 @@ export function DashboardView() {
                       className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-muted/50"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{automation?.name ?? `Automação #${job.automation_id}`}</p>
+                        <p className="truncate text-sm font-medium">
+                          {job.automation_name ?? automation?.name ?? (job.automation_id != null ? `Automação #${job.automation_id}` : "—")}
+                        </p>
                         <p className="tabular text-xs text-muted-foreground">Job #{job.id}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <PriorityBadge priority={job.priority} />
-                        <StatusBadge status={job.status} />
+                        <PriorityBadge priority={priorityLabelFromScore(job.priority)} />
+                        <StatusBadge status={job.status ?? "pending"} />
                       </div>
                     </Link>
                   </li>
