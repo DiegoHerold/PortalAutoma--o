@@ -9,7 +9,7 @@ from uuid import uuid4
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import text
 
-from app.core.database import SessionLocal
+from infrastructure.database import SessionLocal
 from gateway.agent_gateway.authentication import authenticate_agent
 from gateway.agent_gateway.command_delivery import deliver_pending_commands
 from gateway.agent_gateway.connection_manager import GatewayConnection, connection_manager

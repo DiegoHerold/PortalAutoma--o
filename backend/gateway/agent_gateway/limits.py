@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.config import get_settings
+from infrastructure.config import get_settings
 
 
 @dataclass(frozen=True)

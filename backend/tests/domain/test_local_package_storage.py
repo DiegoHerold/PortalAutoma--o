@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.core.config import get_settings
+from infrastructure.config import get_settings
 from app.core.security import decode_package_download_token
 from infrastructure.storage.local_storage import LocalPackageStorage
 

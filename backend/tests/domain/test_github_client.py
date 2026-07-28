@@ -6,7 +6,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from app.core.config import get_settings
+from infrastructure.config import get_settings
 from infrastructure.github.client import GithubAppClient, GithubAppNotConfiguredError, verify_webhook_signature
 
 
