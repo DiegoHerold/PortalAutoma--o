@@ -115,78 +115,27 @@ class CreateAutomationExecution:
             parameters=command.parameters,
             input={"parameters": command.parameters},
             timeout_seconds=version.timeout_seconds,
+            requirements_snapshot=_requirements_snapshot(version, execution.id, command.priority, command.agent_id),
+            retry_policy=version.retry_policy or _default_retry_policy(),
+            timeout_policy=version.timeout_policy or _default_timeout_policy(version.timeout_seconds),
             now=now,
         ).mark_ready(now).mark_queued(now)
         task_dto = self.tasks.add(_task_to_dto(task))
 
-        selection = self.agent_selection.select(
-            AgentSelectionRequestDTO(
-                automation_version=version,
-                preferred_agent_id=command.agent_id,
-                execution_mode=version.execution_mode,
-                required_capabilities=version.required_capabilities,
-                required_pools=version.required_pools,
-            )
-        )
-
-        attempt_number = self.attempts.next_attempt_number(task.id)
-        attempt = ExecutionAttempt.create(
-            id=new_id("att"),
-            task_execution_id=task.id,
-            attempt_number=attempt_number,
-            agent_id=selection.agent_id,
-            agent_instance_id=selection.agent_instance_id,
-            runtime_version_id=version.runtime_version_id,
-            package_id=version.package_id,
-            now=now,
-        )
-        offer_expires_at = now + timedelta(seconds=60)
-        offer = ExecutionOffer.create(
-            id=new_id("off"),
-            execution_attempt_id=attempt.id,
-            agent_id=selection.agent_id,
-            agent_instance_id=selection.agent_instance_id,
-            requirements_snapshot={
-                "automation_version_id": version.automation_version_id,
-                "execution_id": execution.id,
-                "task_execution_id": task.id,
-                "runtime": {"id": version.runtime_id, "version": version.runtime_version},
-                "package": {"id": version.package_id, "sha256": version.package_sha256, "size_bytes": version.package_size_bytes},
-                "execution": {"mode": version.execution_mode, "timeout_seconds": version.timeout_seconds},
-                "resources": version.resources,
-                "required_capabilities": version.required_capabilities,
-                "required_pools": version.required_pools,
-                "exclusive_resources": version.exclusive_resources,
-                "selection_reason": selection.reason,
-            },
-            offered_at=now,
-            expires_at=offer_expires_at,
-            correlation_id=execution.correlation_id,
-        )
-        attempt = attempt.mark_offered(offer.id, now)
-        attempt_dto = self.attempts.add(_attempt_to_dto(attempt))
-        task_dto = self.tasks.save(replace(task_dto, current_attempt_number=attempt_number))
-        offer_dto = self.offers.add(_offer_to_dto(offer))
-
-        command_payload = _execution_offer_payload(offer_dto, task_dto, version, command.parameters)
-        command_record = self.commands.create(selection.agent_id, "execution.offer", command_payload, expires_at=offer_expires_at)
-
         self.outbox.append_event("execution.created", "execution", execution.id, {"execution_id": execution.id}, execution.correlation_id)
         self.outbox.append_event("task_execution.ready", "task_execution", task.id, {"task_execution_id": task.id}, execution.correlation_id)
         self.outbox.append_event("task_execution.queued", "task_execution", task.id, {"task_execution_id": task.id}, execution.correlation_id)
-        self.outbox.append_event("execution_attempt.created", "execution_attempt", attempt.id, {"execution_attempt_id": attempt.id}, execution.correlation_id)
-        self.outbox.append_event("execution_offer.created", "execution_offer", offer.id, {"execution_offer_id": offer.id, "command_id": command_record.id}, execution.correlation_id)
         _audit(self.audit, command.actor, "execution.created", "execution", execution.id, after={"automation_version_id": version.automation_version_id})
         if command.agent_id:
-            _audit(self.audit, command.actor, "execution.manual_agent_selected", "agent", command.agent_id, after={"execution_id": execution.id})
+            _audit(self.audit, command.actor, "execution.preferred_agent_requested", "agent", command.agent_id, after={"execution_id": execution.id})
 
         details = ExecutionDetailsDTO(
             execution=execution_dto,
             tasks=[task_dto],
-            attempts=[attempt_dto],
-            current_attempt=attempt_dto,
-            current_offer=offer_dto,
-            agent=self.agent_selection.get_agent_summary(selection.agent_id),
+            attempts=[],
+            current_attempt=None,
+            current_offer=None,
+            agent=self.agent_selection.get_agent_summary(command.agent_id) if command.agent_id else None,
             automation_version=version,
         )
         if command.idempotency_key:
@@ -379,6 +328,7 @@ class AcceptExecutionOffer:
                 _reservation_to_dto(
                     ResourceReservation.create(
                         id=new_id("res"),
+                        task_execution_id=attempt.task_execution_id,
                         execution_offer_id=saved_offer.id,
                         execution_attempt_id=attempt.id,
                         agent_id=agent_id,
@@ -589,6 +539,219 @@ class HandleExecutionStarted:
         )
 
 
+class HandleExecutionCompleted:
+    def __init__(
+        self,
+        executions: ExecutionRepository,
+        tasks: TaskExecutionRepository,
+        attempts: ExecutionAttemptRepository,
+        offers: ExecutionOfferRepository,
+        reservations: OfferReservationPort,
+        automation_versions: AutomationVersionReader,
+        outbox: OutboxPort,
+        transaction: TransactionManager,
+    ) -> None:
+        self.handler = _TerminalExecutionHandler(executions, tasks, attempts, offers, reservations, automation_versions, outbox, transaction)
+
+    def execute(self, *, attempt_id: str, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> ExecutionDetailsDTO:
+        return self.handler.execute("completed", attempt_id=attempt_id, agent_id=agent_id, agent_instance_id=agent_instance_id, payload=payload)
+
+
+class HandleExecutionFailed:
+    def __init__(
+        self,
+        executions: ExecutionRepository,
+        tasks: TaskExecutionRepository,
+        attempts: ExecutionAttemptRepository,
+        offers: ExecutionOfferRepository,
+        reservations: OfferReservationPort,
+        automation_versions: AutomationVersionReader,
+        outbox: OutboxPort,
+        transaction: TransactionManager,
+    ) -> None:
+        self.handler = _TerminalExecutionHandler(executions, tasks, attempts, offers, reservations, automation_versions, outbox, transaction)
+
+    def execute(self, *, attempt_id: str, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> ExecutionDetailsDTO:
+        return self.handler.execute("failed", attempt_id=attempt_id, agent_id=agent_id, agent_instance_id=agent_instance_id, payload=payload)
+
+
+class HandleExecutionCancelled:
+    def __init__(
+        self,
+        executions: ExecutionRepository,
+        tasks: TaskExecutionRepository,
+        attempts: ExecutionAttemptRepository,
+        offers: ExecutionOfferRepository,
+        reservations: OfferReservationPort,
+        automation_versions: AutomationVersionReader,
+        outbox: OutboxPort,
+        transaction: TransactionManager,
+    ) -> None:
+        self.handler = _TerminalExecutionHandler(executions, tasks, attempts, offers, reservations, automation_versions, outbox, transaction)
+
+    def execute(self, *, attempt_id: str, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> ExecutionDetailsDTO:
+        return self.handler.execute("cancelled", attempt_id=attempt_id, agent_id=agent_id, agent_instance_id=agent_instance_id, payload=payload)
+
+
+class HandleExecutionTimedOut:
+    def __init__(
+        self,
+        executions: ExecutionRepository,
+        tasks: TaskExecutionRepository,
+        attempts: ExecutionAttemptRepository,
+        offers: ExecutionOfferRepository,
+        reservations: OfferReservationPort,
+        automation_versions: AutomationVersionReader,
+        outbox: OutboxPort,
+        transaction: TransactionManager,
+    ) -> None:
+        self.handler = _TerminalExecutionHandler(executions, tasks, attempts, offers, reservations, automation_versions, outbox, transaction)
+
+    def execute(self, *, attempt_id: str, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> ExecutionDetailsDTO:
+        return self.handler.execute("timed_out", attempt_id=attempt_id, agent_id=agent_id, agent_instance_id=agent_instance_id, payload=payload)
+
+
+class _TerminalExecutionHandler:
+    TERMINAL_ATTEMPT_STATUS = {
+        "completed": ExecutionAttemptStatus.SUCCEEDED.value,
+        "failed": ExecutionAttemptStatus.FAILED.value,
+        "cancelled": ExecutionAttemptStatus.CANCELLED.value,
+        "timed_out": ExecutionAttemptStatus.TIMED_OUT.value,
+    }
+
+    def __init__(
+        self,
+        executions: ExecutionRepository,
+        tasks: TaskExecutionRepository,
+        attempts: ExecutionAttemptRepository,
+        offers: ExecutionOfferRepository,
+        reservations: OfferReservationPort,
+        automation_versions: AutomationVersionReader,
+        outbox: OutboxPort,
+        transaction: TransactionManager,
+    ) -> None:
+        self.executions = executions
+        self.tasks = tasks
+        self.attempts = attempts
+        self.offers = offers
+        self.reservations = reservations
+        self.automation_versions = automation_versions
+        self.outbox = outbox
+        self.transaction = transaction
+
+    def execute(self, terminal: str, *, attempt_id: str, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> ExecutionDetailsDTO:
+        attempt_dto = _require_attempt(self.attempts, attempt_id)
+        if attempt_dto.agent_id != agent_id or attempt_dto.agent_instance_id != agent_instance_id:
+            self.transaction.rollback()
+            raise ExecutionSecurityError("ExecutionAttempt belongs to another Agent or AgentInstance.")
+        task_dto = _require_task(self.tasks, attempt_dto.task_execution_id)
+        execution_dto = _require_execution(self.executions, task_dto.execution_id)
+        target_status = self.TERMINAL_ATTEMPT_STATUS[terminal]
+        if attempt_dto.status == target_status:
+            self.transaction.commit()
+            return self._details(execution_dto, task_dto, attempt_dto)
+        if attempt_dto.status in set(self.TERMINAL_ATTEMPT_STATUS.values()):
+            self.transaction.rollback()
+            raise ExecutionSecurityError("ExecutionAttempt is already terminal with a different status.")
+
+        now = parse_datetime(payload.get(f"{terminal}_at") or payload.get("completed_at") or payload.get("occurred_at"), utcnow())
+        attempt = _attempt_from_dto(attempt_dto)
+        task = _task_from_dto(task_dto)
+        execution = _execution_from_dto(execution_dto)
+        output = payload.get("output") if isinstance(payload.get("output"), dict) else payload.get("result") if isinstance(payload.get("result"), dict) else {}
+        result = payload.get("result") if isinstance(payload.get("result"), dict) else {"output": output}
+        exit_code = _int_or_none(payload.get("exit_code"))
+        resource_usage = payload.get("resource_usage") if isinstance(payload.get("resource_usage"), dict) else None
+
+        if terminal == "completed":
+            validation = _validate_output(output, self.automation_versions.get_published_snapshot(task_dto.automation_version_id))
+            result = {**result, "output_validation": validation}
+            if validation.get("valid") is False:
+                summary = validation.get("error") or "Output schema validation failed."
+                attempt_dto = self.attempts.save(
+                    _attempt_to_dto(
+                        attempt.mark_failed(
+                            code="OUTPUT_SCHEMA_INVALID",
+                            message=summary,
+                            result=result,
+                            exit_code=exit_code,
+                            resource_usage=resource_usage,
+                            now=now,
+                        )
+                    )
+                )
+                task_dto = self.tasks.save(_task_to_dto(task.mark_failed(summary=summary, result=result, now=now)))
+                execution_dto = self.executions.save(_execution_to_dto(execution.mark_failed(summary=summary, result=result, now=now)))
+                event_type = "execution.failed"
+            else:
+                attempt_dto = self.attempts.save(
+                    _attempt_to_dto(
+                        attempt.mark_succeeded(
+                            output=output,
+                            result=result,
+                            exit_code=exit_code,
+                            resource_usage=resource_usage,
+                            now=now,
+                        )
+                    )
+                )
+                task_dto = self.tasks.save(_task_to_dto(task.mark_succeeded(result=result, now=now)))
+                execution_dto = self.executions.save(_execution_to_dto(execution.mark_succeeded(result=result, now=now)))
+                event_type = "execution.completed"
+        elif terminal == "failed":
+            code = str(payload.get("error_code") or payload.get("code") or "EXECUTION_FAILED")
+            message = _failure_message(payload, "Execution failed.")
+            result = {**result, "error": {"code": code, "message": message, "details": payload.get("error_details") or payload.get("details") or {}}}
+            attempt_dto = self.attempts.save(_attempt_to_dto(attempt.mark_failed(code=code, message=message, result=result, exit_code=exit_code, resource_usage=resource_usage, now=now)))
+            retry = _terminal_retry_decision(task_dto, attempt_dto, reason="failed", error_code=code)
+            if retry.get("retry"):
+                available_at = now + timedelta(seconds=int(retry["delay_seconds"]))
+                task_dto = self.tasks.save(replace(task_dto, status=TaskExecutionStatus.READY.value, available_at=available_at, next_scheduling_attempt_at=available_at, last_scheduling_failure={"code": "RETRY_SCHEDULED", "source_attempt_id": attempt_dto.id, "error_code": code}))
+                execution_dto = self.executions.save(replace(execution_dto, status=ExecutionStatus.PENDING.value, failure_summary=None))
+                self.outbox.append_event("execution.retry_scheduled", "task_execution", task_dto.id, {"task_execution_id": task_dto.id, "source_attempt_id": attempt_dto.id, "available_at": available_at.isoformat()})
+            else:
+                task_dto = self.tasks.save(_task_to_dto(task.mark_failed(summary=message, result=result, now=now)))
+                execution_dto = self.executions.save(_execution_to_dto(execution.mark_failed(summary=message, result=result, now=now)))
+            event_type = "execution.failed"
+        elif terminal == "cancelled":
+            message = _failure_message(payload, "Execution cancelled.")
+            attempt_dto = self.attempts.save(_attempt_to_dto(attempt.mark_cancelled(code=str(payload.get("code") or "EXECUTION_CANCELLED"), message=message, now=now)))
+            task_dto = self.tasks.save(_task_to_dto(task.mark_cancelled(summary=message, now=now)))
+            execution_dto = self.executions.save(_execution_to_dto(execution.mark_cancelled(summary=message, now=now)))
+            event_type = "execution.cancelled"
+        else:
+            message = _failure_message(payload, "Execution timed out.")
+            code = str(payload.get("code") or "EXECUTION_TIMED_OUT")
+            attempt_dto = self.attempts.save(_attempt_to_dto(attempt.mark_timed_out(code=code, message=message, now=now)))
+            retry = _terminal_retry_decision(task_dto, attempt_dto, reason="timeout", error_code=code)
+            if retry.get("retry"):
+                available_at = now + timedelta(seconds=int(retry["delay_seconds"]))
+                task_dto = self.tasks.save(replace(task_dto, status=TaskExecutionStatus.READY.value, available_at=available_at, next_scheduling_attempt_at=available_at, last_scheduling_failure={"code": "RETRY_SCHEDULED", "source_attempt_id": attempt_dto.id, "error_code": code}))
+                execution_dto = self.executions.save(replace(execution_dto, status=ExecutionStatus.PENDING.value, failure_summary=None))
+                self.outbox.append_event("execution.retry_scheduled", "task_execution", task_dto.id, {"task_execution_id": task_dto.id, "source_attempt_id": attempt_dto.id, "available_at": available_at.isoformat()})
+            else:
+                task_dto = self.tasks.save(_task_to_dto(task.mark_timed_out(summary=message, now=now)))
+                execution_dto = self.executions.save(_execution_to_dto(execution.mark_timed_out(summary=message, now=now)))
+            event_type = "execution.timed_out"
+
+        if attempt_dto.offer_id:
+            self.reservations.release_for_offer(attempt_dto.offer_id, now)
+        self.outbox.append_event(event_type, "execution", execution_dto.id, {"execution_id": execution_dto.id, "execution_attempt_id": attempt_dto.id}, execution_dto.correlation_id)
+        self.transaction.commit()
+        return self._details(execution_dto, task_dto, attempt_dto)
+
+    def _details(self, execution_dto: ExecutionDTO, task_dto: TaskExecutionDTO, attempt_dto: ExecutionAttemptDTO) -> ExecutionDetailsDTO:
+        return ExecutionDetailsDTO(
+            execution=execution_dto,
+            tasks=[task_dto],
+            attempts=[attempt_dto],
+            current_attempt=attempt_dto,
+            current_offer=self.offers.current_for_attempt(attempt_dto.id),
+            agent=None,
+            automation_version=None,
+        )
+
+
 class CalculateExecutionStatus:
     def execute(self, task_statuses: list[str]) -> str:
         return calculate_execution_status([TaskExecutionStatus(status) for status in task_statuses]).value
@@ -622,6 +785,156 @@ def parse_datetime(value: Any, default: datetime) -> datetime:
         except ValueError:
             return default
     return default
+
+
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _failure_message(payload: dict[str, Any], default: str) -> str:
+    for key in ("error_message", "message", "reason", "summary"):
+        if payload.get(key):
+            return str(payload[key])
+    error = payload.get("error")
+    if isinstance(error, dict) and error.get("message"):
+        return str(error["message"])
+    return default
+
+
+def _terminal_retry_decision(task: TaskExecutionDTO, attempt: ExecutionAttemptDTO, *, reason: str, error_code: str | None) -> dict[str, Any]:
+    policy = task.retry_policy or {}
+    max_attempts = _positive_int(policy.get("max_attempts"), _positive_int(policy.get("max_retries"), 0) + 1)
+    if attempt.attempt_number >= max_attempts:
+        return {"retry": False, "reason": "max_attempts_reached"}
+    if reason == "timeout" and not bool(policy.get("retry_on_timeout", False)):
+        return {"retry": False, "reason": "retry_on_timeout_disabled"}
+    non_retryable = set(policy.get("non_retryable_error_codes") or [])
+    if error_code and error_code in non_retryable:
+        return {"retry": False, "reason": "non_retryable_error_code"}
+    retryable = set(policy.get("retryable_error_codes") or [])
+    if retryable and error_code and error_code not in retryable and reason != "timeout":
+        return {"retry": False, "reason": "error_code_not_retryable"}
+    initial = _positive_int(policy.get("initial_delay_seconds"), 5)
+    max_delay = _positive_int(policy.get("max_delay_seconds"), 300)
+    multiplier = policy.get("backoff_multiplier") if isinstance(policy.get("backoff_multiplier"), (int, float)) else 2
+    delay = min(max_delay, int(initial * (float(multiplier) ** max(attempt.attempt_number - 1, 0))))
+    return {"retry": True, "delay_seconds": delay}
+
+
+def _positive_int(value: Any, default: int) -> int:
+    try:
+        candidate = int(value)
+    except (TypeError, ValueError):
+        return default
+    return candidate if candidate > 0 else default
+
+
+def _validate_output(output: dict[str, Any], version: AutomationVersionSnapshotDTO | None) -> dict[str, Any]:
+    schema = None
+    if version and isinstance(version.manifest, dict):
+        if isinstance(version.manifest.get("output_schema"), dict):
+            schema = version.manifest["output_schema"]
+        schemas = version.manifest.get("schemas")
+        if schema is None and isinstance(schemas, dict) and isinstance(schemas.get("output"), dict):
+            schema = schemas["output"]
+    if schema is None:
+        return {"validated": False, "valid": True, "reason": "no_inline_output_schema"}
+    error = _validate_simple_json_schema(output, schema)
+    if error:
+        return {"validated": True, "valid": False, "error": error}
+    return {"validated": True, "valid": True}
+
+
+def _validate_simple_json_schema(value: dict[str, Any], schema: dict[str, Any]) -> str | None:
+    expected_type = schema.get("type")
+    if expected_type and expected_type != "object":
+        return "Only inline object output schemas are supported in this execution path."
+    if not isinstance(value, dict):
+        return "Output must be an object."
+    required = schema.get("required") or []
+    for field in required:
+        if field not in value:
+            return f"Output is missing required field: {field}."
+    properties = schema.get("properties") or {}
+    for field, field_schema in properties.items():
+        if field not in value or not isinstance(field_schema, dict):
+            continue
+        error = _validate_simple_json_field(field, value[field], field_schema)
+        if error:
+            return error
+    return None
+
+
+def _validate_simple_json_field(field: str, value: Any, schema: dict[str, Any]) -> str | None:
+    expected = schema.get("type")
+    if expected is None:
+        return None
+    if expected == "string" and not isinstance(value, str):
+        return f"Output field {field} must be string."
+    if expected == "number" and (isinstance(value, bool) or not isinstance(value, (int, float))):
+        return f"Output field {field} must be number."
+    if expected == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
+        return f"Output field {field} must be integer."
+    if expected == "boolean" and not isinstance(value, bool):
+        return f"Output field {field} must be boolean."
+    if expected == "object" and not isinstance(value, dict):
+        return f"Output field {field} must be object."
+    if expected == "array" and not isinstance(value, list):
+        return f"Output field {field} must be array."
+    return None
+
+
+def _requirements_snapshot(version: AutomationVersionSnapshotDTO, execution_id: str, priority: int, preferred_agent_id: str | None) -> dict[str, Any]:
+    return {
+        "automation_version_id": version.automation_version_id,
+        "runtime_version_id": version.runtime_version_id,
+        "package_id": version.package_id,
+        "execution_id": execution_id,
+        "execution_mode": version.execution_mode,
+        "required_capabilities": version.required_capabilities,
+        "resource_requirements": version.resources,
+        "exclusive_resources": version.exclusive_resources,
+        "timeout_policy": version.timeout_policy or _default_timeout_policy(version.timeout_seconds),
+        "retry_policy": version.retry_policy or _default_retry_policy(),
+        "priority": priority,
+        "preferred_agent_id": preferred_agent_id,
+        "runtime": {"id": version.runtime_id, "version": version.runtime_version},
+        "package": {"id": version.package_id, "sha256": version.package_sha256, "size_bytes": version.package_size_bytes},
+        "required_pools": version.required_pools,
+        "manifest_content_hash": version.manifest.get("content_hash") if isinstance(version.manifest, dict) else None,
+    }
+
+
+def _default_retry_policy() -> dict[str, Any]:
+    return {
+        "max_attempts": 1,
+        "initial_delay_seconds": 5,
+        "max_delay_seconds": 300,
+        "backoff_multiplier": 2,
+        "retryable_error_codes": [],
+        "non_retryable_error_codes": [],
+        "retry_on_lost": True,
+        "retry_on_timeout": False,
+        "retry_on_agent_rejection": True,
+    }
+
+
+def _default_timeout_policy(timeout_seconds: int) -> dict[str, Any]:
+    return {
+        "queue_timeout_seconds": 300,
+        "offer_timeout_seconds": 60,
+        "preparation_timeout_seconds": 300,
+        "execution_timeout_seconds": timeout_seconds,
+        "graceful_cancel_seconds": 30,
+        "force_cancel_seconds": 120,
+        "lease_duration_seconds": 600,
+        "lease_grace_seconds": 60,
+    }
 
 
 def _execution_offer_payload(offer: ExecutionOfferDTO, task: TaskExecutionDTO, version, parameters: dict[str, Any]) -> dict[str, Any]:
@@ -745,6 +1058,12 @@ def _task_to_dto(task: TaskExecution) -> TaskExecutionDTO:
         completed_at=task.completed_at,
         current_attempt_number=task.current_attempt_number,
         failure_summary=task.failure_summary,
+        requirements_snapshot=task.requirements_snapshot,
+        available_at=task.available_at,
+        scheduling_attempts=task.scheduling_attempts,
+        last_scheduling_attempt_at=task.last_scheduling_attempt_at,
+        next_scheduling_attempt_at=task.next_scheduling_attempt_at,
+        last_scheduling_failure=task.last_scheduling_failure,
     )
 
 
@@ -767,6 +1086,12 @@ def _task_from_dto(dto: TaskExecutionDTO) -> TaskExecution:
         completed_at=dto.completed_at,
         current_attempt_number=dto.current_attempt_number,
         failure_summary=dto.failure_summary,
+        requirements_snapshot=dto.requirements_snapshot,
+        available_at=dto.available_at,
+        scheduling_attempts=dto.scheduling_attempts,
+        last_scheduling_attempt_at=dto.last_scheduling_attempt_at,
+        next_scheduling_attempt_at=dto.next_scheduling_attempt_at,
+        last_scheduling_failure=dto.last_scheduling_failure,
     )
 
 
@@ -790,6 +1115,10 @@ def _attempt_to_dto(attempt: ExecutionAttempt) -> ExecutionAttemptDTO:
         completed_at=attempt.completed_at,
         error_code=attempt.error_code,
         error_message=attempt.error_message,
+        exit_code=attempt.exit_code,
+        output=attempt.output,
+        result=attempt.result,
+        resource_usage=attempt.resource_usage,
     )
 
 
@@ -813,6 +1142,10 @@ def _attempt_from_dto(dto: ExecutionAttemptDTO) -> ExecutionAttempt:
         completed_at=dto.completed_at,
         error_code=dto.error_code,
         error_message=dto.error_message,
+        exit_code=dto.exit_code,
+        output=dto.output,
+        result=dto.result,
+        resource_usage=dto.resource_usage,
     )
 
 
@@ -870,4 +1203,9 @@ def _reservation_to_dto(reservation: ResourceReservation) -> ResourceReservation
         created_at=reservation.created_at,
         released_at=reservation.released_at,
         converted_at=reservation.converted_at,
+        task_execution_id=reservation.task_execution_id,
+        units=reservation.units,
+        reserved_at=reservation.reserved_at,
+        activated_at=reservation.activated_at,
+        release_reason=reservation.release_reason,
     )

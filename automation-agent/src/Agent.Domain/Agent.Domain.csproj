@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Biason.AutomationAgent.Domain</RootNamespace>
+    <AssemblyName>Agent.Domain</AssemblyName>
+  </PropertyGroup>
+</Project>

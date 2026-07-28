@@ -16,11 +16,28 @@ export type StatusMeta = { label: string; tone: Tone; icon: LucideIcon; dot: str
 /** Job / execution lifecycle statuses. */
 export const JOB_STATUS: Record<string, StatusMeta> = {
   pending: { label: "Pendente", tone: "neutral", icon: CircleDashed, dot: "bg-muted-foreground" },
+  created: { label: "Criada", tone: "neutral", icon: CircleDashed, dot: "bg-muted-foreground" },
+  ready: { label: "Pronta", tone: "warning", icon: Clock, dot: "bg-warning" },
   queued: { label: "Na fila", tone: "warning", icon: Clock, dot: "bg-warning" },
+  offered: { label: "Ofertada", tone: "warning", icon: Clock, dot: "bg-warning" },
+  accepted: { label: "Aceita", tone: "info", icon: CheckCircle2, dot: "bg-info" },
+  committed: { label: "Commit", tone: "info", icon: Loader, dot: "bg-info" },
+  preparing: { label: "Preparando", tone: "info", icon: Loader, dot: "bg-info" },
   running: { label: "Executando", tone: "info", icon: Loader, dot: "bg-info" },
+  cancelling: { label: "Cancelando", tone: "warning", icon: Clock, dot: "bg-warning" },
+  cancel_requested: { label: "Cancelamento solicitado", tone: "warning", icon: Clock, dot: "bg-warning" },
   success: { label: "Sucesso", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  succeeded: { label: "Sucesso", tone: "success", icon: CheckCircle2, dot: "bg-success" },
   failed: { label: "Falha", tone: "destructive", icon: XCircle, dot: "bg-destructive" },
+  rejected: { label: "Rejeitada", tone: "warning", icon: Ban, dot: "bg-warning" },
+  expired: { label: "Expirada", tone: "warning", icon: Clock, dot: "bg-warning" },
+  lost: { label: "Perdida", tone: "destructive", icon: XCircle, dot: "bg-destructive" },
   cancelled: { label: "Cancelado", tone: "neutral", icon: Ban, dot: "bg-muted-foreground" },
+  timed_out: { label: "Timeout", tone: "warning", icon: Clock, dot: "bg-warning" },
+  active: { label: "Ativo", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  suspect: { label: "Suspeito", tone: "warning", icon: Clock, dot: "bg-warning" },
+  revoked: { label: "Revogado", tone: "neutral", icon: Ban, dot: "bg-muted-foreground" },
+  completed: { label: "Concluido", tone: "success", icon: CheckCircle2, dot: "bg-success" },
 };
 
 export function jobStatusMeta(status?: string | null): StatusMeta {

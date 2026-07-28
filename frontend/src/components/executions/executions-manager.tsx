@@ -37,28 +37,30 @@ export function ExecutionsManager() {
 
   const list = executions.data ?? [];
   const counts = {
-    active: list.filter((execution) => ["pending", "queued", "running"].includes(execution.execution_status)).length,
-    running: list.filter((execution) => execution.execution_status === "running").length,
-    success: list.filter((execution) => execution.execution_status === "success").length,
-    failed: list.filter((execution) => execution.execution_status === "failed").length,
+    active: list.filter((execution) => ["created", "pending", "queued", "running"].includes(executionStatus(execution))).length,
+    running: list.filter((execution) => executionStatus(execution) === "running").length,
+    success: list.filter((execution) => ["success", "succeeded"].includes(executionStatus(execution))).length,
+    failed: list.filter((execution) => ["failed", "timed_out"].includes(executionStatus(execution))).length,
     all: list.length,
   };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const byFilter = (execution: Execution) => {
+      const status = executionStatus(execution);
       if (filter === "all") return true;
-      if (filter === "active") return ["pending", "queued", "running"].includes(execution.execution_status);
-      return execution.execution_status === filter;
+      if (filter === "active") return ["created", "pending", "queued", "running"].includes(status);
+      if (filter === "success") return ["success", "succeeded"].includes(status);
+      return status === filter;
     };
     const byQuery = (execution: Execution) => {
       if (!q) return true;
       return [
         String(execution.id),
-        String(execution.job_id),
-        execution.execution_status,
-        execution.result_summary ?? "",
-        execution.worker_id ? String(execution.worker_id) : "",
+        String(executionJobId(execution) ?? ""),
+        executionStatus(execution),
+        executionSummary(execution),
+        executionWorkerId(execution) ? String(executionWorkerId(execution)) : "",
       ].some((value) => value.toLowerCase().includes(q));
     };
     return [...list].filter((execution) => byFilter(execution) && byQuery(execution));
@@ -71,7 +73,7 @@ export function ExecutionsManager() {
     return <EmptyState icon={History} title="Sem execuções" description="Nenhuma execução registrada ainda." />;
   }
 
-  const lastFinished = list.find((execution) => execution.finished_at);
+  const lastFinished = list.find((execution) => executionFinishedAt(execution));
 
   return (
     <div className="space-y-5">
@@ -82,7 +84,7 @@ export function ExecutionsManager() {
         <ExecutionMetric
           icon={Timer}
           label="Última duração"
-          value={lastFinished ? durationBetween(lastFinished.started_at, lastFinished.finished_at) : "—"}
+          value={lastFinished ? durationBetween(lastFinished.started_at, executionFinishedAt(lastFinished)) : "—"}
           hint={lastFinished ? `Execução #${lastFinished.id}` : "Sem histórico concluído"}
         />
       </div>
@@ -136,21 +138,25 @@ export function ExecutionsManager() {
                     </Link>
                   </TD>
                   <TD>
-                    <Link href={`/jobs/${execution.job_id}`} className="tabular text-sm text-muted-foreground hover:text-primary">
-                      #{execution.job_id}
-                    </Link>
+                    {executionJobId(execution) ? (
+                      <Link href={`/jobs/${executionJobId(execution)}`} className="tabular text-sm text-muted-foreground hover:text-primary">
+                        #{executionJobId(execution)}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
                   </TD>
                   <TD>
-                    <StatusBadge status={execution.execution_status} />
+                    <StatusBadge status={executionStatus(execution)} />
                   </TD>
                   <TD className="tabular text-sm text-muted-foreground">
-                    {execution.worker_id ? `#${execution.worker_id}` : "aguardando"}
+                    {executionWorkerId(execution) ? `#${executionWorkerId(execution)}` : "aguardando"}
                   </TD>
-                  <TD className="tabular text-sm">{durationBetween(execution.started_at, execution.finished_at)}</TD>
+                  <TD className="tabular text-sm">{durationBetween(execution.started_at, executionFinishedAt(execution))}</TD>
                   <TD className="tabular text-sm">{formatDateTime(execution.started_at)}</TD>
-                  <TD className="tabular text-sm">{formatDateTime(execution.finished_at)}</TD>
+                  <TD className="tabular text-sm">{formatDateTime(executionFinishedAt(execution))}</TD>
                   <TD className="max-w-[320px] truncate text-sm text-muted-foreground">
-                    {execution.result_summary ?? "—"}
+                    {executionSummary(execution) || "—"}
                   </TD>
                 </TR>
               ))}
@@ -183,6 +189,27 @@ function ExecutionMetric({
       <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>
     </div>
   );
+}
+
+function executionStatus(execution: Execution): string {
+  return execution.execution_status ?? execution.status ?? "pending";
+}
+
+function executionJobId(execution: Execution): number | null {
+  return execution.job_id ?? execution.legacy_job_id ?? null;
+}
+
+function executionWorkerId(execution: Execution): number | null {
+  const workerId = execution.worker_id;
+  return typeof workerId === "number" ? workerId : null;
+}
+
+function executionFinishedAt(execution: Execution): string | null {
+  return execution.finished_at ?? execution.completed_at ?? null;
+}
+
+function executionSummary(execution: Execution): string {
+  return execution.result_summary ?? execution.failure_summary ?? "";
 }
 
 function durationBetween(start?: string | null, end?: string | null): string {

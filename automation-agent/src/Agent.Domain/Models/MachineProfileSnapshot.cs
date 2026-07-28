@@ -1,0 +1,17 @@
+using Biason.AutomationAgent.Domain.Enums;
+
+namespace Biason.AutomationAgent.Domain.Models;
+
+public sealed class MachineProfileSnapshot
+{
+    public long Id { get; init; }
+    public DateTime CapturedAtUtc { get; init; }
+    public OsInfo Os { get; init; } = default!;
+    public CpuInfo Cpu { get; init; } = default!;
+    public MemoryInfo Memory { get; init; } = default!;
+    public DiskInfo Disk { get; init; } = default!;
+    public SessionInfo Session { get; init; } = default!;
+    public IReadOnlyList<InstalledSoftware> Software { get; init; } = Array.Empty<InstalledSoftware>();
+    public IReadOnlyList<Capability> Capabilities { get; init; } = Array.Empty<Capability>();
+    public MachineProfileType ProfileType { get; init; }
+}

@@ -83,6 +83,6 @@ def test_resource_reservation_can_convert_or_release() -> None:
         now=now,
     )
 
-    assert reservation.status == ResourceReservationStatus.RESERVED
-    assert reservation.convert_to_usage(now).status == ResourceReservationStatus.CONVERTED
+    assert reservation.status == ResourceReservationStatus.PENDING
+    assert reservation.convert_to_usage(now).status == ResourceReservationStatus.ACTIVE
     assert reservation.release(now).status == ResourceReservationStatus.RELEASED

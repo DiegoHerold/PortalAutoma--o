@@ -574,14 +574,14 @@ class SqlAlchemyAgentCommandRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def create(self, agent_id: str, message_type: str, payload: dict[str, Any], expires_at: datetime | None = None) -> AgentCommandDTO:
+    def create(self, agent_id: str, message_type: str, payload: dict[str, Any], expires_at: datetime | None = None, agent_instance_id: str | None = None) -> AgentCommandDTO:
         self.db.scalar(select(AgentRecord).where(AgentRecord.id == agent_id).with_for_update())
         current_sequence = self.db.scalar(select(func.max(AgentCommandRecord.command_sequence)).where(AgentCommandRecord.agent_id == agent_id)) or 0
         now = datetime.utcnow()
         row = AgentCommandRecord(
             id=f"cmd_{uuid4().hex}",
             agent_id=agent_id,
-            agent_instance_id=None,
+            agent_instance_id=agent_instance_id,
             command_sequence=current_sequence + 1,
             message_type=message_type,
             payload=payload,

@@ -6,7 +6,6 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models.worker import Worker
-from app.repositories.job_repository import JobRepository
 from app.repositories.worker_repository import WorkerRepository
 from app.schemas.worker import WorkerCreate, WorkerRead, WorkerUpdate
 from app.services.permission_service import PermissionService
@@ -29,7 +28,6 @@ class WorkerService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.workers = WorkerRepository(db)
-        self.jobs = JobRepository(db)
         self.permissions = PermissionService(db)
         self.fleet = build_fleet_adapters(db)
 
@@ -164,8 +162,8 @@ class WorkerService:
             self.db.flush()
             worker_id = saved.worker_id
             agent = saved
-        active_jobs = self.jobs.count_running_by_worker(worker_id) if worker_id is not None else 0
         pools_total = sum((pool.get("effective_total") or 0) for pool in agent.pools.values())
+        pools_used = sum((pool.get("used") or 0) for pool in agent.pools.values())
         return WorkerRead(
             id=worker_id or 0,
             name=agent.name,
@@ -202,7 +200,7 @@ class WorkerService:
             max_concurrency=max(1, pools_total or self._legacy_worker_max(agent.worker_id)),
             last_heartbeat_at=agent.last_seen_at,
             is_active=agent.enabled and agent.administrative_status != "disabled",
-            active_jobs=active_jobs,
+            active_jobs=pools_used,
         )
 
     def _legacy_worker_max(self, worker_id: int | None) -> int:

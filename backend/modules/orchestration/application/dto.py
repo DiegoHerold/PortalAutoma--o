@@ -35,6 +35,8 @@ class AutomationVersionSnapshotDTO:
     required_capabilities: list[dict[str, Any]]
     required_pools: list[str]
     exclusive_resources: list[str]
+    retry_policy: dict[str, Any] = field(default_factory=dict)
+    timeout_policy: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,12 @@ class TaskExecutionDTO:
     completed_at: datetime | None = None
     current_attempt_number: int = 0
     failure_summary: str | None = None
+    requirements_snapshot: dict[str, Any] = field(default_factory=dict)
+    available_at: datetime | None = None
+    scheduling_attempts: int = 0
+    last_scheduling_attempt_at: datetime | None = None
+    next_scheduling_attempt_at: datetime | None = None
+    last_scheduling_failure: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +105,10 @@ class ExecutionAttemptDTO:
     completed_at: datetime | None = None
     error_code: str | None = None
     error_message: str | None = None
+    exit_code: int | None = None
+    output: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    resource_usage: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -121,7 +133,7 @@ class ExecutionOfferDTO:
 @dataclass(frozen=True)
 class ResourceReservationDTO:
     id: str
-    execution_offer_id: str
+    execution_offer_id: str | None
     execution_attempt_id: str
     agent_id: str
     agent_instance_id: str
@@ -132,6 +144,11 @@ class ResourceReservationDTO:
     created_at: datetime
     released_at: datetime | None = None
     converted_at: datetime | None = None
+    task_execution_id: str | None = None
+    units: int | None = None
+    reserved_at: datetime | None = None
+    activated_at: datetime | None = None
+    release_reason: str | None = None
 
 
 @dataclass(frozen=True)

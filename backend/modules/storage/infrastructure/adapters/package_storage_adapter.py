@@ -42,3 +42,12 @@ class ApiTemporaryUrlProvider:
 
     def create_upload_url(self, upload_session, expires_in_seconds: int = 900) -> str:
         return f"{self.api_v1_prefix}/package-uploads/{upload_session.id}/bytes"
+
+
+class ApiArtifactTemporaryUrlProvider:
+    def __init__(self, backend_public_url: str, api_v1_prefix: str) -> None:
+        self.backend_public_url = backend_public_url.rstrip("/")
+        self.api_v1_prefix = api_v1_prefix.rstrip("/")
+
+    def create_upload_url(self, upload_session, expires_in_seconds: int = 900) -> str:
+        return f"{self.backend_public_url}{self.api_v1_prefix}/artifacts/uploads/{upload_session.id}/bytes"

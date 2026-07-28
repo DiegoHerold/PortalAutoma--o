@@ -1,32 +1,35 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
 from typing import Any
 
-
-class ExecutionEventType(StrEnum):
-    EXECUTION_STARTED = "execution.started"
-    EXECUTION_COMPLETED = "execution.completed"
-    EXECUTION_FAILED = "execution.failed"
-    EXECUTION_CANCELLED = "execution.cancelled"
-    EXECUTION_TIMED_OUT = "execution.timed_out"
-    LOG = "log"
-    WARNING = "warning"
-    ERROR = "error"
-    METRIC = "metric"
-    ARTIFACT_CREATED = "artifact.created"
-    ARTIFACT_AVAILABLE = "artifact.available"
-    DIAGNOSTIC = "diagnostic"
+from modules.telemetry.domain.states import ExecutionEventType, ExecutionLogLevel
 
 
 @dataclass(frozen=True)
 class ExecutionEvent:
     id: str
+    execution_id: str
+    task_execution_id: str
     execution_attempt_id: str
+    agent_id: str
+    agent_instance_id: str
     event_sequence: int
     event_type: ExecutionEventType
+    level: ExecutionLogLevel | None
+    message: str | None
     occurred_at: datetime
-    payload: dict[str, Any]
+    received_at: datetime
+    payload: dict[str, Any] = field(default_factory=dict)
+    message_id: str | None = None
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.event_sequence <= 0:
+            raise ValueError("ExecutionEvent event_sequence must be positive.")
+        if not self.execution_id or not self.task_execution_id or not self.execution_attempt_id:
+            raise ValueError("ExecutionEvent requires execution, task and attempt identifiers.")
+        if not self.agent_id or not self.agent_instance_id:
+            raise ValueError("ExecutionEvent requires Agent and AgentInstance identifiers.")

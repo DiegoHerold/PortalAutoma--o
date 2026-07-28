@@ -69,6 +69,31 @@ class Execution:
             return self
         return self._transition(ExecutionStatus.RUNNING, started_at=self.started_at or now)
 
+    def mark_cancelling(self, now: datetime) -> "Execution":
+        if self.status == ExecutionStatus.CANCELLING:
+            return self
+        return self._transition(ExecutionStatus.CANCELLING, started_at=self.started_at or now)
+
+    def mark_succeeded(self, *, result: dict[str, Any] | None, now: datetime) -> "Execution":
+        if self.status == ExecutionStatus.SUCCEEDED:
+            return self
+        return self._transition(ExecutionStatus.SUCCEEDED, result=result, completed_at=self.completed_at or now)
+
+    def mark_failed(self, *, summary: str | None, result: dict[str, Any] | None, now: datetime) -> "Execution":
+        if self.status == ExecutionStatus.FAILED:
+            return self
+        return self._transition(ExecutionStatus.FAILED, result=result, failure_summary=summary, completed_at=self.completed_at or now)
+
+    def mark_cancelled(self, *, summary: str | None, now: datetime) -> "Execution":
+        if self.status == ExecutionStatus.CANCELLED:
+            return self
+        return self._transition(ExecutionStatus.CANCELLED, failure_summary=summary, completed_at=self.completed_at or now)
+
+    def mark_timed_out(self, *, summary: str | None, now: datetime) -> "Execution":
+        if self.status == ExecutionStatus.TIMED_OUT:
+            return self
+        return self._transition(ExecutionStatus.TIMED_OUT, failure_summary=summary, completed_at=self.completed_at or now)
+
     def _transition(self, status: ExecutionStatus, **changes: Any) -> "Execution":
         if status not in EXECUTION_TRANSITIONS.get(self.status, set()):
             raise InvalidExecutionTransition(f"Execution cannot transition from {self.status} to {status}.")

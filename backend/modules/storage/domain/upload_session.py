@@ -29,5 +29,5 @@ class UploadSession:
     aborted_at: datetime | None = None
 
     def __post_init__(self) -> None:
-        if self.expected_size_bytes is not None and self.expected_size_bytes <= 0:
-            raise ValueError("UploadSession expected_size_bytes must be positive.")
+        if self.expected_size_bytes is not None and self.expected_size_bytes < 0:
+            raise ValueError("UploadSession expected_size_bytes cannot be negative.")

@@ -244,6 +244,12 @@ def _task_to_dto(row: TaskExecutionRecord) -> TaskExecutionDTO:
         completed_at=row.completed_at,
         current_attempt_number=row.current_attempt_number,
         failure_summary=row.failure_summary,
+        requirements_snapshot=row.requirements_snapshot or {},
+        available_at=row.available_at,
+        scheduling_attempts=row.scheduling_attempts or 0,
+        last_scheduling_attempt_at=row.last_scheduling_attempt_at,
+        next_scheduling_attempt_at=row.next_scheduling_attempt_at,
+        last_scheduling_failure=row.last_scheduling_failure,
     )
 
 
@@ -267,4 +273,8 @@ def _attempt_to_dto(row: ExecutionAttemptRecord) -> ExecutionAttemptDTO:
         completed_at=row.completed_at,
         error_code=row.error_code,
         error_message=row.error_message,
+        exit_code=row.exit_code,
+        output=row.output,
+        result=row.result,
+        resource_usage=row.resource_usage,
     )

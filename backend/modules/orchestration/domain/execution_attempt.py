@@ -28,6 +28,10 @@ class ExecutionAttempt:
     completed_at: datetime | None = None
     error_code: str | None = None
     error_message: str | None = None
+    exit_code: int | None = None
+    output: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    resource_usage: dict[str, Any] | None = None
 
     @classmethod
     def create(
@@ -68,10 +72,10 @@ class ExecutionAttempt:
         return self._transition(ExecutionAttemptStatus.ACCEPTED, accepted_at=self.accepted_at or now)
 
     def mark_rejected(self, code: str, message: str | None, now: datetime) -> "ExecutionAttempt":
-        return self._transition(ExecutionAttemptStatus.REJECTED, error_code=code, error_message=message)
+        return self._transition(ExecutionAttemptStatus.REJECTED, error_code=code, error_message=message, completed_at=self.completed_at or now)
 
     def mark_expired(self, now: datetime) -> "ExecutionAttempt":
-        return self._transition(ExecutionAttemptStatus.EXPIRED, error_code="OFFER_EXPIRED")
+        return self._transition(ExecutionAttemptStatus.EXPIRED, error_code="OFFER_EXPIRED", completed_at=self.completed_at or now)
 
     def mark_committed(self, now: datetime) -> "ExecutionAttempt":
         if self.status == ExecutionAttemptStatus.COMMITTED:
@@ -94,6 +98,72 @@ class ExecutionAttempt:
                 started_at=self.started_at or now,
             )
         return self._transition(ExecutionAttemptStatus.RUNNING, started_at=self.started_at or now)
+
+    def mark_cancel_requested(self, *, code: str | None, message: str | None, now: datetime) -> "ExecutionAttempt":
+        if self.status == ExecutionAttemptStatus.CANCEL_REQUESTED:
+            return self
+        return self._transition(
+            ExecutionAttemptStatus.CANCEL_REQUESTED,
+            error_code=code,
+            error_message=message,
+        )
+
+    def mark_lost(self, *, code: str | None, message: str | None, now: datetime) -> "ExecutionAttempt":
+        if self.status == ExecutionAttemptStatus.LOST:
+            return self
+        return self._transition(
+            ExecutionAttemptStatus.LOST,
+            completed_at=self.completed_at or now,
+            error_code=code,
+            error_message=message,
+        )
+
+    def mark_succeeded(self, *, output: dict[str, Any] | None, result: dict[str, Any] | None, exit_code: int | None, resource_usage: dict[str, Any] | None, now: datetime) -> "ExecutionAttempt":
+        if self.status == ExecutionAttemptStatus.SUCCEEDED:
+            return self
+        return self._transition(
+            ExecutionAttemptStatus.SUCCEEDED,
+            completed_at=self.completed_at or now,
+            output=output,
+            result=result,
+            exit_code=exit_code,
+            resource_usage=resource_usage,
+            error_code=None,
+            error_message=None,
+        )
+
+    def mark_failed(self, *, code: str | None, message: str | None, result: dict[str, Any] | None, exit_code: int | None, resource_usage: dict[str, Any] | None, now: datetime) -> "ExecutionAttempt":
+        if self.status == ExecutionAttemptStatus.FAILED:
+            return self
+        return self._transition(
+            ExecutionAttemptStatus.FAILED,
+            completed_at=self.completed_at or now,
+            error_code=code,
+            error_message=message,
+            result=result,
+            exit_code=exit_code,
+            resource_usage=resource_usage,
+        )
+
+    def mark_cancelled(self, *, code: str | None, message: str | None, now: datetime) -> "ExecutionAttempt":
+        if self.status == ExecutionAttemptStatus.CANCELLED:
+            return self
+        return self._transition(
+            ExecutionAttemptStatus.CANCELLED,
+            completed_at=self.completed_at or now,
+            error_code=code,
+            error_message=message,
+        )
+
+    def mark_timed_out(self, *, code: str | None, message: str | None, now: datetime) -> "ExecutionAttempt":
+        if self.status == ExecutionAttemptStatus.TIMED_OUT:
+            return self
+        return self._transition(
+            ExecutionAttemptStatus.TIMED_OUT,
+            completed_at=self.completed_at or now,
+            error_code=code,
+            error_message=message,
+        )
 
     def _transition(self, status: ExecutionAttemptStatus, **changes: Any) -> "ExecutionAttempt":
         if status not in EXECUTION_ATTEMPT_TRANSITIONS.get(self.status, set()):

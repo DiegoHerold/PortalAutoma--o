@@ -36,9 +36,10 @@ def envelope(agent_id: str, agent_instance_id: str, message_type: str, payload: 
     }
 
 
-def prepare_published_automation_version() -> tuple[int, int]:
+def prepare_published_automation_version() -> tuple[int, int, str]:
     now = datetime.utcnow()
     marker = uuid4().hex[:12]
+    capability_key = f"smoke.execution.{marker}"
     runtime_key = "python-desktop"
     runtime_version = "3.13"
     package_sha = hashlib.sha256(marker.encode("utf-8")).hexdigest()
@@ -55,7 +56,7 @@ def prepare_published_automation_version() -> tuple[int, int]:
         "entrypoint": {"type": "python-function", "module": "application.main", "function": "run"},
         "execution": {"mode": "background", "timeout_seconds": 300, "graceful_cancellation_seconds": 30},
         "resources": {"cpu_units": 1, "memory_mb": 256, "disk_mb": 100},
-        "capabilities": {"required": []},
+        "capabilities": {"required": [{"key": capability_key}]},
         "exclusive_resources": [],
         "schemas": {"input": None, "output": None},
     }
@@ -192,7 +193,7 @@ def prepare_published_automation_version() -> tuple[int, int]:
         version.runtime_version_id = runtime_row.id
         db.add(version)
         db.commit()
-        return version.id, automation.id
+        return version.id, automation.id, capability_key
 
 
 async def recv_type(ws, message_type: str, timeout: int = 8) -> dict:
@@ -218,8 +219,33 @@ async def create_execution(client: httpx.AsyncClient, headers: dict[str, str], v
     return response.json()
 
 
+async def advertise_capability(ws, agent_id: str, agent_instance_id: str, capability_key: str) -> None:
+    await ws.send(
+        json.dumps(
+            envelope(
+                agent_id,
+                agent_instance_id,
+                "agent.capabilities.updated",
+                {
+                    "capabilities": [
+                        {
+                            "key": capability_key,
+                            "status": "available",
+                            "version": "1.0.0",
+                            "attributes": {},
+                            "source": "smoke",
+                            "observed_at": datetime.now(UTC).isoformat(),
+                        }
+                    ]
+                },
+            )
+        )
+    )
+    assert (await recv_type(ws, "portal.ack"))["payload"]["result"][0]["key"] == capability_key
+
+
 async def main() -> None:
-    version_id, automation_id = prepare_published_automation_version()
+    version_id, automation_id, capability_key = prepare_published_automation_version()
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=20) as client:
         login = await client.post("/auth/login", json={"email": "admin@portal.local", "password": "admin123"})
         login.raise_for_status()
@@ -283,7 +309,7 @@ async def main() -> None:
                             },
                             "pools": {
                                 "interactive": {"total": 1, "used": 0, "reserved": 0},
-                                "background": {"total": 2, "used": 0, "reserved": 0},
+                                "background": {"total": 1, "used": 0, "reserved": 0},
                                 "browser": {"total": 1, "used": 0, "reserved": 0},
                             },
                         },
@@ -292,6 +318,7 @@ async def main() -> None:
             )
             heartbeat_ack = await recv_type(ws, "portal.ack")
             assert heartbeat_ack["payload"]["result"]["ok"] is True
+            await advertise_capability(ws, agent_id, agent_instance_id, capability_key)
 
             first = await create_execution(client, admin_headers, version_id, agent_id)
             assert first["execution"]["status"] == "pending"
@@ -373,71 +400,141 @@ async def main() -> None:
             attempts_response.raise_for_status()
             assert attempts_response.json()[0]["status"] == "running"
 
-            second = await create_execution(client, admin_headers, version_id, agent_id)
-            rejected_offer_message = await recv_type(ws, "execution.offer")
-            rejected_offer = rejected_offer_message["payload"]
-            await ws.send(
-                json.dumps(
-                    envelope(
-                        agent_id,
-                        agent_instance_id,
-                        "execution.rejected",
+            second_token_response = await client.post("/agents/registration-tokens", headers=admin_headers, json={"expires_in_seconds": 600})
+            second_token_response.raise_for_status()
+            second_registration_token = second_token_response.json()["registration_token"]
+            second_identity = f"execution-smoke-second-{uuid4().hex}"
+            second_register_response = await client.post(
+                "/agents/register",
+                json={
+                    "registration_token": second_registration_token,
+                    "local_identity": second_identity,
+                    "hostname": "execution-smoke-agent-2",
+                    "name": "Execution Smoke Agent 2",
+                    "machine_fingerprint": second_identity,
+                    "agent_version": "1.0.0",
+                },
+            )
+            second_register_response.raise_for_status()
+            second_registered = second_register_response.json()
+            second_agent_id = second_registered["agent"]["id"]
+            second_bearer = second_registered["credential"]["bearer_token"]
+            second_agent_instance_id = f"agi_exec_smoke_{uuid4().hex}"
+
+            async with websockets.connect(WS_URL, additional_headers={"Authorization": f"Bearer {second_bearer}"}) as ws2:
+                await ws2.send(
+                    json.dumps(
                         {
-                            "execution_offer_id": rejected_offer["execution_offer_id"],
-                            "execution_attempt_id": rejected_offer["execution_attempt_id"],
-                            "agent_id": agent_id,
-                            "agent_instance_id": agent_instance_id,
-                            "rejection_code": "AGENT_OVERLOADED",
-                            "rejection_details": {"reason": "smoke"},
-                            "rejected_at": datetime.now(UTC).isoformat(),
-                        },
+                            "message_type": "agent.connect",
+                            "payload": {
+                                "agent_id": second_agent_id,
+                                "agent_instance_id": second_agent_instance_id,
+                                "agent_version": "1.0.0",
+                                "supported_protocol_versions": ["1.0"],
+                            },
+                        }
                     )
                 )
-            )
-            rejected_ack = await recv_type(ws, "portal.ack")
-            assert rejected_ack["payload"]["result"]["status"] == "rejected"
-
-            rejected_details_response = await client.get(f"/executions/{second['execution']['id']}", headers=admin_headers)
-            rejected_details_response.raise_for_status()
-            rejected_details = rejected_details_response.json()
-            assert rejected_details["execution"]["status"] == "pending"
-            assert rejected_details["tasks"][0]["status"] == "queued"
-            assert rejected_details["current_attempt"]["status"] == "rejected"
-            assert rejected_details["current_offer"]["status"] == "rejected"
-
-            legacy_response = await client.post(
-                "/jobs",
-                headers=admin_headers,
-                json={"automation_id": automation_id, "priority": "normal", "payload_json": {"source": "legacy-smoke"}},
-            )
-            legacy_response.raise_for_status()
-            legacy_job = legacy_response.json()
-            assert legacy_job["status"] == "queued"
-            assert legacy_job["payload_json"]["_execution_id"].startswith("exe_")
-
-            legacy_offer_message = await recv_type(ws, "execution.offer")
-            legacy_offer = legacy_offer_message["payload"]
-            assert legacy_offer["execution_offer_id"]
-            await ws.send(
-                json.dumps(
-                    envelope(
-                        agent_id,
-                        agent_instance_id,
-                        "execution.rejected",
-                        {
-                            "execution_offer_id": legacy_offer["execution_offer_id"],
-                            "execution_attempt_id": legacy_offer["execution_attempt_id"],
-                            "agent_id": agent_id,
-                            "agent_instance_id": agent_instance_id,
-                            "rejection_code": "AGENT_OVERLOADED",
-                            "rejection_details": {"reason": "legacy-smoke"},
-                            "rejected_at": datetime.now(UTC).isoformat(),
-                        },
+                second_connected = await recv_type(ws2, "agent.connected")
+                assert second_connected["payload"]["selected_protocol_version"] == "1.0"
+                await ws2.send(
+                    json.dumps(
+                        envelope(
+                            second_agent_id,
+                            second_agent_instance_id,
+                            "agent.heartbeat",
+                            {
+                                "observed_at": datetime.now(UTC).isoformat(),
+                                "agent_version": "1.0.0",
+                                "health": "healthy",
+                                "resources": {
+                                    "cpu_percentage": 10,
+                                    "memory_total_mb": 4096,
+                                    "memory_available_mb": 2048,
+                                    "memory_percentage": 50,
+                                    "disk_free_mb": 100000,
+                                },
+                                "pools": {
+                                    "interactive": {"total": 1, "used": 0, "reserved": 0},
+                                    "background": {"total": 2, "used": 0, "reserved": 0},
+                                    "browser": {"total": 1, "used": 0, "reserved": 0},
+                                },
+                            },
+                        )
                     )
                 )
-            )
-            legacy_rejected_ack = await recv_type(ws, "portal.ack")
-            assert legacy_rejected_ack["payload"]["result"]["status"] == "rejected"
+                second_heartbeat_ack = await recv_type(ws2, "portal.ack")
+                assert second_heartbeat_ack["payload"]["result"]["ok"] is True
+                await advertise_capability(ws2, second_agent_id, second_agent_instance_id, capability_key)
+
+                second = await create_execution(client, admin_headers, version_id, agent_id)
+                rejected_offer_message = await recv_type(ws2, "execution.offer")
+                rejected_offer = rejected_offer_message["payload"]
+                await ws2.send(
+                    json.dumps(
+                        envelope(
+                            second_agent_id,
+                            second_agent_instance_id,
+                            "execution.rejected",
+                            {
+                                "execution_offer_id": rejected_offer["execution_offer_id"],
+                                "execution_attempt_id": rejected_offer["execution_attempt_id"],
+                                "agent_id": second_agent_id,
+                                "agent_instance_id": second_agent_instance_id,
+                                "rejection_code": "AGENT_OVERLOADED",
+                                "rejection_details": {"reason": "smoke"},
+                                "rejected_at": datetime.now(UTC).isoformat(),
+                            },
+                        )
+                    )
+                )
+                rejected_ack = await recv_type(ws2, "portal.ack")
+                assert rejected_ack["payload"]["result"]["status"] == "rejected"
+
+                rejected_details_response = await client.get(f"/executions/{second['execution']['id']}", headers=admin_headers)
+                rejected_details_response.raise_for_status()
+                rejected_details = rejected_details_response.json()
+                assert rejected_details["execution"]["status"] == "pending"
+                assert rejected_details["tasks"][0]["status"] == "ready"
+                assert rejected_details["tasks"][0]["last_scheduling_failure"]["code"] == "NO_ELIGIBLE_AGENT"
+                assert rejected_details["current_attempt"]["status"] == "rejected"
+                assert rejected_details["current_offer"]["status"] == "rejected"
+
+                legacy_response = await client.post(
+                    "/jobs",
+                    headers=admin_headers,
+                    json={"automation_id": automation_id, "priority": "normal", "payload_json": {"source": "legacy-smoke"}},
+                )
+                legacy_response.raise_for_status()
+                legacy_job = legacy_response.json()
+                assert legacy_job["status"] == "queued"
+                assert legacy_job["payload_json"]["_execution_id"].startswith("exe_")
+
+                legacy_offer_message = await recv_type(ws2, "execution.offer")
+                legacy_offer = legacy_offer_message["payload"]
+                assert legacy_offer["execution_offer_id"]
+                await ws2.send(
+                    json.dumps(
+                        envelope(
+                            second_agent_id,
+                            second_agent_instance_id,
+                            "execution.rejected",
+                            {
+                                "execution_offer_id": legacy_offer["execution_offer_id"],
+                                "execution_attempt_id": legacy_offer["execution_attempt_id"],
+                                "agent_id": second_agent_id,
+                                "agent_instance_id": second_agent_instance_id,
+                                "rejection_code": "AGENT_OVERLOADED",
+                                "rejection_details": {"reason": "legacy-smoke"},
+                                "rejected_at": datetime.now(UTC).isoformat(),
+                            },
+                        )
+                    )
+                )
+                legacy_rejected_ack = await recv_type(ws2, "portal.ack")
+                assert legacy_rejected_ack["payload"]["result"]["status"] == "rejected"
+
+            await client.post(f"/agents/{second_agent_id}/disable", headers=admin_headers, json={"reason": "execution smoke complete"})
 
         await client.post(f"/agents/{agent_id}/disable", headers=admin_headers, json={"reason": "execution smoke complete"})
 

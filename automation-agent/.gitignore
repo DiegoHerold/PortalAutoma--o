@@ -1,0 +1,24 @@
+## .NET
+bin/
+obj/
+publish/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+.vs/
+
+## NuGet
+packages/
+*.nupkg
+project.lock.json
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+## Test results
+TestResults/
+*.trx

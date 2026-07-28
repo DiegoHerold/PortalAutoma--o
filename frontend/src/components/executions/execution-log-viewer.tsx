@@ -6,7 +6,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn, formatTime } from "@/lib/utils";
 
-type LogEntry = { id: number; level: string; message: string; created_at: string };
+type LogEntry = { id: string | number; level: string; message: string; created_at: string };
 
 const levelColor: Record<string, string> = {
   error: "text-destructive",

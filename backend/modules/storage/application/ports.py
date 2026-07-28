@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
+from modules.storage.application.dto import ArtifactDTO, ArtifactUploadSessionLinkDTO
 from modules.storage.domain.stored_object import StoredObject
 from modules.storage.domain.upload_session import UploadSession
 
@@ -47,4 +48,48 @@ class UploadSessionRepository(Protocol):
         raise NotImplementedError
 
     def update(self, upload_session: UploadSession) -> UploadSession:
+        raise NotImplementedError
+
+
+class ArtifactRepository(Protocol):
+    def add(self, artifact: ArtifactDTO) -> ArtifactDTO:
+        raise NotImplementedError
+
+    def get(self, artifact_id: str) -> ArtifactDTO | None:
+        raise NotImplementedError
+
+    def get_by_upload_session(self, upload_session_id: str) -> ArtifactDTO | None:
+        raise NotImplementedError
+
+    def update(self, artifact: ArtifactDTO) -> ArtifactDTO:
+        raise NotImplementedError
+
+    def list_for_execution(self, execution_id: str) -> list[ArtifactDTO]:
+        raise NotImplementedError
+
+    def count_for_execution(self, execution_id: str) -> int:
+        raise NotImplementedError
+
+
+class ArtifactUploadSessionRepository(Protocol):
+    def add(self, link: ArtifactUploadSessionLinkDTO) -> ArtifactUploadSessionLinkDTO:
+        raise NotImplementedError
+
+    def get_by_upload_session(self, upload_session_id: str) -> ArtifactUploadSessionLinkDTO | None:
+        raise NotImplementedError
+
+
+class ExecutionAttemptContextReader(Protocol):
+    def get_context(self, execution_attempt_id: str):
+        raise NotImplementedError
+
+
+class StorageTransaction(Protocol):
+    def flush(self) -> None:
+        raise NotImplementedError
+
+    def commit(self) -> None:
+        raise NotImplementedError
+
+    def rollback(self) -> None:
         raise NotImplementedError

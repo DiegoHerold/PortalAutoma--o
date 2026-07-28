@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Biason.AutomationAgent.Protocol</RootNamespace>
+    <AssemblyName>Agent.Protocol</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Agent.Domain\Agent.Domain.csproj" />
+  </ItemGroup>
+</Project>

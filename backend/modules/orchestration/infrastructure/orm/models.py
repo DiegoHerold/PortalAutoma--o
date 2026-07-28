@@ -49,6 +49,12 @@ class TaskExecutionRecord(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     current_attempt_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failure_summary: Mapped[str | None] = mapped_column(Text)
+    requirements_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    available_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    scheduling_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_scheduling_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_scheduling_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_scheduling_failure: Mapped[dict | None] = mapped_column(JSONB)
 
 
 class ExecutionAttemptRecord(Base):
@@ -73,3 +79,7 @@ class ExecutionAttemptRecord(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(120))
     error_message: Mapped[str | None] = mapped_column(Text)
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    output: Mapped[dict | None] = mapped_column(JSONB)
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    resource_usage: Mapped[dict | None] = mapped_column(JSONB)

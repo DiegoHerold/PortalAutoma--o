@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.automation import Automation
@@ -66,6 +66,14 @@ class SqlAlchemyExecutionOfferRepository:
         )
         return _offer_to_dto(row) if row else None
 
+    def list_for_attempt(self, execution_attempt_id: str) -> list[ExecutionOfferDTO]:
+        rows = self.db.scalars(
+            select(ExecutionOfferRecord)
+            .where(ExecutionOfferRecord.execution_attempt_id == execution_attempt_id)
+            .order_by(ExecutionOfferRecord.offered_at.desc())
+        ).all()
+        return [_offer_to_dto(row) for row in rows]
+
     def current_for_execution(self, execution_id: str) -> ExecutionOfferDTO | None:
         row = self.db.scalar(
             select(ExecutionOfferRecord)
@@ -93,7 +101,7 @@ class SqlAlchemyOfferReservationRepository:
         self.db = db
 
     def reserve(self, reservation: ResourceReservationDTO) -> ResourceReservationDTO:
-        row = ResourceReservationRecord(**reservation.__dict__)
+        row = ResourceReservationRecord(**_reservation_dict(reservation))
         self.db.add(row)
         self.db.flush()
         return _reservation_to_dto(row)
@@ -101,23 +109,25 @@ class SqlAlchemyOfferReservationRepository:
     def release_for_offer(self, offer_id: str, now: datetime) -> None:
         rows = self.db.scalars(
             select(ResourceReservationRecord)
-            .where(ResourceReservationRecord.execution_offer_id == offer_id, ResourceReservationRecord.status == "reserved")
+            .where(ResourceReservationRecord.execution_offer_id == offer_id, ResourceReservationRecord.status.in_(["pending", "active", "reserved", "converted"]))
             .with_for_update()
         ).all()
         for row in rows:
             row.status = "released"
             row.released_at = now
+            row.release_reason = "offer_released"
             self.db.add(row)
         self.db.flush()
 
     def convert_for_offer(self, offer_id: str, now: datetime) -> None:
         rows = self.db.scalars(
             select(ResourceReservationRecord)
-            .where(ResourceReservationRecord.execution_offer_id == offer_id, ResourceReservationRecord.status == "reserved")
+            .where(ResourceReservationRecord.execution_offer_id == offer_id, ResourceReservationRecord.status.in_(["pending", "reserved"]))
             .with_for_update()
         ).all()
         for row in rows:
-            row.status = "converted"
+            row.status = "active"
+            row.activated_at = now
             row.converted_at = now
             self.db.add(row)
         self.db.flush()
@@ -129,6 +139,39 @@ class SqlAlchemyOfferReservationRepository:
             .order_by(ResourceReservationRecord.created_at)
         ).all()
         return [_reservation_to_dto(row) for row in rows]
+
+    def list_for_attempt(self, execution_attempt_id: str) -> list[ResourceReservationDTO]:
+        rows = self.db.scalars(
+            select(ResourceReservationRecord)
+            .where(ResourceReservationRecord.execution_attempt_id == execution_attempt_id)
+            .order_by(ResourceReservationRecord.created_at)
+        ).all()
+        return [_reservation_to_dto(row) for row in rows]
+
+    def release_for_attempt(self, execution_attempt_id: str, now: datetime, reason: str) -> None:
+        rows = self.db.scalars(
+            select(ResourceReservationRecord)
+            .where(ResourceReservationRecord.execution_attempt_id == execution_attempt_id, ResourceReservationRecord.status.in_(["pending", "active", "reserved", "converted"]))
+            .with_for_update()
+        ).all()
+        for row in rows:
+            row.status = "released"
+            row.released_at = now
+            row.release_reason = reason
+            self.db.add(row)
+        self.db.flush()
+
+    def active_units(self, agent_id: str, pool_type: str) -> int:
+        return int(
+            self.db.scalar(
+                select(func.coalesce(func.sum(ResourceReservationRecord.units), 0)).where(
+                    ResourceReservationRecord.agent_id == agent_id,
+                    ResourceReservationRecord.pool_type == pool_type,
+                    ResourceReservationRecord.status.in_(["pending", "active", "reserved", "converted"]),
+                )
+            )
+            or 0
+        )
 
 
 class SqlAlchemyAutomationVersionReader:
@@ -177,6 +220,8 @@ class SqlAlchemyAutomationVersionReader:
             required_capabilities=list(capabilities.get("required") or []),
             required_pools=[required_pool],
             exclusive_resources=list(manifest.get("exclusive_resources") or []),
+            retry_policy=_retry_policy(manifest),
+            timeout_policy=_timeout_policy(manifest, _positive_int(execution.get("timeout_seconds"), 300)),
         )
 
     def _package(self, version: AutomationVersion) -> AutomationPackageRecord | None:
@@ -358,11 +403,76 @@ def _reservation_to_dto(row: ResourceReservationRecord) -> ResourceReservationDT
         created_at=row.created_at,
         released_at=row.released_at,
         converted_at=row.converted_at,
+        task_execution_id=row.task_execution_id,
+        units=row.units,
+        reserved_at=row.reserved_at,
+        activated_at=row.activated_at,
+        release_reason=row.release_reason,
     )
+
+
+def _reservation_dict(reservation: ResourceReservationDTO) -> dict[str, Any]:
+    units = getattr(reservation, "units", None) or getattr(reservation, "quantity", None) or 1
+    reserved_at = getattr(reservation, "reserved_at", None) or getattr(reservation, "created_at")
+    activated_at = getattr(reservation, "activated_at", None) or getattr(reservation, "converted_at", None)
+    return {
+        "id": reservation.id,
+        "task_execution_id": getattr(reservation, "task_execution_id", None),
+        "execution_offer_id": reservation.execution_offer_id,
+        "execution_attempt_id": reservation.execution_attempt_id,
+        "agent_id": reservation.agent_id,
+        "agent_instance_id": reservation.agent_instance_id,
+        "pool_type": reservation.pool_type,
+        "quantity": units,
+        "units": units,
+        "status": reservation.status,
+        "expires_at": reservation.expires_at,
+        "created_at": getattr(reservation, "created_at", None) or reserved_at,
+        "reserved_at": reserved_at,
+        "released_at": reservation.released_at,
+        "converted_at": getattr(reservation, "converted_at", None) or activated_at,
+        "activated_at": activated_at,
+        "release_reason": getattr(reservation, "release_reason", None),
+    }
 
 
 def _positive_int(value: Any, default: int) -> int:
     return value if isinstance(value, int) and value > 0 else default
+
+
+def _retry_policy(manifest: dict[str, Any]) -> dict[str, Any]:
+    policy = manifest.get("retry_policy") if isinstance(manifest.get("retry_policy"), dict) else {}
+    legacy = manifest.get("execution") if isinstance(manifest.get("execution"), dict) else {}
+    max_attempts = _positive_int(policy.get("max_attempts"), 0)
+    if max_attempts <= 0:
+        max_retries = _positive_int(policy.get("max_retries"), _positive_int(legacy.get("max_retries"), 0))
+        max_attempts = max_retries + 1
+    return {
+        "max_attempts": max_attempts,
+        "initial_delay_seconds": _positive_int(policy.get("initial_delay_seconds"), 5),
+        "max_delay_seconds": _positive_int(policy.get("max_delay_seconds"), 300),
+        "backoff_multiplier": policy.get("backoff_multiplier") if isinstance(policy.get("backoff_multiplier"), (int, float)) and policy.get("backoff_multiplier") > 0 else 2,
+        "retryable_error_codes": list(policy.get("retryable_error_codes") or []),
+        "non_retryable_error_codes": list(policy.get("non_retryable_error_codes") or []),
+        "retry_on_lost": bool(policy.get("retry_on_lost", True)),
+        "retry_on_timeout": bool(policy.get("retry_on_timeout", False)),
+        "retry_on_agent_rejection": bool(policy.get("retry_on_agent_rejection", True)),
+    }
+
+
+def _timeout_policy(manifest: dict[str, Any], execution_timeout_seconds: int) -> dict[str, Any]:
+    policy = manifest.get("timeout_policy") if isinstance(manifest.get("timeout_policy"), dict) else {}
+    execution = manifest.get("execution") if isinstance(manifest.get("execution"), dict) else {}
+    return {
+        "queue_timeout_seconds": _positive_int(policy.get("queue_timeout_seconds"), 300),
+        "offer_timeout_seconds": _positive_int(policy.get("offer_timeout_seconds"), 60),
+        "preparation_timeout_seconds": _positive_int(policy.get("preparation_timeout_seconds"), 300),
+        "execution_timeout_seconds": _positive_int(policy.get("execution_timeout_seconds"), execution_timeout_seconds),
+        "graceful_cancel_seconds": _positive_int(policy.get("graceful_cancel_seconds"), _positive_int(execution.get("graceful_cancellation_seconds"), 30)),
+        "force_cancel_seconds": _positive_int(policy.get("force_cancel_seconds"), 120),
+        "lease_duration_seconds": _positive_int(policy.get("lease_duration_seconds"), 600),
+        "lease_grace_seconds": _positive_int(policy.get("lease_grace_seconds"), 60),
+    }
 
 
 def _naive(value: datetime) -> datetime:

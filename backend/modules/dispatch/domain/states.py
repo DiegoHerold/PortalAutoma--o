@@ -13,10 +13,55 @@ class ExecutionOfferStatus(StrEnum):
 
 
 class ResourceReservationStatus(StrEnum):
-    RESERVED = "reserved"
+    PENDING = "pending"
+    ACTIVE = "active"
     RELEASED = "released"
-    CONVERTED = "converted"
     EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
+class ResourceLockStatus(StrEnum):
+    ACTIVE = "active"
+    RELEASED = "released"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+
+
+class ExecutionLeaseStatus(StrEnum):
+    ACTIVE = "active"
+    SUSPECT = "suspect"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+    COMPLETED = "completed"
+
+
+class DispatchDecisionStatus(StrEnum):
+    SELECTED = "selected"
+    NO_CANDIDATE = "no_candidate"
+    SKIPPED = "skipped"
+    ERROR = "error"
+
+
+class RetryScheduleStatus(StrEnum):
+    SCHEDULED = "scheduled"
+    CLAIMED = "claimed"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class CancellationRequestStatus(StrEnum):
+    REQUESTED = "requested"
+    COMMAND_SENT = "command_sent"
+    CONFIRMED = "confirmed"
+    FORCE_REQUIRED = "force_required"
+    FORCED = "forced"
+    FAILED = "failed"
+
+
+class ReconciliationStatus(StrEnum):
+    RECORDED = "recorded"
+    APPLIED = "applied"
+    NEEDS_ATTENTION = "needs_attention"
 
 
 OFFER_TRANSITIONS: dict[ExecutionOfferStatus, set[ExecutionOfferStatus]] = {

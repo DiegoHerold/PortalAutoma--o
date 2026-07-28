@@ -12,7 +12,7 @@ celery_app = Celery(
 
 celery_app.conf.task_default_queue = "normal"
 celery_app.conf.task_routes = {
-    "app.tasks.job_tasks.execute_job": {"queue": "normal"},
+    "app.tasks.dispatch_tasks.schedule_ready_tasks": {"queue": "normal"},
     "app.tasks.schedule_tasks.sync": {"queue": "normal"},
 }
 
@@ -20,6 +20,7 @@ celery_app.conf.task_routes = {
 # Beat only schedules tasks that have already been imported/registered.
 from app.tasks import schedule_tasks  # noqa: E402,F401
 from app.tasks import housekeeping_tasks  # noqa: E402,F401
+from app.tasks import dispatch_tasks  # noqa: E402,F401
 
 celery_app.conf.beat_schedule = {
     "sync-schedules-every-minute": {
@@ -32,6 +33,22 @@ celery_app.conf.beat_schedule = {
     },
     "expire-execution-offers-every-30-seconds": {
         "task": "app.tasks.housekeeping_tasks.expire_execution_offers",
+        "schedule": 30.0,
+    },
+    "schedule-ready-tasks-every-5-seconds": {
+        "task": "app.tasks.dispatch_tasks.schedule_ready_tasks",
+        "schedule": 5.0,
+    },
+    "reconcile-expired-leases-every-15-seconds": {
+        "task": "app.tasks.housekeeping_tasks.reconcile_expired_leases",
+        "schedule": 15.0,
+    },
+    "detect-lost-attempts-every-20-seconds": {
+        "task": "app.tasks.housekeeping_tasks.detect_lost_attempts",
+        "schedule": 20.0,
+    },
+    "force-cancel-executions-every-30-seconds": {
+        "task": "app.tasks.housekeeping_tasks.force_cancel_execution_attempts",
         "schedule": 30.0,
     },
 }

@@ -40,14 +40,20 @@ class TaskExecutionResponse(BaseModel):
     parameters: dict[str, Any]
     input: dict[str, Any]
     result: dict[str, Any] | None = None
+    requirements_snapshot: dict[str, Any] = Field(default_factory=dict)
     retry_policy: dict[str, Any]
     timeout_policy: dict[str, Any]
     created_at: datetime
     ready_at: datetime | None = None
     queued_at: datetime | None = None
+    available_at: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     current_attempt_number: int
+    scheduling_attempts: int = 0
+    last_scheduling_attempt_at: datetime | None = None
+    next_scheduling_attempt_at: datetime | None = None
+    last_scheduling_failure: dict[str, Any] | None = None
     failure_summary: str | None = None
 
 
@@ -70,6 +76,10 @@ class ExecutionAttemptResponse(BaseModel):
     completed_at: datetime | None = None
     error_code: str | None = None
     error_message: str | None = None
+    exit_code: int | None = None
+    output: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    resource_usage: dict[str, Any] | None = None
 
 
 class ExecutionOfferResponse(BaseModel):
@@ -98,3 +108,4 @@ class ExecutionDetailsResponse(BaseModel):
     current_offer: ExecutionOfferResponse | None = None
     agent: dict[str, Any] | None = None
     automation_version: dict[str, Any] | None = None
+    telemetry: dict[str, Any] | None = None

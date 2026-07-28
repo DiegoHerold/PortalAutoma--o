@@ -6,23 +6,29 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.services.permission_service import PermissionService
+from modules.dispatch.application.use_cases import ScheduleTaskExecution
 from modules.dispatch.domain.errors import AgentSelectionError, DispatchError
+from modules.dispatch.infrastructure.adapters import build_dispatch_adapters
 from modules.orchestration.api.schemas import (
     ExecutionCreateRequest,
     ExecutionDetailsResponse,
     ExecutionResponse,
 )
 from modules.orchestration.application.dto import ActorDTO, CreateAutomationExecutionCommand
-from modules.orchestration.application.use_cases import CreateAutomationExecution, GetExecutionDetails, ListExecutions
+from modules.orchestration.application.use_cases import CreateAutomationExecution, GetExecutionDetails, ListExecutions, RequestExecutionCancellation
 from modules.orchestration.domain.errors import AutomationVersionNotExecutable, IdempotencyConflict, OrchestrationError
 from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
+from modules.storage.infrastructure.adapters import build_storage_adapters
+from modules.telemetry.application.dto import to_payload as telemetry_payload
+from modules.telemetry.application.use_cases import GetTelemetrySummary
+from modules.telemetry.infrastructure.adapters import build_telemetry_adapters
 
 router = APIRouter(prefix="/executions")
 
@@ -72,6 +78,30 @@ def create_execution(
                 request_hash=_payload_hash(command_payload),
             )
         )
+        if details.tasks:
+            dispatch_adapters = build_dispatch_adapters(db)
+            ScheduleTaskExecution(
+                dispatch_adapters.ready_tasks,
+                dispatch_adapters.attempts,
+                dispatch_adapters.offers,
+                dispatch_adapters.automation_versions,
+                dispatch_adapters.candidates,
+                dispatch_adapters.decisions,
+                dispatch_adapters.reservations,
+                dispatch_adapters.locks,
+                dispatch_adapters.commands,
+                dispatch_adapters.outbox,
+                dispatch_adapters.transaction,
+            ).execute(details.tasks[0].id)
+            adapters = build_orchestration_adapters(db)
+            details = GetExecutionDetails(
+                adapters.executions,
+                adapters.tasks,
+                adapters.attempts,
+                adapters.offers,
+                adapters.automation_versions,
+                adapters.agent_selection,
+            ).execute(details.execution.id)
         return ExecutionDetailsResponse.model_validate(details.to_payload())
     except IdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -113,6 +143,41 @@ def list_execution_attempts(
     return [_jsonable(asdict(item)) for item in details.attempts]
 
 
+@router.post("/{execution_id}/cancel")
+def cancel_execution(
+    execution_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    payload: dict[str, Any] | None = Body(default=None),
+) -> dict[str, Any]:
+    details = _details_for_user(db, user, execution_id)
+    if details.automation_version is not None:
+        PermissionService(db).ensure_automation_action(user, details.automation_version.automation_id, "can_execute")
+    dispatch_adapters = build_dispatch_adapters(db)
+    try:
+        return _jsonable(
+            RequestExecutionCancellation(
+                dispatch_adapters.executions,
+                dispatch_adapters.tasks,
+                dispatch_adapters.attempts,
+                dispatch_adapters.cancellation_requests,
+                dispatch_adapters.commands,
+                dispatch_adapters.reservations,
+                dispatch_adapters.locks,
+                dispatch_adapters.leases,
+                dispatch_adapters.outbox,
+                dispatch_adapters.transaction,
+            ).execute(
+                execution_id,
+                actor=_actor(user, request),
+                reason=(payload or {}).get("reason") if isinstance(payload, dict) else None,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get("/{execution_id}", response_model=ExecutionDetailsResponse)
 def get_execution(
     execution_id: str,
@@ -120,7 +185,16 @@ def get_execution(
     user: User = Depends(get_current_user),
 ) -> ExecutionDetailsResponse:
     details = _details_for_user(db, user, execution_id)
-    return ExecutionDetailsResponse.model_validate(details.to_payload())
+    payload = details.to_payload()
+    telemetry_adapters = build_telemetry_adapters(db)
+    storage_adapters = build_storage_adapters(db)
+    payload["telemetry"] = telemetry_payload(
+        GetTelemetrySummary(telemetry_adapters.events, telemetry_adapters.metrics).execute(
+            execution_id,
+            artifact_count=storage_adapters.artifacts.count_for_execution(execution_id),
+        )
+    )
+    return ExecutionDetailsResponse.model_validate(payload)
 
 
 def _details_for_user(db: Session, user: User, execution_id: str):

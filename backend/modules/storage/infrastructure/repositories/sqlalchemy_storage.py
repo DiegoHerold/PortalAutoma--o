@@ -2,9 +2,29 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from modules.storage.application.dto import ArtifactDTO, ArtifactUploadSessionLinkDTO
 from modules.storage.domain.stored_object import StoredObject, StoredObjectStatus
 from modules.storage.domain.upload_session import UploadSession, UploadSessionStatus
-from modules.storage.infrastructure.orm.models import StoredObjectRecord, UploadSessionRecord
+from modules.storage.infrastructure.orm.models import (
+    ArtifactRecord,
+    ArtifactUploadSessionRecord,
+    StoredObjectRecord,
+    UploadSessionRecord,
+)
+
+
+class SqlAlchemyStorageTransaction:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def flush(self) -> None:
+        self.db.flush()
+
+    def commit(self) -> None:
+        self.db.commit()
+
+    def rollback(self) -> None:
+        self.db.rollback()
 
 
 class SqlAlchemyStoredObjectRepository:
@@ -121,3 +141,117 @@ class SqlAlchemyUploadSessionRepository:
             completed_at=row.completed_at,
             aborted_at=row.aborted_at,
         )
+
+
+class SqlAlchemyArtifactRepository:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def add(self, artifact: ArtifactDTO) -> ArtifactDTO:
+        row = ArtifactRecord(**_artifact_dict(artifact))
+        self.db.add(row)
+        self.db.flush()
+        return _artifact_to_dto(row)
+
+    def get(self, artifact_id: str) -> ArtifactDTO | None:
+        row = self.db.get(ArtifactRecord, artifact_id)
+        return _artifact_to_dto(row) if row else None
+
+    def get_by_upload_session(self, upload_session_id: str) -> ArtifactDTO | None:
+        row = self.db.query(ArtifactRecord).filter(ArtifactRecord.upload_session_id == upload_session_id).first()
+        return _artifact_to_dto(row) if row else None
+
+    def update(self, artifact: ArtifactDTO) -> ArtifactDTO:
+        row = self.db.get(ArtifactRecord, artifact.id)
+        if row is None:
+            raise ValueError("Artifact not found.")
+        for key, value in _artifact_dict(artifact).items():
+            setattr(row, key, value)
+        self.db.add(row)
+        self.db.flush()
+        return _artifact_to_dto(row)
+
+    def list_for_execution(self, execution_id: str) -> list[ArtifactDTO]:
+        rows = (
+            self.db.query(ArtifactRecord)
+            .filter(ArtifactRecord.execution_id == execution_id)
+            .order_by(ArtifactRecord.created_at)
+            .all()
+        )
+        return [_artifact_to_dto(row) for row in rows]
+
+    def count_for_execution(self, execution_id: str) -> int:
+        return self.db.query(ArtifactRecord).filter(ArtifactRecord.execution_id == execution_id).count()
+
+
+class SqlAlchemyArtifactUploadSessionRepository:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def add(self, link: ArtifactUploadSessionLinkDTO) -> ArtifactUploadSessionLinkDTO:
+        row = ArtifactUploadSessionRecord(
+            id=link.id,
+            artifact_id=link.artifact_id,
+            upload_session_id=link.upload_session_id,
+            created_at=link.created_at,
+        )
+        self.db.add(row)
+        self.db.flush()
+        return _artifact_upload_link_to_dto(row)
+
+    def get_by_upload_session(self, upload_session_id: str) -> ArtifactUploadSessionLinkDTO | None:
+        row = self.db.query(ArtifactUploadSessionRecord).filter(
+            ArtifactUploadSessionRecord.upload_session_id == upload_session_id
+        ).first()
+        return _artifact_upload_link_to_dto(row) if row else None
+
+
+def _artifact_dict(artifact: ArtifactDTO) -> dict:
+    return {
+        "id": artifact.id,
+        "execution_id": artifact.execution_id,
+        "task_execution_id": artifact.task_execution_id,
+        "execution_attempt_id": artifact.execution_attempt_id,
+        "name": artifact.name,
+        "content_type": artifact.content_type,
+        "status": artifact.status,
+        "stored_object_id": artifact.stored_object_id,
+        "upload_session_id": artifact.upload_session_id,
+        "size_bytes": artifact.size_bytes,
+        "sha256": artifact.sha256,
+        "artifact_metadata": artifact.metadata or {},
+        "created_at": artifact.created_at,
+        "uploaded_at": artifact.uploaded_at,
+        "failed_at": artifact.failed_at,
+        "failure_reason": artifact.failure_reason,
+    }
+
+
+def _artifact_to_dto(row: ArtifactRecord) -> ArtifactDTO:
+    return ArtifactDTO(
+        id=row.id,
+        execution_id=row.execution_id,
+        task_execution_id=row.task_execution_id,
+        execution_attempt_id=row.execution_attempt_id,
+        name=row.name,
+        content_type=row.content_type,
+        status=row.status,
+        stored_object_id=row.stored_object_id,
+        upload_session_id=row.upload_session_id,
+        size_bytes=row.size_bytes,
+        sha256=row.sha256,
+        metadata=row.artifact_metadata or {},
+        created_at=row.created_at,
+        uploaded_at=row.uploaded_at,
+        failed_at=row.failed_at,
+        failure_reason=row.failure_reason,
+    )
+
+
+def _artifact_upload_link_to_dto(row: ArtifactUploadSessionRecord) -> ArtifactUploadSessionLinkDTO:
+    return ArtifactUploadSessionLinkDTO(
+        id=row.id,
+        artifact_id=row.artifact_id,
+        upload_session_id=row.upload_session_id,
+        created_at=row.created_at,
+    )
