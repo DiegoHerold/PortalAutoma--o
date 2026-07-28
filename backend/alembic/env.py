@@ -26,6 +26,8 @@ from modules.catalog.infrastructure.orm import models as catalog_models
 from modules.dispatch.infrastructure.orm import models as dispatch_models
 from modules.fleet.infrastructure.orm import models as fleet_models
 from modules.orchestration.infrastructure.orm import models as orchestration_models
+from modules.orchestration.flows.infrastructure.orm import models as flow_models
+from modules.orchestration.scheduling.infrastructure.orm import models as scheduling_models
 from modules.governance.infrastructure.orm import models as governance_models
 from modules.shared.infrastructure.orm import models as shared_models
 from modules.storage.infrastructure.orm import models as storage_models

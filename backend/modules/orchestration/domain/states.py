@@ -66,6 +66,7 @@ EXECUTION_TRANSITIONS: dict[ExecutionStatus, set[ExecutionStatus]] = {
     ExecutionStatus.RUNNING: {
         ExecutionStatus.CANCELLING,
         ExecutionStatus.SUCCEEDED,
+        ExecutionStatus.PARTIALLY_SUCCEEDED,
         ExecutionStatus.FAILED,
         ExecutionStatus.CANCELLED,
         ExecutionStatus.TIMED_OUT,
@@ -76,6 +77,7 @@ EXECUTION_TRANSITIONS: dict[ExecutionStatus, set[ExecutionStatus]] = {
         ExecutionStatus.TIMED_OUT,
     },
     ExecutionStatus.SUCCEEDED: set(),
+    ExecutionStatus.PARTIALLY_SUCCEEDED: set(),
     ExecutionStatus.FAILED: set(),
     ExecutionStatus.CANCELLED: set(),
     ExecutionStatus.TIMED_OUT: set(),

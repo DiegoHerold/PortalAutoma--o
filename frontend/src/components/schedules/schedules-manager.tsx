@@ -54,7 +54,7 @@ function emptyForm(automationId?: string, specificDate?: string): ScheduleFormSt
 
 function scheduleToForm(schedule: Schedule): ScheduleFormState {
   return {
-    automation_id: String(schedule.automation_id),
+    automation_id: schedule.automation_id == null ? "" : String(schedule.automation_id),
     recurrence_type: schedule.recurrence_type,
     time_of_day: schedule.time_of_day,
     weekdays: schedule.weekdays ?? [0, 1, 2, 3, 4],
@@ -180,7 +180,8 @@ export function SchedulesManager() {
 
   async function remove(schedule: Schedule) {
     if (!token) return;
-    if (!window.confirm(`Apagar o agendamento de "${nameOf.get(schedule.automation_id) ?? schedule.automation_id}"?`)) return;
+    const label = schedule.automation_id == null ? schedule.name ?? `#${schedule.id}` : nameOf.get(schedule.automation_id) ?? schedule.automation_id;
+    if (!window.confirm(`Apagar o agendamento de "${label}"?`)) return;
     try {
       await apiRequest<void>(`/schedules/${schedule.id}`, { method: "DELETE", token });
       toast({ title: "Agendamento apagado", kind: "success" });

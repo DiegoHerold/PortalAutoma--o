@@ -1,6 +1,7 @@
 using Biason.AutomationAgent.Application.Diagnostics;
 using Biason.AutomationAgent.Application.HealthChecks;
 using Biason.AutomationAgent.Application.Services;
+using Biason.AutomationAgent.Application.Validation;
 using Biason.AutomationAgent.Domain.Configuration;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Infrastructure.Clock;
@@ -52,6 +53,24 @@ builder.Services.AddOptions<LoggingOptions>()
 
 builder.Services.AddOptions<DevelopmentOptions>()
     .Bind(builder.Configuration.GetSection(DevelopmentOptions.Section));
+
+builder.Services.AddOptions<ExecutionOptions>()
+    .Bind(builder.Configuration.GetSection(ExecutionOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<CapacityOptions>()
+    .Bind(builder.Configuration.GetSection(CapacityOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<DownloadOptions>()
+    .Bind(builder.Configuration.GetSection(DownloadOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<SecurityOptions>()
+    .Bind(builder.Configuration.GetSection(SecurityOptions.Section));
 
 // === Serilog ===
 builder.Services.AddSerilog((services, loggerConfig) =>
@@ -107,11 +126,39 @@ builder.Services.AddSingleton<IAgentIdentityService>(sp => sp.GetRequiredService
 builder.Services.AddSingleton<AgentStateManagerImpl>();
 builder.Services.AddSingleton<IAgentStateManager>(sp => sp.GetRequiredService<AgentStateManagerImpl>());
 
-// Repositories
+// Repositories — Phase 1
 builder.Services.AddSingleton<IResourceSampleRepository, ResourceSampleRepository>();
 builder.Services.AddSingleton<ICapabilityRepository, CapabilityRepository>();
 builder.Services.AddSingleton<IMachineProfileRepository, MachineProfileRepository>();
 builder.Services.AddSingleton<IExecutionRepository, ExecutionRepository>();
+
+// Repositories — Phase 2
+builder.Services.AddSingleton<IRuntimeArtifactRepository, RuntimeArtifactRepository>();
+builder.Services.AddSingleton<IPackageArtifactRepository, PackageArtifactRepository>();
+builder.Services.AddSingleton<IExecutionAttemptRepository, ExecutionAttemptRepository>();
+builder.Services.AddSingleton<IExecutionEventRepository, ExecutionEventRepository>();
+builder.Services.AddSingleton<IReservationRepository, ReservationRepository>();
+
+// Validation
+builder.Services.AddSingleton<IManifestValidator, ManifestValidator>();
+
+// Security and downloads
+builder.Services.AddSingleton<IIntegrityVerifier, Biason.AutomationAgent.Infrastructure.Security.IntegrityVerifier>();
+builder.Services.AddHttpClient<IDownloadManager, Biason.AutomationAgent.Infrastructure.Downloads.DownloadManager>();
+
+// Stores (immutable)
+builder.Services.AddSingleton<IRuntimeStore, Biason.AutomationAgent.Infrastructure.Stores.RuntimeStore>();
+builder.Services.AddSingleton<IPackageStore, Biason.AutomationAgent.Infrastructure.Stores.PackageStore>();
+
+// Capacity and admission
+builder.Services.AddSingleton<ICapacityManager, Biason.AutomationAgent.Application.Capacity.CapacityManager>();
+builder.Services.AddSingleton<IResourceReservationManager, Biason.AutomationAgent.Application.Capacity.ResourceReservationManager>();
+builder.Services.AddSingleton<IAdmissionController, Biason.AutomationAgent.Application.Capacity.AdmissionController>();
+
+// Execution infrastructure
+builder.Services.AddSingleton<IWorkspaceManager, Biason.AutomationAgent.Application.Execution.WorkspaceManager>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Windows.Process.JobObjectManager>();
+builder.Services.AddSingleton<IProcessManager, Biason.AutomationAgent.Windows.Process.ProcessTreeManager>();
 
 // Windows collectors
 builder.Services.AddSingleton<IOsInfoCollector>(sp =>
@@ -123,6 +170,7 @@ builder.Services.AddSingleton<IDiskInfoCollector, WindowsDiskInfoCollector>();
 builder.Services.AddSingleton<ISessionInfoCollector, WindowsSessionInfoCollector>();
 builder.Services.AddSingleton<ISoftwareDetector, WindowsSoftwareDetector>();
 builder.Services.AddSingleton<ICapabilityDetector, WindowsCapabilityDetector>();
+builder.Services.AddSingleton<ICpuUsageProvider, WindowsCpuUsageCollector>();
 
 // Application services
 builder.Services.AddSingleton<IMachineProfiler, MachineProfilerService>();

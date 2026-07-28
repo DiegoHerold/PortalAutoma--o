@@ -2,8 +2,14 @@ export type RecurrenceType = "daily" | "weekly" | "monthly" | "once";
 
 export type Schedule = {
   id: number;
-  automation_id: number;
-  cron_expression: string;
+  automation_id: number | null;
+  automation_version_id?: number | null;
+  flow_id?: string | null;
+  flow_version_id?: string | null;
+  target_type?: "automation" | "flow";
+  key?: string | null;
+  name?: string | null;
+  cron_expression: string | null;
   timezone: string;
   is_active: boolean;
   recurrence_type: RecurrenceType;
@@ -13,6 +19,16 @@ export type Schedule = {
   specific_date: string | null; // "YYYY-MM-DD", set when recurrence_type === "once"
   is_one_time: boolean;
   last_dispatched_at: string | null;
+  status?: string | null;
+  schedule_type?: string | null;
+  interval_seconds?: number | null;
+  payload?: Record<string, unknown> | null;
+  misfire_policy?: string | null;
+  max_catch_up_runs?: number | null;
+  misfire_grace_seconds?: number | null;
+  overlap_policy?: string | null;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
 };
 
 export type ScheduleOccurrence = {
@@ -24,4 +40,6 @@ export type ScheduleOccurrence = {
   occurs_at: string;
   status: "upcoming" | "missed" | "queued" | "running" | "success" | "failed" | "cancelled";
   job_id: number | null;
+  execution_id?: string | null;
+  schedule_execution_id?: string | null;
 };

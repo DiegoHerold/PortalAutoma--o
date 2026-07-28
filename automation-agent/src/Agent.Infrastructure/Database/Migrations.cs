@@ -120,6 +120,164 @@ public static class Migrations
             );
 
             CREATE INDEX idx_inbox_pending ON inbox_commands(status) WHERE status = 'pending';
+            """),
+
+        new(2, "execution_pipeline", """
+            -- Expand executions table with Phase 2 columns
+            ALTER TABLE executions ADD COLUMN automation_version_id TEXT;
+            ALTER TABLE executions ADD COLUMN pool TEXT;
+            ALTER TABLE executions ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE executions ADD COLUMN current_attempt_id TEXT;
+            ALTER TABLE executions ADD COLUMN workspace_path TEXT;
+            ALTER TABLE executions ADD COLUMN process_id INTEGER;
+            ALTER TABLE executions ADD COLUMN reservation_id TEXT;
+            ALTER TABLE executions ADD COLUMN timeout_seconds INTEGER;
+            ALTER TABLE executions ADD COLUMN input_json TEXT;
+
+            CREATE INDEX idx_executions_state ON executions(current_state);
+            CREATE INDEX idx_executions_pool ON executions(pool) WHERE pool IS NOT NULL;
+
+            -- Runtime artifacts (immutable store)
+            CREATE TABLE runtime_artifacts (
+                runtime_id TEXT NOT NULL,
+                version TEXT NOT NULL,
+                platform TEXT NOT NULL DEFAULT 'win-x64',
+                sha256 TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                store_path TEXT NOT NULL,
+                downloaded_at_utc TEXT NOT NULL,
+                verified_at_utc TEXT,
+                is_valid INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (runtime_id, version)
+            );
+
+            -- Package artifacts (immutable store)
+            CREATE TABLE package_artifacts (
+                package_id TEXT PRIMARY KEY,
+                automation_id TEXT NOT NULL,
+                automation_version_id TEXT NOT NULL,
+                version TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                store_path TEXT NOT NULL,
+                manifest_path TEXT NOT NULL,
+                downloaded_at_utc TEXT NOT NULL,
+                verified_at_utc TEXT,
+                last_used_at_utc TEXT,
+                is_valid INTEGER NOT NULL DEFAULT 1
+            );
+
+            CREATE INDEX idx_package_artifacts_automation ON package_artifacts(automation_id, automation_version_id);
+            CREATE INDEX idx_package_artifacts_lru ON package_artifacts(last_used_at_utc);
+
+            -- Downloads tracking
+            CREATE TABLE downloads (
+                download_id TEXT PRIMARY KEY,
+                url TEXT NOT NULL,
+                target_path TEXT NOT NULL,
+                expected_sha256 TEXT NOT NULL,
+                expected_size_bytes INTEGER,
+                status TEXT NOT NULL DEFAULT 'pending',
+                bytes_downloaded INTEGER NOT NULL DEFAULT 0,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                created_at_utc TEXT NOT NULL,
+                completed_at_utc TEXT,
+                error_message TEXT
+            );
+
+            CREATE INDEX idx_downloads_status ON downloads(status);
+
+            -- Execution attempts
+            CREATE TABLE execution_attempts (
+                attempt_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                attempt_number INTEGER NOT NULL,
+                current_state TEXT NOT NULL,
+                pool TEXT NOT NULL,
+                workspace_path TEXT,
+                process_id INTEGER,
+                runtime_id TEXT,
+                package_id TEXT,
+                created_at_utc TEXT NOT NULL,
+                started_at_utc TEXT,
+                completed_at_utc TEXT,
+                exit_code INTEGER,
+                error_message TEXT,
+                peak_memory_mb INTEGER,
+                cpu_time_seconds REAL,
+                FOREIGN KEY (execution_id) REFERENCES executions(execution_id)
+            );
+
+            CREATE INDEX idx_execution_attempts_exec ON execution_attempts(execution_id);
+
+            -- Execution events (streaming events from running executions)
+            CREATE TABLE execution_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                attempt_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                message TEXT,
+                data_json TEXT,
+                occurred_at_utc TEXT NOT NULL,
+                FOREIGN KEY (execution_id) REFERENCES executions(execution_id),
+                FOREIGN KEY (attempt_id) REFERENCES execution_attempts(attempt_id)
+            );
+
+            CREATE INDEX idx_execution_events_exec ON execution_events(execution_id, occurred_at_utc);
+            CREATE INDEX idx_execution_events_attempt ON execution_events(attempt_id, occurred_at_utc);
+
+            -- Execution results
+            CREATE TABLE execution_results (
+                execution_id TEXT NOT NULL,
+                attempt_id TEXT NOT NULL,
+                success INTEGER NOT NULL,
+                exit_code INTEGER,
+                output_json TEXT,
+                error_output TEXT,
+                duration_ms INTEGER,
+                peak_memory_mb INTEGER,
+                cpu_time_seconds REAL,
+                completed_at_utc TEXT NOT NULL,
+                PRIMARY KEY (execution_id, attempt_id),
+                FOREIGN KEY (execution_id) REFERENCES executions(execution_id),
+                FOREIGN KEY (attempt_id) REFERENCES execution_attempts(attempt_id)
+            );
+
+            -- Resource reservations
+            CREATE TABLE resource_reservations (
+                reservation_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                pool TEXT NOT NULL,
+                slots INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at_utc TEXT NOT NULL,
+                expires_at_utc TEXT NOT NULL,
+                released_at_utc TEXT,
+                FOREIGN KEY (execution_id) REFERENCES executions(execution_id)
+            );
+
+            CREATE INDEX idx_reservations_status ON resource_reservations(status);
+            CREATE INDEX idx_reservations_pool ON resource_reservations(pool, status);
+            CREATE INDEX idx_reservations_expiry ON resource_reservations(expires_at_utc) WHERE status = 'active';
+
+            -- Execution artifacts (output files from executions)
+            CREATE TABLE execution_artifacts (
+                artifact_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                attempt_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                sha256 TEXT,
+                status TEXT NOT NULL DEFAULT 'created',
+                local_path TEXT,
+                storage_object_id TEXT,
+                created_at_utc TEXT NOT NULL,
+                FOREIGN KEY (execution_id) REFERENCES executions(execution_id),
+                FOREIGN KEY (attempt_id) REFERENCES execution_attempts(attempt_id)
+            );
+
+            CREATE INDEX idx_execution_artifacts_exec ON execution_artifacts(execution_id);
             """)
     };
 }

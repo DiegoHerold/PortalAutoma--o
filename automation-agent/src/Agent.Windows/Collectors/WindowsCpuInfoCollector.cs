@@ -38,22 +38,21 @@ public sealed class WindowsCpuInfoCollector : ICpuInfoCollector
 
         try
         {
-            // Count physical cores by enumerating registry subkeys
+            // Count logical processors by enumerating registry subkeys
             using var cpuKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor");
             if (cpuKey is not null)
             {
                 logicalProcessors = cpuKey.GetSubKeyNames().Length;
                 if (logicalProcessors == 0) logicalProcessors = Environment.ProcessorCount;
             }
-
-            // Physical cores via environment - rough estimate
-            // On Windows, without WMI we use logical / 2 for hyper-threaded CPUs as approximation
-            physicalCores = Math.Max(1, logicalProcessors / 2);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to enumerate CPU cores");
+            _logger.LogDebug(ex, "Failed to enumerate CPU logical processors from registry");
         }
+
+        // Physical cores via WMI
+        physicalCores = GetPhysicalCoresViaWmi(logicalProcessors);
 
         return new CpuInfo
         {
@@ -64,5 +63,28 @@ public sealed class WindowsCpuInfoCollector : ICpuInfoCollector
             LogicalProcessors = logicalProcessors,
             FrequencyMhz = frequencyMhz
         };
+    }
+
+    private int GetPhysicalCoresViaWmi(int fallbackLogical)
+    {
+        try
+        {
+            using var searcher = new System.Management.ManagementObjectSearcher(
+                "SELECT NumberOfCores FROM Win32_Processor");
+            int totalCores = 0;
+            foreach (var obj in searcher.Get())
+            {
+                var cores = obj["NumberOfCores"];
+                if (cores is not null)
+                    totalCores += Convert.ToInt32(cores);
+                obj.Dispose();
+            }
+            return totalCores > 0 ? totalCores : Math.Max(1, fallbackLogical / 2);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to get physical core count via WMI, using estimate");
+            return Math.Max(1, fallbackLogical / 2);
+        }
     }
 }

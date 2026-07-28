@@ -13,12 +13,14 @@ celery_app = Celery(
 celery_app.conf.task_default_queue = "normal"
 celery_app.conf.task_routes = {
     "app.tasks.dispatch_tasks.schedule_ready_tasks": {"queue": "normal"},
+    "app.tasks.flow_tasks.sync_flow_nodes": {"queue": "normal"},
     "app.tasks.schedule_tasks.sync": {"queue": "normal"},
 }
 
 # Import so Celery Beat (and the worker's task registry) knows about it --
 # Beat only schedules tasks that have already been imported/registered.
 from app.tasks import schedule_tasks  # noqa: E402,F401
+from app.tasks import flow_tasks  # noqa: E402,F401
 from app.tasks import housekeeping_tasks  # noqa: E402,F401
 from app.tasks import dispatch_tasks  # noqa: E402,F401
 
@@ -37,6 +39,10 @@ celery_app.conf.beat_schedule = {
     },
     "schedule-ready-tasks-every-5-seconds": {
         "task": "app.tasks.dispatch_tasks.schedule_ready_tasks",
+        "schedule": 5.0,
+    },
+    "sync-flow-nodes-every-5-seconds": {
+        "task": "app.tasks.flow_tasks.sync_flow_nodes",
         "schedule": 5.0,
     },
     "reconcile-expired-leases-every-15-seconds": {

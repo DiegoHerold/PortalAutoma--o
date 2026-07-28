@@ -46,10 +46,11 @@ class Execution:
         correlation_id: str | None,
         idempotency_key: str | None,
         now: datetime,
+        type: ExecutionType = ExecutionType.AUTOMATION,
     ) -> "Execution":
         return cls(
             id=id,
-            type=ExecutionType.AUTOMATION,
+            type=type,
             origin=origin,
             status=ExecutionStatus.CREATED,
             requested_by=requested_by,

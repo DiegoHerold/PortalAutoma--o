@@ -10,6 +10,7 @@ namespace Biason.AutomationAgent.Application.Services;
 
 public sealed class ResourceMonitorService : BackgroundService, IResourceMonitor
 {
+    private readonly ICpuUsageProvider _cpuUsageProvider;
     private readonly IMemoryInfoCollector _memoryCollector;
     private readonly IDiskInfoCollector _diskCollector;
     private readonly ISessionInfoCollector _sessionCollector;
@@ -22,6 +23,7 @@ public sealed class ResourceMonitorService : BackgroundService, IResourceMonitor
     private ResourceSample? _lastSample;
 
     public ResourceMonitorService(
+        ICpuUsageProvider cpuUsageProvider,
         IMemoryInfoCollector memoryCollector,
         IDiskInfoCollector diskCollector,
         ISessionInfoCollector sessionCollector,
@@ -32,6 +34,7 @@ public sealed class ResourceMonitorService : BackgroundService, IResourceMonitor
         IOptions<MonitoringOptions> options,
         ILogger<ResourceMonitorService> logger)
     {
+        _cpuUsageProvider = cpuUsageProvider;
         _memoryCollector = memoryCollector;
         _diskCollector = diskCollector;
         _sessionCollector = sessionCollector;
@@ -102,7 +105,7 @@ public sealed class ResourceMonitorService : BackgroundService, IResourceMonitor
         var sample = new ResourceSample
         {
             SampledAtUtc = now,
-            CpuUsagePercent = 0, // CPU usage requires PerformanceCounter or polling; simplified for now
+            CpuUsagePercent = _cpuUsageProvider.GetCpuUsagePercent(),
             MemoryTotalMb = memory.TotalMb,
             MemoryAvailableMb = memory.AvailableMb,
             MemoryUsedMb = memory.UsedMb,

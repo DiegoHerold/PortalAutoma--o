@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from modules.fleet.domain.agent import (
     AgentAdministrativeStatus,
@@ -41,12 +41,16 @@ class PresencePolicy:
     def connectivity_for(self, last_seen_at: datetime | None, now: datetime) -> AgentConnectivityStatus:
         if last_seen_at is None:
             return AgentConnectivityStatus.OFFLINE
-        age_seconds = (now - last_seen_at).total_seconds()
+        age_seconds = (_aware(now) - _aware(last_seen_at)).total_seconds()
         if age_seconds >= self.offline_after_seconds:
             return AgentConnectivityStatus.OFFLINE
         if age_seconds >= self.stale_after_seconds:
             return AgentConnectivityStatus.STALE
         return AgentConnectivityStatus.ONLINE
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 __all__ = [

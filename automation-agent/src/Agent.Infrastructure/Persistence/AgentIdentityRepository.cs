@@ -125,4 +125,8 @@ public sealed class AgentIdentityRepository : IAgentIdentityService
         var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(combined));
         return $"mch_{Convert.ToHexString(hash[..12]).ToLowerInvariant()}";
     }
+
+    public AgentIdentity? GetCachedIdentity() => _cached is not null
+        ? _cached with { InstanceId = _instanceId }
+        : null;
 }
