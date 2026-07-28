@@ -147,6 +147,12 @@ class SqlAlchemyAgentRepository:
         row = self.db.scalar(select(AgentRecord).where(AgentRecord.worker_id == worker_id))
         return self._to_dto(row) if row else None
 
+    def get_by_device_token(self, device_token: str) -> AgentDTO | None:
+        worker = self.db.scalar(select(Worker).where(Worker.device_token == device_token))
+        if worker is None or not worker.agent_id:
+            return None
+        return self.get(worker.agent_id)
+
     def list(self) -> list[AgentDTO]:
         return [self._to_dto(row) for row in self.db.scalars(select(AgentRecord).order_by(AgentRecord.name)).all()]
 

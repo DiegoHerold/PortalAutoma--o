@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Body, Header, HTTPException, WebSocket, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from gateway.agent_gateway.endpoint import connect_agent
@@ -20,7 +19,6 @@ from modules.fleet.application.use_cases import (
 )
 from modules.fleet.domain.errors import FleetError
 from modules.fleet.infrastructure.adapters import build_fleet_adapters
-from modules.fleet.infrastructure.orm.models import FleetWorkerRecord
 
 router = APIRouter()
 
@@ -166,10 +164,7 @@ class AgentHttpCompatibilityGateway:
             except FleetError as exc:
                 raise ValueError(str(exc)) from exc
         else:
-            worker = self.db.scalar(select(FleetWorkerRecord).where(FleetWorkerRecord.device_token == bearer_token))
-            if worker is None or not worker.agent_id:
-                raise ValueError("Agente nao autorizado.")
-            agent = self.adapters.agents.get(worker.agent_id)
+            agent = self.adapters.agents.get_by_device_token(bearer_token)
             if agent is None:
                 raise ValueError("Agente nao autorizado.")
         if expected_agent_id and agent.id != expected_agent_id:

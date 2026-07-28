@@ -54,6 +54,12 @@ class AgentRepository(Protocol):
     def get_by_worker_id(self, worker_id: int) -> AgentDTO | None:
         raise NotImplementedError
 
+    def get_by_device_token(self, device_token: str) -> AgentDTO | None:
+        """Legacy compatibility lookup: resolves an Agent via the old
+        Worker.device_token column, for HTTP agents that predate the
+        public_identifier:secret credential format."""
+        raise NotImplementedError
+
     def list(self) -> list[AgentDTO]:
         raise NotImplementedError
 
