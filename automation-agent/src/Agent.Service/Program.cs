@@ -160,6 +160,20 @@ builder.Services.AddSingleton<IWorkspaceManager, Biason.AutomationAgent.Applicat
 builder.Services.AddSingleton<Biason.AutomationAgent.Windows.Process.JobObjectManager>();
 builder.Services.AddSingleton<IProcessManager, Biason.AutomationAgent.Windows.Process.ProcessTreeManager>();
 
+// Launchers
+builder.Services.AddSingleton<ILauncher, Biason.AutomationAgent.Application.Launchers.PythonFunctionLauncher>();
+builder.Services.AddSingleton<ILauncher, Biason.AutomationAgent.Application.Launchers.PythonModuleLauncher>();
+builder.Services.AddSingleton<ILauncher, Biason.AutomationAgent.Application.Launchers.PowerShellLauncher>();
+builder.Services.AddSingleton<ILauncher, Biason.AutomationAgent.Application.Launchers.ExecutableLauncher>();
+builder.Services.AddSingleton<ILauncher, Biason.AutomationAgent.Application.Launchers.BrowserPlaywrightLauncher>();
+
+// Execution orchestration
+builder.Services.AddSingleton<ICancellationManager, Biason.AutomationAgent.Application.Execution.CancellationManager>();
+builder.Services.AddSingleton<IResultCollector, Biason.AutomationAgent.Application.Execution.ResultCollector>();
+builder.Services.AddSingleton<IExecutionManager, Biason.AutomationAgent.Application.Execution.ExecutionManager>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.ExecutionMetricsCollector>();
+builder.Services.AddSingleton<ICacheManager, Biason.AutomationAgent.Application.Execution.CacheManager>();
+
 // Windows collectors
 builder.Services.AddSingleton<IOsInfoCollector>(sp =>
     new WindowsOsInfoCollector(sp.GetRequiredService<ILogger<WindowsOsInfoCollector>>(),

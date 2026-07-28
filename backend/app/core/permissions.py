@@ -1,17 +1,17 @@
-from app.core.constants import GlobalRoleSlug
-from app.models.user import User
-from app.models.user_category_permission import UserCategoryPermission
+from typing import Any
+
+from modules.access.domain import RoleSlug
 
 
-def is_admin(user: User) -> bool:
-    return bool(user.role and user.role.slug == GlobalRoleSlug.ADMIN)
+def is_admin(user: Any) -> bool:
+    return bool(getattr(user, "role", None) and user.role.slug == RoleSlug.ADMIN.value)
 
 
 def can_access_category(
-    user: User,
+    user: Any,
     category_id: int,
     action: str,
-    permissions: list[UserCategoryPermission],
+    permissions: list[Any],
 ) -> bool:
     if is_admin(user):
         return True

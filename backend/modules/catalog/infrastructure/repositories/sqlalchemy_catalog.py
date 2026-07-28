@@ -7,19 +7,20 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.automation import Automation
-from app.models.automation_source import AutomationSource
-from app.models.automation_version import AutomationVersion
 from modules.catalog.application.dto import (
     AutomationDTO,
     AutomationSourceDTO,
     AutomationVersionDTO,
+    CategoryDTO,
     PackageDTO,
     RuntimeDTO,
     RuntimeVersionDTO,
 )
 from modules.catalog.domain.manifest import AutomationManifest, ValidationResult
 from modules.catalog.infrastructure.orm.models import (
+    CatalogAutomationRecord as Automation,
+    CatalogAutomationSourceRecord as AutomationSource,
+    CatalogAutomationVersionRecord as AutomationVersion,
     AutomationManifestRecord,
     AutomationPackageRecord,
     RuntimeRecord,
@@ -41,6 +42,50 @@ class SqlAlchemyTransactionManager:
 class SqlAlchemyCatalogRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def list_categories(self) -> list[CategoryDTO]:
+        rows = self.db.scalars(select(CatalogCategoryRecord).order_by(CatalogCategoryRecord.name)).all()
+        return [self._category_to_dto(row) for row in rows]
+
+    def get_category(self, category_id: int) -> CategoryDTO | None:
+        row = self.db.get(CatalogCategoryRecord, category_id)
+        return self._category_to_dto(row) if row else None
+
+    def get_category_by_slug(self, slug: str) -> CategoryDTO | None:
+        row = self.db.scalar(select(CatalogCategoryRecord).where(CatalogCategoryRecord.slug == str(slug).strip().lower()))
+        return self._category_to_dto(row) if row else None
+
+    def create_category(self, payload: dict[str, Any]) -> CategoryDTO:
+        row = CatalogCategoryRecord(
+            name=str(payload["name"]).strip(),
+            slug=str(payload["slug"]).strip().lower(),
+            description=payload.get("description"),
+            is_active=bool(payload.get("is_active", True)),
+        )
+        self.db.add(row)
+        self.db.flush()
+        return self._category_to_dto(row)
+
+    def update_category(self, category_id: int, payload: dict[str, Any]) -> CategoryDTO:
+        row = self.db.get(CatalogCategoryRecord, category_id)
+        if row is None:
+            raise ValueError("Category not found.")
+        for field in ["name", "slug", "description", "is_active"]:
+            if field in payload:
+                value = payload[field]
+                setattr(row, field, str(value).strip().lower() if field == "slug" else value)
+        self.db.add(row)
+        self.db.flush()
+        return self._category_to_dto(row)
+
+    def archive_category(self, category_id: int) -> CategoryDTO:
+        row = self.db.get(CatalogCategoryRecord, category_id)
+        if row is None:
+            raise ValueError("Category not found.")
+        row.is_active = False
+        self.db.add(row)
+        self.db.flush()
+        return self._category_to_dto(row)
 
     def list_automations(self) -> list[AutomationDTO]:
         rows = self.db.scalars(select(Automation).order_by(Automation.name)).all()
@@ -400,6 +445,17 @@ class SqlAlchemyCatalogRepository:
             is_active=row.is_active,
             status=getattr(row, "status", "active" if row.is_active else "disabled"),
             tags=list(getattr(row, "tags_json", None) or []),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    def _category_to_dto(self, row: CatalogCategoryRecord) -> CategoryDTO:
+        return CategoryDTO(
+            id=row.id,
+            name=row.name,
+            slug=row.slug,
+            description=row.description,
+            is_active=row.is_active,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

@@ -3,6 +3,7 @@ export type Role = {
   name: string;
   slug: string;
   description?: string | null;
+  permissions?: string[];
 };
 
 export type CategoryPermission = {
@@ -21,7 +22,13 @@ export type User = {
   id: number;
   name: string;
   email: string;
+  status?: "pending" | "active" | "disabled" | "locked" | "archived" | string;
   is_active: boolean;
   role: Role;
+  organization_id?: number | null;
+  permissions?: string[];
+  rbac_permissions?: string[];
   category_permissions: CategoryPermission[];
+  last_login_at?: string | null;
+  disabled_at?: string | null;
 };

@@ -8,7 +8,6 @@ from uuid import uuid4
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models.worker import Worker
 from modules.dispatch.infrastructure.orm.models import AgentCommandRecord
 from modules.fleet.application.dto import (
     AgentCommandDTO,
@@ -36,6 +35,7 @@ from modules.fleet.infrastructure.orm.models import (
     AgentRecord,
     AgentRegistrationTokenRecord,
     AgentResourceSnapshotRecord,
+    FleetWorkerRecord as Worker,
     InteractiveSessionSnapshotRecord,
 )
 from modules.telemetry.infrastructure.orm.models import OutboxMessageRecord

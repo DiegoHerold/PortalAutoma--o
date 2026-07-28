@@ -15,6 +15,7 @@ from modules.fleet.infrastructure.repositories.sqlalchemy_fleet import (
     SqlAlchemyFleetTransaction,
     SqlAlchemyInteractiveSessionRepository,
 )
+from modules.fleet.infrastructure.repositories.sqlalchemy_worker_preferences import SqlAlchemyAutomationWorkerPreferenceRepository
 
 __all__ = [
     "SqlAlchemyAgentCapabilityRepository",
@@ -32,4 +33,5 @@ __all__ = [
     "SqlAlchemyFleetOutbox",
     "SqlAlchemyFleetTransaction",
     "SqlAlchemyInteractiveSessionRepository",
+    "SqlAlchemyAutomationWorkerPreferenceRepository",
 ]

@@ -2,11 +2,115 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from infrastructure.database import Base
+
+
+class CatalogCategoryRecord(Base):
+    __tablename__ = "categories"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CatalogAutomationRecord(Base):
+    __tablename__ = "automations"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    slug: Mapped[str] = mapped_column(String(180), nullable=False, index=True)
+    key: Mapped[str | None] = mapped_column(String(180), index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    executor_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    package_url: Mapped[str | None] = mapped_column(Text)
+    package_sha256: Mapped[str | None] = mapped_column(String(120))
+    default_priority: Mapped[str] = mapped_column(String(20), default="normal", nullable=False)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
+    max_retries: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="active", nullable=False, index=True)
+    tags_json: Mapped[list | None] = mapped_column(JSONB)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CatalogAutomationSourceRecord(Base):
+    __tablename__ = "automation_sources"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
+    integration_id: Mapped[int | None] = mapped_column(ForeignKey("github_integrations.id"))
+    owner: Mapped[str | None] = mapped_column(String(200))
+    repository: Mapped[str | None] = mapped_column(String(200))
+    branch: Mapped[str | None] = mapped_column(String(200))
+    automation_path: Mapped[str | None] = mapped_column(Text)
+    manifest_path: Mapped[str | None] = mapped_column(Text)
+    workspace_path: Mapped[str | None] = mapped_column(Text)
+    last_commit_sha: Mapped[str | None] = mapped_column(String(64))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sync_status: Mapped[str | None] = mapped_column(String(30))
+    original_filename: Mapped[str | None] = mapped_column(Text)
+    uploaded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_sha256: Mapped[str | None] = mapped_column(String(120))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CatalogAutomationVersionRecord(Base):
+    __tablename__ = "automation_versions"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id"), nullable=False, index=True)
+    source_id: Mapped[int | None] = mapped_column(ForeignKey("automation_sources.id"))
+    version: Mapped[str] = mapped_column(String(50), nullable=False)
+    manifest_id: Mapped[str | None] = mapped_column(ForeignKey("automation_manifests.id"))
+    package_id: Mapped[str | None] = mapped_column(ForeignKey("automation_packages.id"))
+    runtime_version_id: Mapped[str | None] = mapped_column(ForeignKey("runtime_versions.id"))
+    manifest: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    manifest_schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    runtime_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    runtime_version: Mapped[str | None] = mapped_column(String(40))
+    entrypoint_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entrypoint: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    application_type: Mapped[str] = mapped_column(String(20), nullable=False, default="source")
+    application_path: Mapped[str | None] = mapped_column(Text)
+    artifact_bucket: Mapped[str] = mapped_column(String(200), nullable=False)
+    artifact_object_key: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    artifact_sha256: Mapped[str] = mapped_column(String(120), nullable=False)
+    source_commit_sha: Mapped[str | None] = mapped_column(String(64))
+    source_path: Mapped[str | None] = mapped_column(Text)
+    release_notes: Mapped[str | None] = mapped_column(Text)
+    source_repository: Mapped[str | None] = mapped_column(Text)
+    source_branch: Mapped[str | None] = mapped_column(String(200))
+    source_tag: Mapped[str | None] = mapped_column(String(200))
+    build_id: Mapped[str | None] = mapped_column(String(120))
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    published_by: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="validating")
+    validation_errors: Mapped[list | None] = mapped_column(JSONB)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deprecated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class AutomationManifestRecord(Base):

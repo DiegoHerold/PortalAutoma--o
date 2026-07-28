@@ -9,10 +9,9 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.dependencies import get_current_user
-from app.models.user import User
-from app.services.permission_service import PermissionService
+from infrastructure.database import get_db
+from modules.access.api.dependencies import get_current_user
+from modules.access.api.authorization import ensure_automation_action
 from modules.dispatch.application.use_cases import ScheduleTaskExecution
 from modules.dispatch.domain.errors import AgentSelectionError, DispatchError
 from modules.dispatch.infrastructure.adapters import build_dispatch_adapters
@@ -38,7 +37,7 @@ def create_execution(
     payload: ExecutionCreateRequest,
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> ExecutionDetailsResponse:
     adapters = build_orchestration_adapters(db)
@@ -46,7 +45,7 @@ def create_execution(
     snapshot = adapters.automation_versions.get_published_snapshot(version_id)
     if snapshot is None:
         raise HTTPException(status_code=400, detail="AutomationVersion must be published and have published package/runtime.")
-    PermissionService(db).ensure_automation_action(user, snapshot.automation_id, "can_execute")
+    ensure_automation_action(db, user, snapshot.automation_id, "can_execute")
     command_payload = {
         "automation_version_id": version_id,
         "agent_id": payload.agent_id,
@@ -114,7 +113,7 @@ def create_execution(
 @router.get("", response_model=list[ExecutionResponse])
 def list_executions(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     limit: int = 100,
     offset: int = 0,
 ) -> list[ExecutionResponse]:
@@ -127,7 +126,7 @@ def list_executions(
 def list_execution_tasks(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     details = _details_for_user(db, user, execution_id)
     return [_jsonable(asdict(item)) for item in details.tasks]
@@ -137,7 +136,7 @@ def list_execution_tasks(
 def list_execution_attempts(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     details = _details_for_user(db, user, execution_id)
     return [_jsonable(asdict(item)) for item in details.attempts]
@@ -148,12 +147,12 @@ def cancel_execution(
     execution_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     payload: dict[str, Any] | None = Body(default=None),
 ) -> dict[str, Any]:
     details = _details_for_user(db, user, execution_id)
     if details.automation_version is not None:
-        PermissionService(db).ensure_automation_action(user, details.automation_version.automation_id, "can_execute")
+        ensure_automation_action(db, user, details.automation_version.automation_id, "can_execute")
     dispatch_adapters = build_dispatch_adapters(db)
     try:
         return _jsonable(
@@ -182,7 +181,7 @@ def cancel_execution(
 def get_execution(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> ExecutionDetailsResponse:
     details = _details_for_user(db, user, execution_id)
     payload = details.to_payload()
@@ -197,7 +196,7 @@ def get_execution(
     return ExecutionDetailsResponse.model_validate(payload)
 
 
-def _details_for_user(db: Session, user: User, execution_id: str):
+def _details_for_user(db: Session, user: Any, execution_id: str):
     adapters = build_orchestration_adapters(db)
     try:
         details = GetExecutionDetails(
@@ -211,11 +210,11 @@ def _details_for_user(db: Session, user: User, execution_id: str):
     except OrchestrationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if details.automation_version is not None:
-        PermissionService(db).ensure_automation_action(user, details.automation_version.automation_id, "can_view")
+        ensure_automation_action(db, user, details.automation_version.automation_id, "can_view")
     return details
 
 
-def _actor(user: User, request: Request) -> ActorDTO:
+def _actor(user: Any, request: Request) -> ActorDTO:
     return ActorDTO(
         actor_type="user",
         actor_id=str(user.id),

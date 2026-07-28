@@ -1,14 +1,17 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from uuid import uuid4
 
-from app.models.audit import AuditLog
-from app.repositories.audit_repository import AuditRepository
+from sqlalchemy.orm import Session
+
+from modules.governance.application.use_cases import ListAuditEvents
+from modules.governance.domain.audit import AuditEvent
+from modules.governance.infrastructure.repositories import SqlAlchemyAuditEventRepository
 
 
 class AuditService:
     def __init__(self, db: Session) -> None:
-        self.db = db
-        self.audit_logs = AuditRepository(db)
+        self.audit_events = SqlAlchemyAuditEventRepository(db)
 
     def record(
         self,
@@ -23,32 +26,21 @@ class AuditService:
         before: dict | None = None,
         after: dict | None = None,
     ) -> None:
-        """
-        Record an audit event.
-        
-        Args:
-            action: The action performed (event_type)
-            actor_email: Email of the user who performed the action
-            actor_type: Type of actor (user, system, trigger, worker)
-            entity_type: Type of entity being acted upon (resource_type)
-            entity_id: ID of the entity (resource_id)
-            resource_type: Backwards-compatible alias for entity_type
-            resource_id: Backwards-compatible alias for entity_id
-            details: Additional details about the action
-            before: State before the change (for updates)
-            after: State after the change (for updates)
-        """
-        audit_log = AuditLog(
-            event_type=action,
-            actor_email=actor_email,
-            actor_type=actor_type,
-            resource_type=entity_type or resource_type,
-            resource_id=entity_id or resource_id,
-            details=details,
-            before=before,
-            after=after,
+        metadata = {"message": details} if details else {}
+        self.audit_events.append(
+            AuditEvent(
+                id=f"aud_{uuid4().hex}",
+                actor_type=actor_type,
+                actor_id=actor_email,
+                action=action,
+                resource_type=entity_type or resource_type or "unknown",
+                resource_id=entity_id or resource_id or "unknown",
+                before=before,
+                after=after,
+                metadata=metadata,
+                occurred_at=datetime.now(UTC),
+            )
         )
-        self.audit_logs.create(audit_log)
 
     def get_audit_logs(
         self,
@@ -57,20 +49,30 @@ class AuditService:
         action: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[AuditLog]:
-        """Get audit logs with optional filtering."""
-        query = self.db.query(AuditLog)
-        
-        if actor:
-            query = query.filter(AuditLog.actor_email.ilike(f"%{actor}%"))
-        if entity_type:
-            query = query.filter(AuditLog.resource_type == entity_type)
-        if action:
-            query = query.filter(AuditLog.event_type == action)
-        
-        return query.order_by(desc(AuditLog.created_at)).offset(offset).limit(limit).all()
+    ):
+        events = ListAuditEvents(self.audit_events).execute(
+            actor=actor,
+            resource_type=entity_type,
+            action=action,
+            limit=limit,
+            offset=offset,
+        )
+        return [
+            SimpleNamespace(
+                id=event.id,
+                actor_email=event.actor_id,
+                actor_type=event.actor_type,
+                event_type=event.action,
+                resource_type=event.resource_type,
+                resource_id=event.resource_id,
+                created_at=event.occurred_at,
+                before=event.before,
+                after=event.after,
+                details=(event.metadata or {}).get("message") or (event.metadata or {}).get("reason"),
+            )
+            for event in events
+        ]
 
-    # Legacy method for compatibility
     def record_legacy(
         self,
         event_type: str,
@@ -79,7 +81,6 @@ class AuditService:
         resource_id: str | None = None,
         details: str | None = None,
     ) -> None:
-        """Legacy method for backward compatibility."""
         self.record(
             action=event_type,
             actor_email=actor_email,

@@ -7,17 +7,30 @@ import tempfile
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.dependencies import get_current_user
-from app.models.user import User
+from infrastructure.github import GithubApiError, GithubAppClient, GithubAppNotConfiguredError
+from infrastructure.database import get_db
+from modules.access.api.authorization import ensure_automation_action
+from modules.access.api.dependencies import get_current_user
+from modules.access.application.use_cases import PermissionChecker
+from modules.access.domain import AuthorizationDenied, RoleSlug
+from modules.access.infrastructure.adapters import build_access_adapters
 from modules.catalog.api.schemas import (
+    AutomationCreateRequest,
+    AutomationResponse,
+    AutomationSourceResponse,
+    AutomationSyncResponse,
+    AutomationUpdateRequest,
     AutomationVersionCreateRequest,
     AutomationVersionResponse,
     BlockRequest,
+    CategoryCreateRequest,
+    CategoryResponse,
+    CategoryUpdateRequest,
     PackageResponse,
     PackageUploadCreateRequest,
     PackageUploadResponse,
@@ -25,35 +38,376 @@ from modules.catalog.api.schemas import (
     RuntimeResponse,
     RuntimeVersionCreateRequest,
     RuntimeVersionResponse,
+    WorkerPreferenceResponse,
+    WorkerPreferenceUpdateRequest,
 )
 from modules.catalog.application.dto import ActorDTO
 from modules.catalog.application.use_cases import (
     AbortPackageUpload,
+    ArchiveAutomation,
+    ArchiveCategory,
+    CreateAutomation,
     BlockAutomationVersion,
     BlockRuntimeVersion,
     CompletePackageUpload,
+    CreateCategory,
     CreateAutomationVersion,
     CreateRuntime,
     CreateRuntimeVersion,
     DeprecateAutomationVersion,
     DeprecateRuntimeVersion,
+    GetAutomation,
     GetAutomationVersion,
+    GetCategory,
     GetPackage,
     GetPackageValidation,
     GetRuntime,
     GetRuntimeVersion,
     InitiatePackageUpload,
+    ListAutomations,
     ListRuntimes,
+    ListAutomationVersions,
+    ListCategories,
     PublishAutomationVersion,
     PublishRuntimeVersion,
+    UpdateAutomationMetadata,
+    UpdateCategory,
     ValidateAutomationVersion,
 )
 from modules.catalog.domain.errors import CatalogError
 from modules.catalog.infrastructure.adapters import build_catalog_adapters
+from modules.fleet.application.use_cases import GetAutomationWorkerPreferences, ReplaceAutomationWorkerPreferences
+from modules.fleet.infrastructure.repositories import SqlAlchemyAutomationWorkerPreferenceRepository
+from modules.governance.domain.audit import AuditEvent
 from modules.shared.application.idempotency import IdempotencyRecord, IdempotencyReplayStatus
 from modules.shared.infrastructure.repositories import SqlAlchemyIdempotencyStore
 
 router = APIRouter()
+
+
+@router.get("/categories", response_model=list[CategoryResponse])
+def list_categories(
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> list[CategoryResponse]:
+    adapters = build_catalog_adapters(db)
+    categories = ListCategories(adapters.catalog).execute()
+    if _is_admin(user):
+        return [CategoryResponse.model_validate(item, from_attributes=True) for item in categories]
+    allowed_category_ids = _allowed_category_ids(user, "can_view")
+    return [
+        CategoryResponse.model_validate(item, from_attributes=True)
+        for item in categories
+        if item.id in allowed_category_ids
+    ]
+
+
+@router.get("/categories/{category_id}", response_model=CategoryResponse)
+def get_category(
+    category_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> CategoryResponse:
+    adapters = build_catalog_adapters(db)
+    try:
+        category = GetCategory(adapters.catalog).execute(category_id)
+    except CatalogError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not _is_admin(user) and category.id not in _allowed_category_ids(user, "can_view"):
+        raise HTTPException(status_code=404, detail="Category not found.")
+    return CategoryResponse.model_validate(category, from_attributes=True)
+
+
+@router.post("/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
+def create_category(
+    payload: CategoryCreateRequest,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> CategoryResponse:
+    adapters = build_catalog_adapters(db)
+    _ensure_admin_or_manager(db, user)
+    try:
+        category = CreateCategory(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(
+            payload.model_dump(),
+            _actor(user),
+        )
+    except CatalogError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return CategoryResponse.model_validate(category, from_attributes=True)
+
+
+@router.put("/categories/{category_id}", response_model=CategoryResponse)
+def update_category(
+    category_id: int,
+    payload: CategoryUpdateRequest,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> CategoryResponse:
+    adapters = build_catalog_adapters(db)
+    _ensure_admin_or_manager(db, user)
+    try:
+        category = UpdateCategory(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(
+            category_id,
+            payload.model_dump(),
+            _actor(user),
+        )
+    except CatalogError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return CategoryResponse.model_validate(category, from_attributes=True)
+
+
+@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def archive_category(
+    category_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> None:
+    adapters = build_catalog_adapters(db)
+    _ensure_admin_or_manager(db, user)
+    try:
+        ArchiveCategory(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(category_id, _actor(user))
+    except CatalogError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/automations", response_model=list[AutomationResponse])
+def list_automations(
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> list[AutomationResponse]:
+    adapters = build_catalog_adapters(db)
+    automations = ListAutomations(adapters.catalog).execute()
+    if _is_admin(user):
+        return [AutomationResponse.model_validate(item, from_attributes=True) for item in automations]
+    allowed_category_ids = _allowed_category_ids(user, "can_view")
+    return [
+        AutomationResponse.model_validate(item, from_attributes=True)
+        for item in automations
+        if item.category_id in allowed_category_ids
+    ]
+
+
+@router.get("/automations/{automation_id}", response_model=AutomationResponse)
+def get_automation(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> AutomationResponse:
+    adapters = build_catalog_adapters(db)
+    try:
+        automation = GetAutomation(adapters.catalog).execute(automation_id)
+    except CatalogError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not _is_admin(user):
+        ensure_automation_action(db, user, automation_id, "can_view")
+    return AutomationResponse.model_validate(automation, from_attributes=True)
+
+
+@router.post("/automations", response_model=AutomationResponse, status_code=status.HTTP_201_CREATED)
+def create_automation(
+    payload: AutomationCreateRequest,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> AutomationResponse:
+    adapters = build_catalog_adapters(db)
+    _ensure_category_action(db, user, payload.category_id, "can_create")
+    replay = _reserve_idempotency(db, "automation:create", idempotency_key, payload.model_dump())
+    if replay is not None:
+        return AutomationResponse.model_validate(replay)
+    try:
+        result = CreateAutomation(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(
+            {**payload.model_dump(), "idempotency_key": idempotency_key},
+            _actor(user),
+        )
+    except CatalogError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    response = AutomationResponse.model_validate(result, from_attributes=True)
+    _save_idempotency(db, "automation:create", idempotency_key, response.model_dump(mode="json"), str(response.id))
+    return response
+
+
+@router.put("/automations/{automation_id}", response_model=AutomationResponse)
+def update_automation(
+    automation_id: int,
+    payload: AutomationUpdateRequest,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> AutomationResponse:
+    adapters = build_catalog_adapters(db)
+    category_id = ensure_automation_action(db, user, automation_id, "can_edit")
+    _ensure_category_action(db, user, category_id, "can_edit")
+    try:
+        result = UpdateAutomationMetadata(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(
+            automation_id,
+            payload.model_dump(),
+            _actor(user),
+        )
+    except CatalogError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AutomationResponse.model_validate(result, from_attributes=True)
+
+
+@router.delete("/automations/{automation_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def archive_automation(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> None:
+    adapters = build_catalog_adapters(db)
+    ensure_automation_action(db, user, automation_id, "can_delete")
+    try:
+        ArchiveAutomation(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(automation_id, _actor(user))
+    except CatalogError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/automations/{automation_id}/sources", response_model=list[AutomationSourceResponse])
+def list_automation_sources(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> list[AutomationSourceResponse]:
+    ensure_automation_action(db, user, automation_id, "can_view")
+    adapters = build_catalog_adapters(db)
+    return [
+        AutomationSourceResponse.model_validate(item, from_attributes=True)
+        for item in adapters.catalog.list_sources(automation_id)
+    ]
+
+
+@router.get("/automations/{automation_id}/versions", response_model=list[AutomationVersionResponse])
+def list_automation_versions(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> list[AutomationVersionResponse]:
+    ensure_automation_action(db, user, automation_id, "can_view")
+    adapters = build_catalog_adapters(db)
+    return [
+        AutomationVersionResponse.model_validate(item, from_attributes=True)
+        for item in ListAutomationVersions(adapters.catalog).execute(automation_id)
+    ]
+
+
+@router.get("/automations/{automation_id}/worker-preferences", response_model=list[WorkerPreferenceResponse])
+def get_worker_preferences(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> list[WorkerPreferenceResponse]:
+    ensure_automation_action(db, user, automation_id, "can_view")
+    preferences = GetAutomationWorkerPreferences(SqlAlchemyAutomationWorkerPreferenceRepository(db)).execute(automation_id)
+    return [WorkerPreferenceResponse.model_validate(item, from_attributes=True) for item in preferences]
+
+
+@router.put("/automations/{automation_id}/worker-preferences", response_model=list[WorkerPreferenceResponse])
+def update_worker_preferences(
+    automation_id: int,
+    payload: WorkerPreferenceUpdateRequest,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> list[WorkerPreferenceResponse]:
+    ensure_automation_action(db, user, automation_id, "can_edit")
+    preferences = ReplaceAutomationWorkerPreferences(SqlAlchemyAutomationWorkerPreferenceRepository(db)).execute(
+        automation_id,
+        [item.model_dump() for item in payload.preferences],
+    )
+    build_catalog_adapters(db).audit.append(
+        AuditEvent(
+            id=str(uuid4()),
+            actor_type="user",
+            actor_id=str(user.id),
+            action="automation.worker_preferences_updated",
+            resource_type="automation",
+            resource_id=str(automation_id),
+            after={"preference_count": len(preferences)},
+        )
+    )
+    db.commit()
+    return [WorkerPreferenceResponse.model_validate(item, from_attributes=True) for item in preferences]
+
+
+@router.post("/automations/{automation_id}:sync", response_model=AutomationSyncResponse)
+def sync_automation_source(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> AutomationSyncResponse:
+    ensure_automation_action(db, user, automation_id, "can_view")
+    adapters = build_catalog_adapters(db)
+    source = adapters.catalog.get_active_source(automation_id)
+    if source is None or source.type != "github":
+        raise HTTPException(status_code=400, detail="Esta automacao nao possui uma origem GitHub configurada.")
+    if source.integration_id is None or not source.owner or not source.repository or not source.branch or not source.automation_path:
+        raise HTTPException(status_code=422, detail="Origem GitHub da automacao esta incompleta.")
+    client: GithubAppClient | None = None
+    try:
+        client = GithubAppClient()
+        latest_commit = client.get_latest_commit_for_path(
+            source.integration_id,
+            source.owner,
+            source.repository,
+            source.branch,
+            source.automation_path,
+        )
+    except GithubAppNotConfiguredError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GithubApiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        if client is not None:
+            client.close()
+    current_version = adapters.catalog.get_latest_published_version(automation_id)
+    update_available = bool(latest_commit) and latest_commit != source.last_commit_sha
+    adapters.catalog.update_source(source.id, {"sync_status": "update_available" if update_available else "synced"})
+    db.commit()
+    return AutomationSyncResponse(
+        update_available=update_available,
+        current_commit=source.last_commit_sha,
+        latest_commit=latest_commit,
+        current_version=current_version.version if current_version else None,
+    )
+
+
+@router.post("/automations/{automation_id}/versions/{version_id}:activate", response_model=AutomationVersionResponse)
+def activate_automation_version_alias(
+    automation_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> AutomationVersionResponse:
+    ensure_automation_action(db, user, automation_id, "can_approve")
+    adapters = build_catalog_adapters(db)
+    try:
+        result = PublishAutomationVersion(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(
+            automation_id,
+            version_id,
+            _actor(user),
+        )
+    except CatalogError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return AutomationVersionResponse.model_validate(result, from_attributes=True)
+
+
+@router.post("/automations/{automation_id}/versions/{version_id}:deprecate", response_model=AutomationVersionResponse)
+def deprecate_automation_version_alias(
+    automation_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> AutomationVersionResponse:
+    ensure_automation_action(db, user, automation_id, "can_approve")
+    adapters = build_catalog_adapters(db)
+    try:
+        result = DeprecateAutomationVersion(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(
+            automation_id,
+            version_id,
+            _actor(user),
+        )
+    except CatalogError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return AutomationVersionResponse.model_validate(result, from_attributes=True)
 
 
 @router.post("/automations/{automation_id}/versions", response_model=AutomationVersionResponse, status_code=status.HTTP_201_CREATED)
@@ -61,7 +415,7 @@ def create_automation_version(
     automation_id: int,
     payload: AutomationVersionCreateRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> AutomationVersionResponse:
     adapters = build_catalog_adapters(db)
@@ -94,7 +448,7 @@ def create_automation_version(
 def get_automation_version(
     version_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> AutomationVersionResponse:
     adapters = build_catalog_adapters(db)
     try:
@@ -108,7 +462,7 @@ def get_automation_version(
 def validate_automation_version(
     version_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> AutomationVersionResponse:
     adapters = build_catalog_adapters(db)
     try:
@@ -122,7 +476,7 @@ def validate_automation_version(
 def publish_automation_version(
     version_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> AutomationVersionResponse:
     adapters = build_catalog_adapters(db)
     version = adapters.catalog.get_version(version_id)
@@ -139,7 +493,7 @@ def publish_automation_version(
 def deprecate_automation_version(
     version_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> AutomationVersionResponse:
     adapters = build_catalog_adapters(db)
     version = adapters.catalog.get_version(version_id)
@@ -154,7 +508,7 @@ def block_automation_version(
     version_id: int,
     payload: BlockRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> AutomationVersionResponse:
     adapters = build_catalog_adapters(db)
     version = adapters.catalog.get_version(version_id)
@@ -169,7 +523,7 @@ def initiate_package_upload(
     version_id: int,
     payload: PackageUploadCreateRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> PackageUploadResponse:
     adapters = build_catalog_adapters(db)
@@ -199,7 +553,7 @@ async def upload_package_bytes(
     upload_session_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> PackageResponse:
     adapters = build_catalog_adapters(db)
     with tempfile.TemporaryDirectory(prefix="package_upload_") as tmp:
@@ -224,7 +578,7 @@ async def upload_package_bytes(
 def complete_package_upload(
     upload_session_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> PackageResponse:
     adapters = build_catalog_adapters(db)
     try:
@@ -248,7 +602,7 @@ def complete_package_upload(
 def abort_package_upload(
     upload_session_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> None:
     adapters = build_catalog_adapters(db)
     AbortPackageUpload(adapters.upload_sessions, adapters.audit, adapters.transaction).execute(upload_session_id, _actor(user))
@@ -258,7 +612,7 @@ def abort_package_upload(
 def get_package(
     package_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> PackageResponse:
     adapters = build_catalog_adapters(db)
     result = GetPackage(adapters.catalog).execute(package_id)
@@ -269,7 +623,7 @@ def get_package(
 def get_package_validation(
     package_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict:
     adapters = build_catalog_adapters(db)
     return GetPackageValidation(adapters.catalog).execute(package_id)
@@ -278,7 +632,7 @@ def get_package_validation(
 @router.get("/runtimes", response_model=list[RuntimeResponse])
 def list_runtimes(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> list[RuntimeResponse]:
     adapters = build_catalog_adapters(db)
     return [RuntimeResponse.model_validate(item, from_attributes=True) for item in ListRuntimes(adapters.catalog).execute()]
@@ -288,7 +642,7 @@ def list_runtimes(
 def create_runtime(
     payload: RuntimeCreateRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> RuntimeResponse:
     adapters = build_catalog_adapters(db)
@@ -308,7 +662,7 @@ def create_runtime(
 def get_runtime(
     runtime_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> RuntimeResponse:
     adapters = build_catalog_adapters(db)
     result = GetRuntime(adapters.catalog).execute(runtime_id)
@@ -320,7 +674,7 @@ def create_runtime_version(
     runtime_id: str,
     payload: RuntimeVersionCreateRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> RuntimeVersionResponse:
     adapters = build_catalog_adapters(db)
@@ -341,7 +695,7 @@ def create_runtime_version(
 def get_runtime_version(
     runtime_version_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> RuntimeVersionResponse:
     adapters = build_catalog_adapters(db)
     result = GetRuntimeVersion(adapters.catalog).execute(runtime_version_id)
@@ -352,7 +706,7 @@ def get_runtime_version(
 def publish_runtime_version(
     runtime_version_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> RuntimeVersionResponse:
     adapters = build_catalog_adapters(db)
     result = PublishRuntimeVersion(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(runtime_version_id, _actor(user))
@@ -363,7 +717,7 @@ def publish_runtime_version(
 def deprecate_runtime_version(
     runtime_version_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> RuntimeVersionResponse:
     adapters = build_catalog_adapters(db)
     result = DeprecateRuntimeVersion(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(runtime_version_id, _actor(user))
@@ -375,15 +729,42 @@ def block_runtime_version(
     runtime_version_id: str,
     payload: BlockRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> RuntimeVersionResponse:
     adapters = build_catalog_adapters(db)
     result = BlockRuntimeVersion(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(runtime_version_id, _actor(user), payload.reason)
     return RuntimeVersionResponse.model_validate(result, from_attributes=True)
 
 
-def _actor(user: User) -> ActorDTO:
+def _actor(user: Any) -> ActorDTO:
     return ActorDTO(actor_type="user", actor_id=str(user.id), actor_email=user.email)
+
+
+def _is_admin(user: Any) -> bool:
+    role = getattr(user, "role", None)
+    return getattr(role, "slug", None) == RoleSlug.ADMIN.value
+
+
+def _allowed_category_ids(user: Any, action: str) -> set[int]:
+    return {
+        int(permission.category_id)
+        for permission in getattr(user, "category_permissions", []) or []
+        if bool(getattr(permission, action, False))
+    }
+
+
+def _ensure_admin_or_manager(db: Session, user: Any) -> None:
+    try:
+        PermissionChecker(build_access_adapters(db).access).ensure_admin_or_manager(user)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+def _ensure_category_action(db: Session, user: Any, category_id: int, action: str) -> None:
+    try:
+        PermissionChecker(build_access_adapters(db).access).ensure_category_action(user, category_id, action)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 def _reserve_idempotency(db: Session, scope: str, key: str | None, payload: dict[str, Any]) -> dict[str, Any] | None:

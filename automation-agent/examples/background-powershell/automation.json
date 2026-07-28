@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "example.background_powershell",
+  "name": "Background PowerShell Example",
+  "version": "1.0.0",
+  "description": "Reads parameters, generates output file, writes stdout, returns exit code 0.",
+  "runtime": {
+    "id": "powershell-core",
+    "version": "7.4"
+  },
+  "entrypoint": {
+    "type": "powershell_script",
+    "script": "automation\\main.ps1"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.background_execution"]
+  },
+  "resources": {
+    "pool": "background",
+    "slots": 1
+  },
+  "timeout": {
+    "execution_seconds": 120,
+    "graceful_shutdown_seconds": 10
+  }
+}

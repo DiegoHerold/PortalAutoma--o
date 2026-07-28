@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.integrations.storage.base import PackageStorage
+from infrastructure.storage import PackageStorage
 from modules.storage.domain.stored_object import StoredObject, StoredObjectStatus
 
 

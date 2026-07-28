@@ -19,8 +19,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Erro na comunicacao com a API.");
+    throw new Error(await errorMessage(response));
   }
 
   if (response.status === 204) {
@@ -51,10 +50,29 @@ export async function apiUpload<T>(path: string, formData: FormData, token: stri
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Erro na comunicacao com a API.");
+    throw new Error(await errorMessage(response));
   }
 
   const text = await response.text();
   return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+async function errorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) return "Erro na comunicacao com a API.";
+  try {
+    const parsed = JSON.parse(text) as {
+      error?: { code?: string; message?: string; correlation_id?: string };
+      detail?: string | Array<{ msg?: string }>;
+    };
+    if (parsed.error?.message) {
+      const suffix = parsed.error.correlation_id ? ` (${parsed.error.correlation_id})` : "";
+      return `${parsed.error.message}${suffix}`;
+    }
+    if (typeof parsed.detail === "string") return parsed.detail;
+    if (Array.isArray(parsed.detail) && parsed.detail[0]?.msg) return parsed.detail[0].msg;
+  } catch {
+    // Fall through to raw text.
+  }
+  return text || "Erro na comunicacao com a API.";
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Models.Execution;
 using Microsoft.Extensions.Logging;
@@ -11,6 +12,12 @@ public sealed class ProcessTreeManager : IProcessManager
     private readonly IDirectoryResolver _dirs;
     private readonly ILogger<ProcessTreeManager> _logger;
 
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        WriteIndented = false
+    };
+
     public ProcessTreeManager(
         JobObjectManager jobManager,
         IDirectoryResolver dirs,
@@ -21,7 +28,7 @@ public sealed class ProcessTreeManager : IProcessManager
         _logger = logger;
     }
 
-    public Task<ProcessHandle> LaunchAsync(ExecutionContext context, CancellationToken ct = default)
+    public async Task<ProcessHandle> LaunchAsync(ExecutionContext context, CancellationToken ct = default)
     {
         var jobName = $"exec_{context.ExecutionId}_{context.AttemptId}";
         var pipeName = $"biason_agent_{context.ExecutionId}_{context.AttemptId}";
@@ -30,20 +37,16 @@ public sealed class ProcessTreeManager : IProcessManager
         long? memLimitMb = context.Manifest.Resources?.MaxMemoryMb;
         var jobHandle = _jobManager.CreateJobObject(jobName, memLimitMb, maxProcesses: 50);
 
-        // Build ExecutionHost arguments
-        var executionHostPath = Path.Combine(AppContext.BaseDirectory, "ExecutionHost.exe");
-        if (!File.Exists(executionHostPath))
-        {
-            // Fallback for development: look in adjacent directory
-            executionHostPath = Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "ExecutionHost.exe");
-        }
+        // Resolve ExecutionHost path
+        var executionHostPath = ResolveExecutionHostPath();
 
-        var args = BuildHostArguments(context, pipeName);
+        // Write config file (secrets via file, not command line or env vars visible in process list)
+        var configPath = await WriteConfigFileAsync(context, pipeName, ct);
 
         var startInfo = new ProcessStartInfo
         {
             FileName = executionHostPath,
-            Arguments = args,
+            Arguments = $"--config \"{configPath}\" --pipe \"{pipeName}\"",
             WorkingDirectory = context.WorkspacePath,
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -51,19 +54,10 @@ public sealed class ProcessTreeManager : IProcessManager
             RedirectStandardError = true,
         };
 
-        // Set environment variables (excluding secrets from command line)
-        foreach (var (key, value) in context.EnvironmentVariables)
-        {
-            startInfo.Environment[key] = value;
-        }
-
+        // Minimal env vars (non-secret, for process identification only)
         startInfo.Environment["AUTOMATION_EXECUTION_ID"] = context.ExecutionId;
         startInfo.Environment["AUTOMATION_ATTEMPT_ID"] = context.AttemptId;
         startInfo.Environment["AUTOMATION_PIPE_NAME"] = pipeName;
-        startInfo.Environment["AUTOMATION_WORKSPACE"] = context.WorkspacePath;
-        startInfo.Environment["AUTOMATION_PACKAGE_PATH"] = context.PackagePath;
-        startInfo.Environment["AUTOMATION_RUNTIME_PATH"] = context.RuntimePath;
-        startInfo.Environment["AUTOMATION_TIMEOUT_SECONDS"] = context.TimeoutSeconds.ToString();
 
         var process = new System.Diagnostics.Process { StartInfo = startInfo };
 
@@ -74,6 +68,8 @@ public sealed class ProcessTreeManager : IProcessManager
         catch (Exception ex)
         {
             _jobManager.CloseJobObject(jobName);
+            // Clean up config file on failure
+            try { File.Delete(configPath); } catch { }
             throw new InvalidOperationException($"Failed to start ExecutionHost: {ex.Message}", ex);
         }
 
@@ -94,7 +90,7 @@ public sealed class ProcessTreeManager : IProcessManager
             Process = process
         };
 
-        return Task.FromResult(handle);
+        return handle;
     }
 
     public async Task TerminateAsync(ProcessHandle handle, int gracefulTimeoutMs, CancellationToken ct = default)
@@ -103,8 +99,6 @@ public sealed class ProcessTreeManager : IProcessManager
         {
             if (handle.Process.HasExited) return;
 
-            // Try graceful shutdown via cancellation pipe message first
-            // (The ExecutionHost monitors a named pipe for cancellation)
             _logger.LogInformation("Requesting graceful shutdown for PID {Pid}", handle.ProcessId);
 
             var exited = handle.Process.WaitForExit(gracefulTimeoutMs);
@@ -114,7 +108,6 @@ public sealed class ProcessTreeManager : IProcessManager
                 var jobName = $"exec_{handle.PipeName.Replace("biason_agent_", "")}";
                 _jobManager.TerminateJobObject(jobName);
 
-                // Give it a moment to actually terminate
                 handle.Process.WaitForExit(3000);
             }
         }
@@ -134,10 +127,66 @@ public sealed class ProcessTreeManager : IProcessManager
         catch { return false; }
     }
 
-    private static string BuildHostArguments(ExecutionContext context, string pipeName)
+    private string ResolveExecutionHostPath()
     {
-        // ExecutionHost receives all config via environment variables (no secrets on command line)
-        var entrypoint = context.Manifest.Entrypoint;
-        return $"--pipe \"{pipeName}\" --entrypoint-type \"{entrypoint.Type}\"";
+        var candidates = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "ExecutionHost.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "ExecutionHost.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "bin", "Debug", "net8.0", "win-x64", "ExecutionHost.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "bin", "Release", "net8.0", "win-x64", "ExecutionHost.exe"),
+        };
+
+        foreach (var path in candidates)
+        {
+            if (File.Exists(path)) return Path.GetFullPath(path);
+        }
+
+        throw new InvalidOperationException(
+            $"ExecutionHost.exe not found. Searched: {string.Join(", ", candidates.Select(Path.GetFullPath))}");
+    }
+
+    private async Task<string> WriteConfigFileAsync(ExecutionContext context, string pipeName, CancellationToken ct)
+    {
+        var configDir = Path.Combine(context.WorkspacePath, "temp");
+        Directory.CreateDirectory(configDir);
+        var configPath = Path.Combine(configDir, $"execution_config_{Guid.NewGuid():N}.json");
+
+        var config = new
+        {
+            execution_id = context.ExecutionId,
+            attempt_id = context.AttemptId,
+            automation_id = context.AutomationId,
+            pipe_name = pipeName,
+            token = Guid.NewGuid().ToString("N"),
+            timeout_seconds = context.TimeoutSeconds,
+            graceful_shutdown_seconds = context.GracefulShutdownSeconds,
+            entrypoint = new
+            {
+                type = context.Manifest.Entrypoint.Type.ToString(),
+                executable_path = (string?)null,
+                arguments = context.Manifest.Entrypoint.Args,
+                module = context.Manifest.Entrypoint.Module,
+                callable = context.Manifest.Entrypoint.Callable,
+                script = context.Manifest.Entrypoint.Script
+            },
+            paths = new
+            {
+                runtime_path = context.RuntimePath,
+                package_path = context.PackagePath,
+                workspace_path = context.WorkspacePath,
+                input_path = Path.Combine(context.WorkspacePath, "input"),
+                output_path = Path.Combine(context.WorkspacePath, "output"),
+                artifacts_path = Path.Combine(context.WorkspacePath, "artifacts"),
+                temp_path = Path.Combine(context.WorkspacePath, "temp"),
+                logs_path = Path.Combine(context.WorkspacePath, "logs")
+            },
+            environment = context.EnvironmentVariables
+        };
+
+        var json = JsonSerializer.Serialize(config, JsonOpts);
+        await File.WriteAllTextAsync(configPath, json, ct);
+
+        return configPath;
     }
 }

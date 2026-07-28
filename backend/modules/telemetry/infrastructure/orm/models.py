@@ -6,7 +6,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from infrastructure.database import Base
 
 
 class OutboxMessageRecord(Base):

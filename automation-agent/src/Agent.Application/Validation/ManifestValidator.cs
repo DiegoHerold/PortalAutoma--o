@@ -24,8 +24,6 @@ public sealed class ManifestValidator : IManifestValidator
 
     public async Task<ManifestValidationResult> ValidateAsync(string manifestPath, CancellationToken ct = default)
     {
-        var errors = new List<string>();
-
         if (!File.Exists(manifestPath))
         {
             return new ManifestValidationResult
@@ -49,11 +47,17 @@ public sealed class ManifestValidator : IManifestValidator
             };
         }
 
-        // Parse as JSON (automation.yaml will be pre-converted to JSON by the caller or we support JSON directly)
+        return await ValidateContentAsync(content, ct);
+    }
+
+    public Task<ManifestValidationResult> ValidateContentAsync(string jsonContent, CancellationToken ct = default)
+    {
+        var errors = new List<string>();
+
         ManifestRaw? raw;
         try
         {
-            raw = JsonSerializer.Deserialize<ManifestRaw>(content, new JsonSerializerOptions
+            raw = JsonSerializer.Deserialize<ManifestRaw>(jsonContent, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
                 PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
@@ -61,16 +65,16 @@ public sealed class ManifestValidator : IManifestValidator
         }
         catch (JsonException ex)
         {
-            return new ManifestValidationResult
+            return Task.FromResult(new ManifestValidationResult
             {
                 IsValid = false,
                 Errors = new[] { $"Invalid manifest JSON: {ex.Message}" }
-            };
+            });
         }
 
         if (raw is null)
         {
-            return new ManifestValidationResult { IsValid = false, Errors = new[] { "Manifest parsed as null" } };
+            return Task.FromResult(new ManifestValidationResult { IsValid = false, Errors = new[] { "Manifest parsed as null" } });
         }
 
         // Required fields
@@ -81,7 +85,6 @@ public sealed class ManifestValidator : IManifestValidator
 
         if (raw.Runtime is null) errors.Add("runtime is required");
         else if (string.IsNullOrWhiteSpace(raw.Runtime.Id)) errors.Add("runtime.id is required");
-        else if (!ValidRuntimeIds.Contains(raw.Runtime.Id)) errors.Add($"Unknown runtime.id: {raw.Runtime.Id}");
 
         if (raw.Entrypoint is null) errors.Add("entrypoint is required");
         else if (string.IsNullOrWhiteSpace(raw.Entrypoint.Type)) errors.Add("entrypoint.type is required");
@@ -95,12 +98,12 @@ public sealed class ManifestValidator : IManifestValidator
 
         if (errors.Count > 0)
         {
-            _logger.LogWarning("Manifest validation failed for {Path}: {Errors}", manifestPath, string.Join("; ", errors));
-            return new ManifestValidationResult { IsValid = false, Errors = errors };
+            _logger.LogWarning("Manifest validation failed: {Errors}", string.Join("; ", errors));
+            return Task.FromResult(new ManifestValidationResult { IsValid = false, Errors = errors });
         }
 
         var manifest = MapToManifest(raw);
-        return new ManifestValidationResult { IsValid = true, Manifest = manifest };
+        return Task.FromResult(new ManifestValidationResult { IsValid = true, Manifest = manifest });
     }
 
     private static void ValidateEntrypointFields(ManifestEntrypointRaw ep, List<string> errors)

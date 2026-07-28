@@ -10,11 +10,16 @@ import httpx
 import websockets
 from sqlalchemy import select
 
-from app.core.database import SessionLocal
-from app.models.automation import Automation
-from app.models.automation_version import AutomationVersion
-from app.models.category import Category
-from modules.catalog.infrastructure.orm.models import AutomationManifestRecord, AutomationPackageRecord, RuntimeRecord, RuntimeVersionRecord
+from infrastructure.database import SessionLocal
+from modules.catalog.infrastructure.orm.models import (
+    AutomationManifestRecord,
+    AutomationPackageRecord,
+    CatalogAutomationRecord as Automation,
+    CatalogAutomationVersionRecord as AutomationVersion,
+    CatalogCategoryRecord as Category,
+    RuntimeRecord,
+    RuntimeVersionRecord,
+)
 from modules.storage.infrastructure.orm.models import StoredObjectRecord
 
 

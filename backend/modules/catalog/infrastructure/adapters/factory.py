@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
-from app.integrations.storage.factory import get_package_storage
+from infrastructure.config import get_settings
+from infrastructure.storage import get_package_storage
 from modules.catalog.infrastructure.package_validation import ZipPackageValidator
 from modules.catalog.infrastructure.repositories import SqlAlchemyCatalogRepository, SqlAlchemyTransactionManager
 from modules.governance.infrastructure.repositories import SqlAlchemyAuditEventRepository

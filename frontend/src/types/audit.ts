@@ -1,5 +1,5 @@
 export type AuditEntry = {
-  id: number;
+  id: number | string;
   actor?: string | null;
   actor_type?: string | null;
   action: string;

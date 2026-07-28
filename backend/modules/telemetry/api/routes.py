@@ -7,15 +7,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from jose import JWTError
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.core.security import decode_token
-from app.dependencies import get_current_user
-from app.models.user import User
-from app.repositories.user_repository import UserRepository
-from app.services.permission_service import PermissionService
+from infrastructure.database import get_db
+from modules.access.api.authorization import ensure_automation_action
+from modules.access.api.dependencies import get_current_user
+from modules.access.application.use_cases import AuthenticateToken
+from modules.access.domain import AuthenticationFailed
+from modules.access.infrastructure.adapters import build_access_adapters
 from modules.orchestration.application.use_cases import GetExecutionDetails
 from modules.orchestration.domain.errors import OrchestrationError
 from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
@@ -38,7 +37,7 @@ router = APIRouter(prefix="/executions")
 def get_execution_events(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     limit: int = Query(default=100, ge=1, le=500),
     cursor: str | None = None,
     event_type: str | None = None,
@@ -60,7 +59,7 @@ def get_execution_events(
 def get_execution_timeline(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     limit: int = Query(default=300, ge=1, le=1000),
     cursor: str | None = None,
 ) -> dict[str, Any]:
@@ -73,7 +72,7 @@ def get_execution_timeline(
 def get_execution_logs(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     limit: int = Query(default=200, ge=1, le=1000),
     cursor: str | None = None,
     level: str | None = None,
@@ -87,7 +86,7 @@ def get_execution_logs(
 def get_execution_metrics(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     limit: int = Query(default=200, ge=1, le=1000),
     metric_name: str | None = None,
 ) -> list[dict[str, Any]]:
@@ -100,7 +99,7 @@ def get_execution_metrics(
 def get_execution_progress(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     _ensure_execution_view(db, user, execution_id)
     adapters = build_telemetry_adapters(db)
@@ -111,7 +110,7 @@ def get_execution_progress(
 def get_execution_processes(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     _ensure_execution_view(db, user, execution_id)
     adapters = build_telemetry_adapters(db)
@@ -149,7 +148,7 @@ async def stream_execution(
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-def _ensure_execution_view(db: Session, user: User, execution_id: str):
+def _ensure_execution_view(db: Session, user: Any, execution_id: str):
     adapters = build_orchestration_adapters(db)
     try:
         details = GetExecutionDetails(
@@ -163,23 +162,17 @@ def _ensure_execution_view(db: Session, user: User, execution_id: str):
     except OrchestrationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if details.automation_version is not None:
-        PermissionService(db).ensure_automation_action(user, details.automation_version.automation_id, "can_view")
+        ensure_automation_action(db, user, details.automation_version.automation_id, "can_view")
     return details
 
 
-def _user_from_token(db: Session, token: str) -> User:
+def _user_from_token(db: Session, token: str) -> Any:
     credentials_exception = HTTPException(status_code=401, detail="Could not validate credentials.")
     try:
-        payload = decode_token(token)
-        subject = payload.get("sub")
-        if subject is None:
-            raise credentials_exception
-    except JWTError as exc:
+        adapters = build_access_adapters(db)
+        return AuthenticateToken(adapters.access, adapters.tokens).execute(token)
+    except (AuthenticationFailed, ValueError) as exc:
         raise credentials_exception from exc
-    user = UserRepository(db).get(int(subject))
-    if user is None or not user.is_active:
-        raise credentials_exception
-    return user
 
 
 def _sse(event: str, payload: dict[str, Any], event_id: str | None = None) -> str:

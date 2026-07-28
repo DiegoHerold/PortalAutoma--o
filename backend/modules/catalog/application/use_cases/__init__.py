@@ -5,6 +5,13 @@ from modules.catalog.application.use_cases.automations import (
     ListAutomations,
     UpdateAutomationMetadata,
 )
+from modules.catalog.application.use_cases.categories import (
+    ArchiveCategory,
+    CreateCategory,
+    GetCategory,
+    ListCategories,
+    UpdateCategory,
+)
 from modules.catalog.application.use_cases.imports import ConfirmStagedAutomationImport
 from modules.catalog.application.use_cases.packages import (
     AbortPackageUpload,
@@ -36,10 +43,12 @@ from modules.catalog.application.use_cases.versions import (
 __all__ = [
     "AbortPackageUpload",
     "ArchiveAutomation",
+    "ArchiveCategory",
     "BlockAutomationVersion",
     "BlockRuntimeVersion",
     "CompletePackageUpload",
     "CreateAutomation",
+    "CreateCategory",
     "CreateAutomationVersion",
     "CreateRuntime",
     "CreateRuntimeVersion",
@@ -48,6 +57,7 @@ __all__ = [
     "DeprecateRuntimeVersion",
     "GetAutomation",
     "GetAutomationVersion",
+    "GetCategory",
     "GetPackage",
     "GetPackageValidation",
     "GetRuntime",
@@ -55,9 +65,11 @@ __all__ = [
     "InitiatePackageUpload",
     "ListAutomations",
     "ListAutomationVersions",
+    "ListCategories",
     "ListRuntimes",
     "PublishAutomationVersion",
     "PublishRuntimeVersion",
     "UpdateAutomationMetadata",
+    "UpdateCategory",
     "ValidateAutomationVersion",
 ]

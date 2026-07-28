@@ -3,8 +3,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.core.config import get_settings
-from app.core.database import Base
+from infrastructure.config import get_settings
+from infrastructure.database import Base
 from app.models import (
     audit,
     automation,
@@ -29,6 +29,7 @@ from modules.orchestration.infrastructure.orm import models as orchestration_mod
 from modules.orchestration.flows.infrastructure.orm import models as flow_models
 from modules.orchestration.scheduling.infrastructure.orm import models as scheduling_models
 from modules.governance.infrastructure.orm import models as governance_models
+from modules.access.infrastructure.orm import models as access_models
 from modules.shared.infrastructure.orm import models as shared_models
 from modules.storage.infrastructure.orm import models as storage_models
 from modules.telemetry.infrastructure.orm import models as telemetry_models

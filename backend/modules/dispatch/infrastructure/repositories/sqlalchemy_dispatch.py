@@ -7,9 +7,14 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.automation import Automation
-from app.models.automation_version import AutomationVersion
-from modules.catalog.infrastructure.orm.models import AutomationManifestRecord, AutomationPackageRecord, RuntimeRecord, RuntimeVersionRecord
+from modules.catalog.infrastructure.orm.models import (
+    AutomationManifestRecord,
+    AutomationPackageRecord,
+    CatalogAutomationRecord as Automation,
+    CatalogAutomationVersionRecord as AutomationVersion,
+    RuntimeRecord,
+    RuntimeVersionRecord,
+)
 from modules.dispatch.domain.errors import AgentSelectionError
 from modules.dispatch.domain.policies import required_pool_for_execution_mode
 from modules.dispatch.infrastructure.orm.models import ExecutionOfferRecord, ResourceReservationRecord

@@ -6,7 +6,44 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Te
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from infrastructure.database import Base
+
+
+class FleetWorkerRecord(Base):
+    __tablename__ = "workers"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    hostname: Mapped[str] = mapped_column(String(120), nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    agent_id: Mapped[str | None] = mapped_column(String(80), unique=True, index=True)
+    machine_id: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
+    device_token: Mapped[str | None] = mapped_column(Text)
+    agent_version: Mapped[str | None] = mapped_column(String(40))
+    os: Mapped[str | None] = mapped_column(Text)
+    architecture: Mapped[str | None] = mapped_column(String(80))
+    capabilities_json: Mapped[list | None] = mapped_column(JSONB)
+    last_payload_json: Mapped[dict | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(30), default="offline", nullable=False)
+    max_concurrency: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class AutomationWorkerPreferenceRecord(Base):
+    __tablename__ = "automation_worker_preferences"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id"), nullable=False, index=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), nullable=False)
+    priority_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class AgentRecord(Base):

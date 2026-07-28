@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "example.browser_playwright",
+  "name": "Browser Playwright Example",
+  "version": "1.0.0",
+  "description": "Starts Chromium headless, opens a local test page, extracts info, saves screenshot.",
+  "runtime": {
+    "id": "python-browser",
+    "version": "3.13-playwright"
+  },
+  "entrypoint": {
+    "type": "browser_playwright",
+    "module": "automation.main",
+    "callable": "run"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.browser_execution", "internet_access"]
+  },
+  "resources": {
+    "pool": "browser",
+    "slots": 1,
+    "max_memory_mb": 1536
+  },
+  "timeout": {
+    "execution_seconds": 300,
+    "graceful_shutdown_seconds": 15
+  }
+}

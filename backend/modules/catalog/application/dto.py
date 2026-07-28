@@ -13,6 +13,17 @@ class ActorDTO:
 
 
 @dataclass(frozen=True)
+class CategoryDTO:
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    is_active: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class AutomationDTO:
     id: int
     key: str | None

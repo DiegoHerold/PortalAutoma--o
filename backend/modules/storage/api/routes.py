@@ -8,11 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
-from app.core.database import get_db
-from app.dependencies import get_current_user
-from app.models.user import User
-from app.services.permission_service import PermissionService
+from infrastructure.config import get_settings
+from infrastructure.database import get_db
+from modules.access.api.dependencies import get_current_user
+from modules.access.api.authorization import ensure_automation_action
 from modules.orchestration.application.use_cases import GetExecutionDetails
 from modules.orchestration.domain.errors import OrchestrationError
 from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
@@ -47,7 +46,7 @@ router = APIRouter()
 def initiate_artifact_upload(
     payload: InitiateArtifactUploadRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     adapters = build_storage_adapters(db)
     context = adapters.attempts.get_context(payload.execution_attempt_id)
@@ -121,7 +120,7 @@ def complete_artifact_upload(
     artifact_id: str,
     payload: CompleteArtifactUploadRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     adapters = build_storage_adapters(db)
     artifact = _artifact_for_user(db, user, adapters, artifact_id)
@@ -154,7 +153,7 @@ def fail_artifact_upload(
     artifact_id: str,
     payload: FailArtifactUploadRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     adapters = build_storage_adapters(db)
     artifact = _artifact_for_user(db, user, adapters, artifact_id)
@@ -181,7 +180,7 @@ def fail_artifact_upload(
 def get_artifact(
     artifact_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     adapters = build_storage_adapters(db)
     artifact = _artifact_for_user(db, user, adapters, artifact_id)
@@ -192,7 +191,7 @@ def get_artifact(
 def download_artifact(
     artifact_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ):
     adapters = build_storage_adapters(db)
     artifact = _artifact_for_user(db, user, adapters, artifact_id)
@@ -213,14 +212,14 @@ def download_artifact(
 def list_execution_artifacts(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     _ensure_execution_view(db, user, execution_id)
     adapters = build_storage_adapters(db)
     return to_payload(ListExecutionArtifacts(adapters.artifacts).execute(execution_id))
 
 
-def _artifact_for_user(db: Session, user: User, adapters, artifact_id: str):
+def _artifact_for_user(db: Session, user: Any, adapters, artifact_id: str):
     try:
         artifact = GetArtifact(adapters.artifacts).execute(artifact_id)
     except ArtifactNotFound as exc:
@@ -229,7 +228,7 @@ def _artifact_for_user(db: Session, user: User, adapters, artifact_id: str):
     return artifact
 
 
-def _ensure_execution_view(db: Session, user: User, execution_id: str):
+def _ensure_execution_view(db: Session, user: Any, execution_id: str):
     adapters = build_orchestration_adapters(db)
     try:
         details = GetExecutionDetails(
@@ -243,5 +242,5 @@ def _ensure_execution_view(db: Session, user: User, execution_id: str):
     except OrchestrationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if details.automation_version is not None:
-        PermissionService(db).ensure_automation_action(user, details.automation_version.automation_id, "can_view")
+        ensure_automation_action(db, user, details.automation_version.automation_id, "can_view")
     return details

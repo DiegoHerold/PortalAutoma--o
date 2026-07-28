@@ -7,6 +7,7 @@ from modules.catalog.application.dto import (
     AutomationDTO,
     AutomationSourceDTO,
     AutomationVersionDTO,
+    CategoryDTO,
     PackageDTO,
     RuntimeDTO,
     RuntimeVersionDTO,
@@ -27,6 +28,24 @@ class TransactionManager(Protocol):
 
 
 class CatalogRepository(Protocol):
+    def list_categories(self) -> list[CategoryDTO]:
+        raise NotImplementedError
+
+    def get_category(self, category_id: int) -> CategoryDTO | None:
+        raise NotImplementedError
+
+    def get_category_by_slug(self, slug: str) -> CategoryDTO | None:
+        raise NotImplementedError
+
+    def create_category(self, payload: dict[str, Any]) -> CategoryDTO:
+        raise NotImplementedError
+
+    def update_category(self, category_id: int, payload: dict[str, Any]) -> CategoryDTO:
+        raise NotImplementedError
+
+    def archive_category(self, category_id: int) -> CategoryDTO:
+        raise NotImplementedError
+
     def list_automations(self) -> list[AutomationDTO]:
         raise NotImplementedError
 

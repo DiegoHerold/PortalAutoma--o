@@ -13,9 +13,11 @@ class AuditEvent:
     action: str
     resource_type: str
     resource_id: str
+    organization_id: int | None = None
     before: dict[str, Any] | None = None
     after: dict[str, Any] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    correlation_id: str | None = None
     ip: str | None = None
     user_agent: str | None = None
     occurred_at: datetime | None = None

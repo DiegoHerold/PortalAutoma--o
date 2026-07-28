@@ -14,6 +14,14 @@ class ActorDTO:
 
 
 @dataclass(frozen=True)
+class AutomationWorkerPreferenceDTO:
+    worker_id: int
+    worker_name: str
+    priority_order: int
+    is_active: bool
+
+
+@dataclass(frozen=True)
 class AgentDTO:
     id: str
     name: str

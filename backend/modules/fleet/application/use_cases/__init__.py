@@ -39,6 +39,10 @@ from modules.fleet.application.use_cases.registration import (
     RotateAgentCredential,
     ValidateAgentCredential,
 )
+from modules.fleet.application.use_cases.worker_preferences import (
+    GetAutomationWorkerPreferences,
+    ReplaceAutomationWorkerPreferences,
+)
 
 __all__ = [
     "AcknowledgeAgentCommand",
@@ -53,6 +57,7 @@ __all__ = [
     "GetAgentCapacity",
     "GetAgentHistory",
     "GetAgentInstances",
+    "GetAutomationWorkerPreferences",
     "ListAgents",
     "RecordAgentCapabilities",
     "RecordAgentCapacity",
@@ -65,6 +70,7 @@ __all__ = [
     "RequestAgentDiagnostic",
     "RequestAgentUpdate",
     "ResumeAgent",
+    "ReplaceAutomationWorkerPreferences",
     "RevokeAgentCredential",
     "RevokeAgentRegistrationToken",
     "RotateAgentCredential",

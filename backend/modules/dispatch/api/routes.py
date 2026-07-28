@@ -7,9 +7,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.dependencies import get_current_user
-from app.models.user import User
+from infrastructure.database import get_db
+from modules.access.api.dependencies import get_current_user
 from modules.dispatch.api.schemas import RetryTaskRequest
 from modules.dispatch.application.dto import to_payload
 from modules.dispatch.infrastructure.adapters import build_dispatch_adapters
@@ -21,7 +20,7 @@ router = APIRouter()
 @router.get("/dispatch/queue")
 def get_dispatch_queue(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     limit: int = 100,
 ) -> dict[str, Any]:
     adapters = build_dispatch_adapters(db)
@@ -34,7 +33,7 @@ def get_dispatch_queue(
 def get_dispatch_decision(
     decision_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     decision = build_dispatch_adapters(db).decisions.get(decision_id)
     if decision is None:
@@ -46,7 +45,7 @@ def get_dispatch_decision(
 def get_execution_dispatch(
     execution_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     adapters = build_dispatch_adapters(db)
     decisions = adapters.decisions.list_for_execution(execution_id)
@@ -57,7 +56,7 @@ def get_execution_dispatch(
 def get_attempt_lease(
     attempt_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     lease = build_dispatch_adapters(db).leases.active_for_attempt(attempt_id)
     if lease is None:
@@ -69,7 +68,7 @@ def get_attempt_lease(
 def get_attempt_reservations(
     attempt_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     reservations = build_dispatch_adapters(db).reservations.list_for_attempt(attempt_id)
     return {"execution_attempt_id": attempt_id, "reservations": [to_payload(item) for item in reservations]}
@@ -79,7 +78,7 @@ def get_attempt_reservations(
 def get_attempt_locks(
     attempt_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     locks = build_dispatch_adapters(db).locks.list_for_attempt(attempt_id)
     return {"execution_attempt_id": attempt_id, "locks": [to_payload(item) for item in locks]}
@@ -90,7 +89,7 @@ def retry_task_execution(
     task_execution_id: str,
     payload: RetryTaskRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     adapters = build_dispatch_adapters(db)
     task = adapters.tasks.get(task_execution_id)

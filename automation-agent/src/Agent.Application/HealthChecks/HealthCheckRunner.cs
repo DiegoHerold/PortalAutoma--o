@@ -10,17 +10,23 @@ public sealed class HealthCheckRunner
     private readonly IDatabaseManager _dbManager;
     private readonly IDirectoryResolver _dirs;
     private readonly IClock _clock;
+    private readonly ICacheManager? _cacheManager;
+    private readonly ICapacityManager? _capacityManager;
     private readonly ILogger<HealthCheckRunner> _logger;
 
     public HealthCheckRunner(
         IDatabaseManager dbManager,
         IDirectoryResolver dirs,
         IClock clock,
-        ILogger<HealthCheckRunner> logger)
+        ILogger<HealthCheckRunner> logger,
+        ICacheManager? cacheManager = null,
+        ICapacityManager? capacityManager = null)
     {
         _dbManager = dbManager;
         _dirs = dirs;
         _clock = clock;
+        _cacheManager = cacheManager;
+        _capacityManager = capacityManager;
         _logger = logger;
     }
 
@@ -31,7 +37,11 @@ public sealed class HealthCheckRunner
             CheckProcess(),
             await CheckDatabaseAsync(ct),
             CheckStorage(),
-            CheckConfiguration()
+            CheckConfiguration(),
+            CheckRuntimeStore(),
+            CheckPackageStore(),
+            CheckCapacityManager(),
+            CheckExecutionHostAvailability()
         };
 
         foreach (var r in results)
@@ -148,5 +158,125 @@ public sealed class HealthCheckRunner
             Message = valid ? "Configuration OK" : $"Configuration issues: {string.Join("; ", errors)}",
             CheckedAtUtc = _clock.UtcNow
         };
+    }
+
+    private HealthCheckResult CheckRuntimeStore()
+    {
+        try
+        {
+            var path = _dirs.RuntimesPath;
+            var exists = Directory.Exists(path);
+            return new HealthCheckResult
+            {
+                Component = "runtime_store",
+                Status = exists ? HealthStatus.Healthy : HealthStatus.Degraded,
+                Message = exists ? "Runtime store directory exists" : "Runtime store directory missing",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "runtime_store",
+                Status = HealthStatus.Degraded,
+                Message = $"Runtime store check error: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private HealthCheckResult CheckPackageStore()
+    {
+        try
+        {
+            var path = _dirs.PackagesPath;
+            var exists = Directory.Exists(path);
+            return new HealthCheckResult
+            {
+                Component = "package_store",
+                Status = exists ? HealthStatus.Healthy : HealthStatus.Degraded,
+                Message = exists ? "Package store directory exists" : "Package store directory missing",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "package_store",
+                Status = HealthStatus.Degraded,
+                Message = $"Package store check error: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private HealthCheckResult CheckCapacityManager()
+    {
+        if (_capacityManager is null)
+        {
+            return new HealthCheckResult
+            {
+                Component = "capacity_manager",
+                Status = HealthStatus.Degraded,
+                Message = "Capacity manager not available",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+
+        try
+        {
+            var snapshot = _capacityManager.GetSnapshot();
+            var totalAvailable = snapshot.Pools.Values.Sum(p => p.Available);
+            return new HealthCheckResult
+            {
+                Component = "capacity_manager",
+                Status = totalAvailable > 0 ? HealthStatus.Healthy : HealthStatus.Degraded,
+                Message = $"Capacity: {totalAvailable} slots available across {snapshot.Pools.Count} pools",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "capacity_manager",
+                Status = HealthStatus.Degraded,
+                Message = $"Capacity check error: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private HealthCheckResult CheckExecutionHostAvailability()
+    {
+        try
+        {
+            var candidates = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "ExecutionHost.exe"),
+            };
+
+            var found = candidates.Any(File.Exists);
+            return new HealthCheckResult
+            {
+                Component = "execution_host",
+                Status = found ? HealthStatus.Healthy : HealthStatus.Degraded,
+                Message = found ? "ExecutionHost.exe available" : "ExecutionHost.exe not found",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "execution_host",
+                Status = HealthStatus.Degraded,
+                Message = $"ExecutionHost check error: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
     }
 }

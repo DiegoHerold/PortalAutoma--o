@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "example.executable",
+  "name": "Executable Example",
+  "version": "1.0.0",
+  "description": "Simple executable that receives input, waits, generates result.",
+  "runtime": {
+    "id": "dotnet-runtime",
+    "version": "8.0"
+  },
+  "entrypoint": {
+    "type": "executable",
+    "executable_path": "automation\\ExampleTool.exe"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.background_execution"]
+  },
+  "resources": {
+    "pool": "background",
+    "slots": 1
+  },
+  "timeout": {
+    "execution_seconds": 60,
+    "graceful_shutdown_seconds": 5
+  }
+}

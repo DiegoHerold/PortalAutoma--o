@@ -3,4 +3,5 @@ export type Role = {
   name: string;
   slug: string;
   description?: string | null;
+  permissions?: string[];
 };
