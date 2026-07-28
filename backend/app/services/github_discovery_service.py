@@ -11,8 +11,8 @@ from app.domain.automation_manifest import (
     parse_workspace_manifest,
 )
 from app.domain.automation_package import build_package
-from app.integrations.github.client import GithubAppClient
-from app.integrations.storage.factory import get_package_storage
+from infrastructure.github.client import GithubAppClient
+from infrastructure.storage.factory import get_package_storage
 from app.models.user import User
 from app.repositories.automation_repository import AutomationRepository
 from app.repositories.automation_source_repository import AutomationSourceRepository

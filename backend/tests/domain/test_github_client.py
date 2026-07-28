@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.core.config import get_settings
-from app.integrations.github.client import GithubAppClient, GithubAppNotConfiguredError, verify_webhook_signature
+from infrastructure.github.client import GithubAppClient, GithubAppNotConfiguredError, verify_webhook_signature
 
 
 def _generate_pem_private_key() -> str:

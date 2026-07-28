@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import create_access_token, decode_token
 from app.dependencies import get_current_user
-from app.integrations.github.client import GithubApiError, GithubAppClient, GithubAppNotConfiguredError
+from infrastructure.github.client import GithubApiError, GithubAppClient, GithubAppNotConfiguredError
 from app.models.github_integration import GithubIntegration
 from app.models.user import User
 from app.repositories.github_integration_repository import GithubIntegrationRepository

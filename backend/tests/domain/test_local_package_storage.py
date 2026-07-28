@@ -4,7 +4,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.security import decode_package_download_token
-from app.integrations.storage.local_storage import LocalPackageStorage
+from infrastructure.storage.local_storage import LocalPackageStorage
 
 
 @pytest.fixture(autouse=True)

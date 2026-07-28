@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.core.security import decode_package_download_token
-from app.integrations.storage.factory import get_package_storage
+from infrastructure.storage.factory import get_package_storage
 from app.models.user import User
 from app.schemas.automation_import import AutomationImportConfirmRequest, AutomationImportPreview, AutomationVersionRead
 from app.services.automation_import_service import (

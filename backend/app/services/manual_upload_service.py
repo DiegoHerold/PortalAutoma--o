@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.domain.automation_manifest import locate_single_manifest
 from app.domain.automation_package import build_package, find_single_root_dir, safe_extract_zip
-from app.integrations.storage.factory import get_package_storage
+from infrastructure.storage.factory import get_package_storage
 from app.models.user import User
 from app.repositories.automation_repository import AutomationRepository
 from app.repositories.automation_version_repository import AutomationVersionRepository

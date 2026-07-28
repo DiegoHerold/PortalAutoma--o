@@ -8,7 +8,7 @@ from collections import defaultdict
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.domain.trigger_mapping import apply_parameter_mapping
-from app.integrations.github.client import verify_webhook_signature
+from infrastructure.github.client import verify_webhook_signature
 from app.models.trigger import Trigger
 from app.repositories.automation_repository import AutomationRepository
 from app.repositories.automation_source_repository import AutomationSourceRepository
