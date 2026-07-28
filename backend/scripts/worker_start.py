@@ -2,7 +2,7 @@
 
 
 def main() -> None:
-    print("Use celery worker -A app.core.celery_app.celery_app -Q normal,high,low,critical")
+    print("Use celery worker -A workers.celery_app.celery_app -Q normal,high,low,critical")
 
 
 if __name__ == "__main__":

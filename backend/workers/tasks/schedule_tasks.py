@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from app.core.celery_app import celery_app
-from app.core.database import SessionLocal
+from workers.celery_app import celery_app
+from infrastructure.database import SessionLocal
 from modules.orchestration.flows.infrastructure.adapters import build_flow_adapters
 from modules.orchestration.infrastructure.repositories import SqlAlchemyExecutionRepository
 from modules.orchestration.scheduling.application import ReconcileScheduleExecutions, TriggerDueSchedules
 from modules.orchestration.scheduling.infrastructure.adapters import build_schedule_adapters
 
 
-@celery_app.task(name="app.tasks.schedule_tasks.sync")
+@celery_app.task(name="workers.tasks.schedule_tasks.sync")
 def sync_schedules() -> str:
     with SessionLocal() as db:
         adapters = build_schedule_adapters(db)

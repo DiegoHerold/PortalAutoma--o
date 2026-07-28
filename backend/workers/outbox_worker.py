@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 
-from app.core.database import SessionLocal
+from infrastructure.database import SessionLocal
 from modules.telemetry.infrastructure.orm.models import OutboxMessageRecord
 from modules.telemetry.infrastructure.repositories.sqlalchemy_outbox import SqlAlchemyOutboxRepository
 

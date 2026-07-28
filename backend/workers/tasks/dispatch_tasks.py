@@ -1,10 +1,10 @@
-from app.core.celery_app import celery_app
-from app.core.database import SessionLocal
+from workers.celery_app import celery_app
+from infrastructure.database import SessionLocal
 from modules.dispatch.application.use_cases import ScheduleReadyTasks, ScheduleTaskExecution
 from modules.dispatch.infrastructure.adapters import build_dispatch_adapters
 
 
-@celery_app.task(name="app.tasks.dispatch_tasks.schedule_ready_tasks")
+@celery_app.task(name="workers.tasks.dispatch_tasks.schedule_ready_tasks")
 def schedule_ready_tasks(limit: int = 20) -> dict:
     with SessionLocal() as db:
         adapters = build_dispatch_adapters(db)

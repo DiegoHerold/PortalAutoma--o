@@ -48,7 +48,7 @@ services:
       context: ./backend
     env_file:
       - ./backend/.env
-    command: celery -A app.core.celery_app.celery_app worker --loglevel=info -Q critical,high,normal,low
+    command: celery -A workers.celery_app.celery_app worker --loglevel=info -Q critical,high,normal,low
     volumes:
       - ./backend:/app
       - packages_data:/data/packages
@@ -62,11 +62,11 @@ services:
       context: ./backend
     env_file:
       - ./backend/.env
-    # Ticks every minute (see app/core/celery_app.py beat_schedule) and
-    # enqueues app.tasks.schedule_tasks.sync, which is what actually
+    # Ticks every minute (see backend/workers/celery_app.py beat_schedule) and
+    # enqueues workers.tasks.schedule_tasks.sync, which is what actually
     # dispatches Jobs for due Schedules -- without this service, Schedules
     # are just cadastro and nothing ever fires automatically.
-    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    command: celery -A workers.celery_app.celery_app beat --loglevel=info
     volumes:
       - ./backend:/app
     depends_on:
