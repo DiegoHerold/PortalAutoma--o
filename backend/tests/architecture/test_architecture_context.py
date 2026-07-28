@@ -250,15 +250,10 @@ def test_new_backend_domain_and_application_ports_are_importable() -> None:
 
 
 def test_catalog_legacy_services_delegate_to_modules() -> None:
-    automation_service = read(ROOT / "backend" / "app" / "services" / "automation_service.py")
     import_service = read(ROOT / "backend" / "app" / "services" / "automation_import_service.py")
-    lifecycle_service = read(ROOT / "backend" / "app" / "services" / "automation_version_lifecycle_service.py")
 
-    assert "modules.catalog.application.use_cases" in automation_service
-    assert "AutomationRepository" not in automation_service
     assert "ConfirmStagedAutomationImport" in import_service
     assert "AutomationVersionRepository" not in import_service
-    assert "PublishAutomationVersion" in lifecycle_service
 
 
 def test_catalog_persistence_migration_defines_reliability_tables() -> None:
@@ -301,15 +296,21 @@ def test_fleet_gateway_migration_defines_agent_tables_and_command_sequence() -> 
     assert "uq_agent_command_agent_sequence" in migration
 
 
-def test_worker_and_agent_legacy_services_delegate_to_fleet_gateway() -> None:
-    worker_service = read(ROOT / "backend" / "app" / "services" / "worker_service.py")
-    agent_gateway_service = read(ROOT / "backend" / "app" / "services" / "agent_gateway_service.py")
-    legacy_agents_route = read(ROOT / "backend" / "app" / "api" / "v1" / "endpoints" / "agents.py")
-
-    assert "build_fleet_adapters" in worker_service
-    assert "modules.fleet.application.use_cases" in agent_gateway_service
-    assert "execution.assign" not in agent_gateway_service
-    assert "connect_agent(websocket)" in legacy_agents_route
+def test_worker_and_agent_legacy_services_were_removed() -> None:
+    # Fase de remoção do legado: /workers e /agents:register/heartbeat REST
+    # antigos foram totalmente substituídos por modules/fleet (rotas /workers
+    # e /agents) e pelo Agent Gateway oficial (backend/gateway/agent_gateway).
+    # Nenhum consumidor restante (nem frontend, nem bootstrap/api.py)
+    # referenciava estes arquivos — confirmar que não voltaram.
+    removed_paths = [
+        ROOT / "backend" / "app" / "services" / "worker_service.py",
+        ROOT / "backend" / "app" / "services" / "agent_gateway_service.py",
+        ROOT / "backend" / "app" / "api" / "v1" / "endpoints" / "agents.py",
+        ROOT / "backend" / "app" / "api" / "v1" / "endpoints" / "workers.py",
+        ROOT / "backend" / "app" / "workers",
+    ]
+    for path in removed_paths:
+        assert not path.exists(), path
 
 
 def test_gateway_endpoint_does_not_access_orm_directly() -> None:
