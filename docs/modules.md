@@ -3,8 +3,8 @@
 Status: vigente.
 
 Este documento define as fronteiras logicas do monolito modular. A estrutura
-fisica inicial em `backend/modules/` contem stubs e documentacao de fronteira;
-os imports legados permanecem ate a migracao incremental.
+fisica oficial vive em `backend/modules/`; `backend/app` foi removido no corte
+final da migracao.
 
 ## Mapa de contextos
 
@@ -31,7 +31,7 @@ flowchart TB
 Responsavel por usuarios, organizacoes, equipes, autenticacao, sessoes,
 papeis, permissoes e autorizacao.
 
-Codigo legado relacionado:
+Codigo legado removido relacionado:
 
 - `backend/app/models/user.py`
 - `backend/app/models/role.py`
@@ -47,7 +47,7 @@ Codigo legado relacionado:
 Responsavel por automacoes, versoes, manifests, schemas, pacotes, runtimes,
 publicacao, bloqueio, descontinuacao e compatibilidade.
 
-Codigo legado relacionado:
+Codigo legado removido relacionado:
 
 - `backend/app/models/automation.py`
 - `backend/app/models/automation_version.py`
@@ -64,7 +64,7 @@ Responsavel por Agents, AgentInstances, registro, capabilities, perfil da
 maquina, capacidade, sessao interativa, pools, diagnosticos, atualizacoes e
 politicas administrativas do Agent.
 
-Codigo legado relacionado:
+Codigo legado removido relacionado:
 
 - `backend/app/models/worker.py`
 - `backend/app/services/worker_service.py`
@@ -77,7 +77,7 @@ Codigo legado relacionado:
 Responsavel por execucoes, tarefas, tentativas, retries, timeout,
 cancelamento, fluxos, agendamentos, dependencias e resultados.
 
-Codigo legado relacionado:
+Codigo legado removido relacionado:
 
 - `backend/app/models/job.py`
 - `backend/app/models/execution.py`
@@ -92,7 +92,7 @@ Codigo legado relacionado:
 Responsavel por fila de distribuicao, Scheduler, selecao de Agents, ofertas,
 reservas, commits, locks, leases, rejeicoes e redistribuicao.
 
-Codigo legado relacionado:
+Codigo legado removido relacionado:
 
 - `backend/app/services/job_dispatcher_service.py`
 - `backend/app/services/worker_preference_service.py`
@@ -103,7 +103,7 @@ Codigo legado relacionado:
 Responsavel por eventos, logs, progresso, metricas, sequencias, deduplicacao,
 ACK, deteccao de lacunas, timeline e realtime.
 
-Codigo legado relacionado:
+Codigo legado removido relacionado:
 
 - `backend/app/models/log.py`
 - `backend/app/services/realtime_service.py`
@@ -115,7 +115,7 @@ Codigo legado relacionado:
 Responsavel por artefatos, uploads, downloads, URLs temporarias, objetos
 armazenados, retencao, binarios de pacotes, runtimes e diagnosticos.
 
-Codigo legado relacionado:
+Codigo legado removido relacionado:
 
 - `backend/app/integrations/storage/`
 - `backend/app/services/manual_upload_service.py`
@@ -126,7 +126,7 @@ Codigo legado relacionado:
 Responsavel por segredos, auditoria, politicas, administracao, limites,
 seguranca e retencao administrativa.
 
-Codigo legado relacionado:
+Codigo legado removido relacionado:
 
 - `backend/app/models/audit.py`
 - `backend/app/services/audit_service.py`
@@ -153,4 +153,3 @@ Codigo legado relacionado:
 - Frontend acessar banco.
 - Dominio depender de FastAPI, SQLAlchemy ou Celery.
 - Redis, Celery, WebSocket ou SSE serem fonte oficial de estado.
-

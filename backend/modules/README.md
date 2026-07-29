@@ -1,10 +1,10 @@
 # Backend Modules
 
-Status: fronteira fisica inicial do monolito modular.
+Status: fronteira oficial do monolito modular.
 
-Os modulos abaixo sao a estrutura-alvo do Portal. Nesta etapa eles documentam
-ownership e destino de migracao; o codigo legado em `backend/app/` permanece
-ativo ate que adaptadores e migrations sejam introduzidos.
+Os modulos abaixo sao a estrutura oficial do Portal. O codigo legado em
+`backend/app/` foi removido; compatibilidade HTTP deve viver em rotas finas
+dentro do contexto proprietario correspondente.
 
 - `access`
 - `catalog`
@@ -26,4 +26,3 @@ tests/
 ```
 
 Dominio nao deve depender de FastAPI, SQLAlchemy, Celery ou Redis.
-

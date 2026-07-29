@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.domain.automation_package import (
+from modules.catalog.domain.package import (
     build_package,
     find_single_root_dir,
     is_excluded,
@@ -176,7 +176,7 @@ def test_safe_extract_zip_rejects_path_traversal(tmp_path: Path):
         zf.writestr("../../etc/passwd", "pwned")
 
     destination = tmp_path / "extracted"
-    with pytest.raises(ValueError, match="path traversal"):
+    with pytest.raises(ValueError, match="Unsafe ZIP entry path"):
         safe_extract_zip(evil_zip, destination)
 
 

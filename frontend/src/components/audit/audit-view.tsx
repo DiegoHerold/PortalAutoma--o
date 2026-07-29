@@ -16,7 +16,7 @@ import type { AuditEntry } from "@/types/audit";
 export function AuditView() {
   const audit = useApi<AuditEntry[]>("/audit", { pollMs: 15000 });
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<string | number | null>(null);
 
   const filtered = useMemo(() => {
     const list = audit.data ?? [];

@@ -1,0 +1,1 @@
+"""Trigger HTTP compatibility routes."""

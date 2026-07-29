@@ -13,6 +13,34 @@ class ExecutionCreateRequest(BaseModel):
     priority: int = 0
 
 
+class JobCreateRequest(BaseModel):
+    automation_id: int
+    priority: str | None = None
+    payload_json: dict[str, Any] = Field(default_factory=dict)
+    scheduled_for: datetime | None = None
+
+
+class JobResponse(BaseModel):
+    id: int
+    automation_id: int
+    requested_by_user_id: int | None = None
+    status: str
+    priority: str
+    payload_json: dict[str, Any] | None = None
+    scheduled_for: datetime | None = None
+    assigned_worker_id: int | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error_message: str | None = None
+    created_at: datetime | None = None
+    automation_name: str | None = None
+    worker_name: str | None = None
+    estimated_start: datetime | None = None
+    estimated_end: datetime | None = None
+    estimated_duration_seconds: int | None = None
+    queue_position: int | None = None
+
+
 class ExecutionResponse(BaseModel):
     id: str
     type: str

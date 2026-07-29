@@ -5,23 +5,6 @@ from sqlalchemy import engine_from_config, pool
 
 from infrastructure.config import get_settings
 from infrastructure.database import Base
-from app.models import (
-    audit,
-    automation,
-    automation_source,
-    automation_version,
-    category,
-    execution,
-    github_integration,
-    job,
-    log,
-    role,
-    schedule,
-    trigger,
-    user,
-    user_category_permission,
-    worker,
-)
 from modules.catalog.infrastructure.orm import models as catalog_models
 from modules.dispatch.infrastructure.orm import models as dispatch_models
 from modules.fleet.infrastructure.orm import models as fleet_models

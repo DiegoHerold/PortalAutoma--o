@@ -14,8 +14,12 @@ existente sera classificado como KEEP, MOVE, REFACTOR, REPLACE ou DELETE antes
 de qualquer remocao definitiva. O novo codigo oficial ficara em
 `backend/modules`, com contextos de dominio claros e camadas
 `domain/application/infrastructure/api/tests` quando aplicaveis. O pacote
-`backend/app` pode continuar existindo como adaptador temporario ate que os
-casos de uso sejam movidos.
+`backend/app` podia continuar existindo como adaptador temporario durante a
+transicao, ate que os casos de uso fossem movidos.
+
+Atualizacao do corte final: `backend/app` foi removido. Novas compatibilidades
+devem ser implementadas como rotas finas em `backend/modules` ou `backend/api`,
+sem reintroduzir o pacote legado.
 
 ## Alternativas consideradas
 
@@ -30,8 +34,9 @@ casos de uso sejam movidos.
 
 As mudancas passam a ocorrer em etapas rastreaveis. Cada modulo deve declarar
 propriedade de entidades, portas de aplicacao e contratos. Endpoints antigos
-podem sobreviver como camada de compatibilidade, desde que deleguem para os
-novos casos de uso e nao dupliquem regra de negocio.
+podem sobreviver como camada de compatibilidade no contexto oficial
+correspondente, desde que deleguem para os novos casos de uso e nao dupliquem
+regra de negocio.
 
 ## Riscos
 

@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from infrastructure.config import get_settings
-from app.core.security import decode_package_download_token
 from infrastructure.storage.local_storage import LocalPackageStorage
+from modules.access.infrastructure.authentication import JwtTokenIssuer
 
 
 @pytest.fixture(autouse=True)
@@ -37,7 +37,7 @@ def test_get_download_url_contains_valid_signed_token(tmp_path: Path):
     url = storage.get_download_url("automations", "k/1.0.0/package.zip", expires_in_seconds=60)
     assert "token=" in url
     token = url.split("token=", 1)[1]
-    payload = decode_package_download_token(token)
+    payload = JwtTokenIssuer().decode_package_download_token(token)
     assert payload["bucket"] == "automations"
     assert payload["object_key"] == "k/1.0.0/package.zip"
 

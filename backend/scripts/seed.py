@@ -1,7 +1,7 @@
 """Seed roles, categories and default admin user."""
 
 from infrastructure.database import SessionLocal
-from app.services.bootstrap_service import BootstrapService
+from bootstrap.defaults import BootstrapService
 
 def main() -> None:
     with SessionLocal() as db:

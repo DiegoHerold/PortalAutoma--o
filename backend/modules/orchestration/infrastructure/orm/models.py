@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,6 +27,45 @@ class OrchestrationExecutionRecord(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failure_summary: Mapped[str | None] = mapped_column(Text)
     legacy_job_id: Mapped[int | None] = mapped_column(ForeignKey("jobs.id"), unique=True, nullable=True)
+
+
+class LegacyJobMirrorRecord(Base):
+    __tablename__ = "jobs"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id"), nullable=False, index=True)
+    requested_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    schedule_id: Mapped[int | None] = mapped_column(ForeignKey("schedules.id"), nullable=True)
+    trigger_id: Mapped[int | None] = mapped_column(ForeignKey("triggers.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    priority: Mapped[str] = mapped_column(String(20), default="normal", nullable=False)
+    payload_json: Mapped[dict | None] = mapped_column(JSONB)
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    assigned_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class TriggerCompatRecord(Base):
+    __tablename__ = "triggers"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id"), nullable=False, index=True)
+    trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    route_path: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    secret_token: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    parameter_mapping_json: Mapped[dict | None] = mapped_column(JSONB)
+    template: Mapped[str | None] = mapped_column(String(50))
+    source_automation_id: Mapped[int | None] = mapped_column(ForeignKey("automations.id"), nullable=True)
+    condition: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class TaskExecutionRecord(Base):

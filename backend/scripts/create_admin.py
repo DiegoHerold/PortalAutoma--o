@@ -1,7 +1,7 @@
 """Ensure the default admin user exists."""
 
 from infrastructure.database import SessionLocal
-from app.services.bootstrap_service import BootstrapService
+from bootstrap.defaults import BootstrapService
 
 def main() -> None:
     with SessionLocal() as db:

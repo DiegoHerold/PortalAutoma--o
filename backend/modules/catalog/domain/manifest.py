@@ -16,6 +16,28 @@ SUPPORTED_ENTRYPOINT_TYPES = {"python-function", "python-module", "powershell-sc
 SUPPORTED_EXECUTION_MODES = {"interactive", "background"}
 
 
+DEFAULT_IGNORED_PATHS = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "tests",
+    "templates",
+    "dist",
+    "build",
+]
+
+
+@dataclass(frozen=True)
+class WorkspaceManifest:
+    schema_version: int
+    name: str
+    automation_roots: list[str]
+    manifest_filename: str
+    discovery_recursive: bool
+    ignored_paths: list[str]
+
+
 @dataclass(frozen=True)
 class ValidationIssue:
     code: str
@@ -228,6 +250,78 @@ def parse_automation_manifest(raw_yaml: str) -> tuple[AutomationManifest | None,
         ),
         result,
     )
+
+
+def parse_workspace_manifest(raw_yaml: str) -> tuple[WorkspaceManifest | None, ValidationResult]:
+    result = ValidationResult()
+    data, parse_error = _load_manifest_mapping(raw_yaml)
+    if parse_error:
+        result.add("WORKSPACE_PARSE_ERROR", "", parse_error)
+        return None, result
+    if not isinstance(data, dict):
+        result.add("WORKSPACE_NOT_MAPPING", "", "automation-workspace.yaml must be a mapping.")
+        return None, result
+
+    schema_version = data.get("schema_version")
+    if not isinstance(schema_version, int):
+        result.add("WORKSPACE_SCHEMA_VERSION_REQUIRED", "schema_version", "schema_version must be an integer.")
+        schema_version = 0
+
+    name = data.get("name")
+    if not isinstance(name, str) or not name.strip():
+        result.add("WORKSPACE_NAME_REQUIRED", "name", "name is required.")
+        name = ""
+
+    automation_roots = data.get("automation_roots")
+    if not isinstance(automation_roots, list) or not automation_roots or not all(isinstance(item, str) and item.strip() for item in automation_roots):
+        result.add("WORKSPACE_AUTOMATION_ROOTS_REQUIRED", "automation_roots", "automation_roots must be a non-empty string list.")
+        automation_roots = []
+
+    manifest_filename = data.get("manifest_filename", DEFAULT_MANIFEST_FILENAME)
+    if not isinstance(manifest_filename, str) or not manifest_filename.strip():
+        result.add("WORKSPACE_MANIFEST_FILENAME_INVALID", "manifest_filename", "manifest_filename must be a string.")
+        manifest_filename = DEFAULT_MANIFEST_FILENAME
+
+    discovery = data.get("discovery") or {}
+    if not isinstance(discovery, dict):
+        result.add("WORKSPACE_DISCOVERY_INVALID", "discovery", "discovery must be a mapping.")
+        discovery = {}
+    recursive = discovery.get("recursive", True)
+    if not isinstance(recursive, bool):
+        result.add("WORKSPACE_DISCOVERY_RECURSIVE_INVALID", "discovery.recursive", "discovery.recursive must be boolean.")
+        recursive = True
+    ignored_paths = discovery.get("ignored_paths", DEFAULT_IGNORED_PATHS)
+    if not isinstance(ignored_paths, list) or not all(isinstance(item, str) for item in ignored_paths):
+        result.add("WORKSPACE_IGNORED_PATHS_INVALID", "discovery.ignored_paths", "ignored_paths must be a string list.")
+        ignored_paths = DEFAULT_IGNORED_PATHS
+
+    if not result.is_valid:
+        return None, result
+    return (
+        WorkspaceManifest(
+            schema_version=schema_version,
+            name=name.strip(),
+            automation_roots=[item.strip().rstrip("/") for item in automation_roots],
+            manifest_filename=manifest_filename.strip(),
+            discovery_recursive=recursive,
+            ignored_paths=ignored_paths,
+        ),
+        result,
+    )
+
+
+def discover_manifest_paths(all_paths: list[str], workspace: WorkspaceManifest) -> list[str]:
+    matches: list[str] = []
+    for raw_path in all_paths:
+        path = PurePosixPath(raw_path)
+        if path.name != workspace.manifest_filename:
+            continue
+        if _is_path_ignored(raw_path, workspace.ignored_paths):
+            continue
+        if not any(raw_path == root or raw_path.startswith(f"{root.rstrip('/')}/") for root in workspace.automation_roots):
+            continue
+        matches.append(raw_path)
+    return sorted(matches)
 
 
 def validate_manifest_package_paths(manifest: AutomationManifest, package_paths: set[str]) -> ValidationResult:
@@ -466,6 +560,10 @@ def _is_safe_relative_path(value: str) -> bool:
     if any(part in {"..", ""} for part in path.parts):
         return False
     return "\\" not in value and ":" not in value
+
+
+def _is_path_ignored(relative_path: str, ignored_paths: list[str]) -> bool:
+    return any(part in ignored_paths for part in PurePosixPath(relative_path).parts)
 
 
 def _entrypoint_relative_path(entrypoint: dict[str, Any]) -> str | None:

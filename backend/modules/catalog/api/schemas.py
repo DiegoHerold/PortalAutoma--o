@@ -177,3 +177,62 @@ class PackageResponse(BaseModel):
 
 class BlockRequest(BaseModel):
     reason: str | None = None
+
+
+class AutomationImportPreview(BaseModel):
+    staging_id: str | None = None
+    key: str | None = None
+    name: str | None = None
+    version: str | None = None
+    description: str | None = None
+    category: str | None = None
+    runtime_id: str | None = None
+    entrypoint_type: str | None = None
+    path: str | None = None
+    manifest_path: str | None = None
+    commit_sha: str | None = None
+    source_type: str
+    already_imported: bool
+    validation_status: str
+    errors: list[str] = Field(default_factory=list)
+    package_sha256: str
+    package_size: int
+
+
+class AutomationImportConfirmRequest(BaseModel):
+    category_id: int | None = None
+
+
+class GithubIntegrationResponse(BaseModel):
+    id: int
+    installation_id: int
+    account_login: str
+    account_type: str
+    connected_at: datetime | None = None
+    suspended_at: datetime | None = None
+
+
+class GithubConnectResponse(BaseModel):
+    install_url: str
+
+
+class GithubRepositoryResponse(BaseModel):
+    id: int
+    owner: str
+    name: str
+    full_name: str
+    default_branch: str
+    private: bool
+
+
+class GithubDiscoverRequest(BaseModel):
+    owner: str
+    repository: str
+    branch: str
+
+
+class GithubImportRequest(BaseModel):
+    owner: str
+    repository: str
+    branch: str
+    manifest_paths: list[str]

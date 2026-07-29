@@ -2,8 +2,8 @@
 
 Status: vigente.
 
-Objetivo: alinhar o codigo ao modelo oficial sem quebrar funcionalidades
-existentes.
+Objetivo: documentar o corte final para o modelo oficial sem quebrar
+funcionalidades existentes.
 
 ## Principios
 
@@ -24,9 +24,9 @@ existentes.
 - `jobs` vira adaptador para `executions` e `task_executions`.
 - `executions` legado vira adaptador para `execution_attempts`.
 
-## Estrutura atual e alvo
+## Estrutura removida e alvo
 
-Atual:
+Removida:
 
 ```text
 backend/app/
@@ -42,7 +42,7 @@ backend/app/
   workers/
 ```
 
-Alvo incremental:
+Alvo oficial:
 
 ```text
 backend/modules/
@@ -56,8 +56,8 @@ backend/modules/
   governance/
 ```
 
-Arquivos nao devem ser movidos em massa nesta etapa. Primeiro introduza portas
-e adaptadores, depois mova modulo por modulo preservando imports legados.
+Novas regras devem entrar apenas nos contextos oficiais. Compatibilidade HTTP
+deve ser adaptador fino dentro de `backend/modules` ou `backend/api`.
 
 ## Arquivos a mover em etapas
 
@@ -72,8 +72,8 @@ e adaptadores, depois mova modulo por modulo preservando imports legados.
 
 ## Imports e adaptadores
 
-- Manter import paths antigos ate cada modulo ter fachada publica.
-- Criar adaptadores de leitura para telas legadas.
+- Nao reintroduzir imports de `app.*`.
+- Criar adaptadores de leitura para telas que ainda usam nomes legados.
 - Evitar import cruzado direto entre `modules/*/infrastructure`.
 - Controllers devem chamar casos de uso de application.
 - Handlers WebSocket devem traduzir protocolo e delegar regras.

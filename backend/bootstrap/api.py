@@ -9,32 +9,30 @@ from fastapi import APIRouter, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from api import health
 from api.errors import http_error, install_error_handlers
-from app.api.v1.endpoints import (
-    automation_imports,
-    github_integrations,
-    health,
-    jobs,
-    realtime,
-    triggers,
-    webhooks,
-)
-from app.core.logging import configure_logging
 from gateway.bootstrap import router as agent_gateway_router
 from infrastructure.config import get_settings
 from infrastructure.database import SessionLocal
+from infrastructure.logging import configure_logging
 from modules.access.api.routes import router as access_module_router
+from modules.catalog.api.github_integrations import router as github_integrations_router
+from modules.catalog.api.imports import router as automation_imports_router
 from modules.catalog.api.routes import router as catalog_module_router
 from modules.dispatch.api.routes import router as dispatch_module_router
 from modules.fleet.api.routes import router as fleet_module_router
 from modules.governance.api.routes import router as governance_module_router
+from modules.orchestration.api.job_compat import router as job_compat_router
 from modules.orchestration.api.routes import router as orchestration_module_router
 from modules.orchestration.flows.api.routes import router as flow_module_router
 from modules.orchestration.scheduling.api.routes import (
     router as schedule_module_router,
     schedule_executions_router as schedule_executions_module_router,
 )
+from modules.orchestration.triggers.api.routes import router as trigger_module_router
+from modules.orchestration.triggers.api.webhooks import router as webhook_module_router
 from modules.storage.api.routes import router as storage_module_router
+from modules.telemetry.api.realtime import router as realtime_router
 from modules.telemetry.api.routes import router as telemetry_module_router
 from bootstrap.defaults import BootstrapService
 
@@ -118,6 +116,9 @@ def register_fleet_routes(router: APIRouter) -> None:
 
 def register_execution_routes(router: APIRouter) -> None:
     router.include_router(orchestration_module_router, tags=["orchestration"])
+    router.include_router(job_compat_router, tags=["jobs"])
+    router.include_router(trigger_module_router, tags=["triggers"])
+    router.include_router(webhook_module_router, tags=["webhooks"])
     router.include_router(dispatch_module_router, tags=["dispatch"])
     router.include_router(telemetry_module_router, tags=["telemetry"])
     router.include_router(storage_module_router, tags=["storage"])
@@ -137,12 +138,9 @@ def register_governance_routes(router: APIRouter) -> None:
 
 
 def register_compatibility_routes(router: APIRouter) -> None:
-    router.include_router(automation_imports.router, prefix="/automations", tags=["automation-imports"])
-    router.include_router(triggers.router, prefix="/triggers", tags=["triggers"])
-    router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
-    router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
-    router.include_router(github_integrations.router, prefix="/integrations/github", tags=["github-integration"])
-    router.include_router(realtime.router, prefix="/ws", tags=["realtime"])
+    router.include_router(automation_imports_router, prefix="/automations", tags=["automation-imports"])
+    router.include_router(github_integrations_router, prefix="/integrations/github", tags=["github-integration"])
+    router.include_router(realtime_router, prefix="/ws", tags=["realtime"])
 
 
 def _readiness_checks(environment: str) -> dict[str, dict[str, Any]]:

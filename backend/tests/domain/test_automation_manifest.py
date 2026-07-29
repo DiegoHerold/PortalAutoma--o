@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.domain.automation_manifest import (
+from modules.catalog.domain.manifest import (
     discover_manifest_paths,
     locate_single_manifest,
     parse_automation_manifest,
@@ -114,7 +114,7 @@ def test_parse_automation_manifest_valid():
     assert manifest.version == "1.0.0"
     assert manifest.entrypoint_type == "python-function"
     assert manifest.entrypoint["module"] == "atualizar_dominio.main"
-    assert manifest.required_capabilities == ["desktop.winauto", "software.dominio"]
+    assert [capability.key for capability in manifest.required_capabilities] == ["desktop.winauto", "software.dominio"]
     assert manifest.interactive_session is True
     assert manifest.timeout_seconds == 7200
 
@@ -139,7 +139,7 @@ def test_parse_automation_manifest_rejects_unknown_entrypoint_type():
     broken = AUTOMATION_YAML.replace("type: python-function", "type: shell-script")
     manifest, result = parse_automation_manifest(broken)
     assert manifest is None
-    assert any("não suportado" in e for e in result.errors)
+    assert any("Unsupported entrypoint type" in e for e in result.errors)
 
 
 def test_locate_single_manifest_at_root():
@@ -169,7 +169,7 @@ def test_validate_entrypoint_on_disk_missing_module(tmp_path: Path):
     (tmp_path / "src").mkdir()
     errors = validate_entrypoint_on_disk(manifest, tmp_path)
     assert len(errors) == 1
-    assert "não encontrado" in errors[0]
+    assert "not found" in errors[0]
 
 
 def test_validate_entrypoint_on_disk_missing_callable(tmp_path: Path):
