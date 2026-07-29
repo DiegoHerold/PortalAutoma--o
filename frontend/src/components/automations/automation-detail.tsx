@@ -274,9 +274,10 @@ function TriggerRow({ trigger }: { trigger: Trigger }) {
   if (trigger.trigger_type === "chained") {
     return (
       <li className="px-5 py-3">
-        <Badge tone="primary">encadeamento</Badge>
+        <Badge tone="primary">disparo em cadeia</Badge>
         <p className="mt-1.5 truncate text-xs text-muted-foreground">
-          Disparado quando a automação de origem terminar ({trigger.condition ?? "success"}).
+          Disparado quando a automação de origem terminar ({trigger.condition ?? "success"}). Para orquestrar várias
+          etapas com dependências, use um Fluxo.
         </p>
       </li>
     );

@@ -23,18 +23,21 @@ from modules.fleet.infrastructure.adapters import build_fleet_adapters
 router = APIRouter()
 
 
-@router.post("/agents:register")
-@router.post("/v1/agents:register")
+@router.post("/agents:register", operation_id="agent_gateway_compat_register_agent")
 def register_agent(
     payload: dict[str, Any] = Body(...),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     with SessionLocal() as db:
-        return AgentHttpCompatibilityGateway(db).register_agent(payload, _extract_bearer_token(authorization))
+        try:
+            return AgentHttpCompatibilityGateway(db).register_agent(payload, _extract_bearer_token(authorization))
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except FleetError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
-@router.post("/agents/{agent_id}/heartbeat")
-@router.post("/v1/agents/{agent_id}/heartbeat")
+@router.post("/agents/{agent_id}/heartbeat", operation_id="agent_gateway_compat_heartbeat")
 def heartbeat(
     agent_id: str,
     payload: dict[str, Any] = Body(...),
@@ -47,8 +50,7 @@ def heartbeat(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
 
-@router.post("/agents/{agent_id}/events:batch")
-@router.post("/v1/agents/{agent_id}/events:batch")
+@router.post("/agents/{agent_id}/events:batch", operation_id="agent_gateway_compat_events_batch")
 def events_batch(
     agent_id: str,
     payload: dict[str, Any] = Body(...),
@@ -66,7 +68,6 @@ def events_batch(
 
 
 @router.websocket("/agents/ws")
-@router.websocket("/v1/agents/ws")
 async def agent_websocket(websocket: WebSocket) -> None:
     await connect_agent(websocket)
 

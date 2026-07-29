@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Check,
   Copy,
@@ -178,7 +179,7 @@ export function TriggersManager() {
 
   async function remove(trigger: Trigger) {
     if (!token) return;
-    const label = trigger.trigger_type === "chained" ? "este encadeamento" : `o gatilho "${trigger.route_path}"`;
+    const label = trigger.trigger_type === "chained" ? "este disparo em cadeia" : `o gatilho "${trigger.route_path}"`;
     if (!window.confirm(`Apagar ${label}?`)) return;
     try {
       await apiRequest<void>(`/triggers/${trigger.id}`, { method: "DELETE", token });
@@ -198,7 +199,12 @@ export function TriggersManager() {
         <Webhook className="mt-0.5 h-4 w-4 shrink-0 text-info" />
         <p>
           Use um gatilho de webhook para receber chamadas do N8N (ou qualquer sistema externo) e disparar uma automação daqui.
-          Use um encadeamento para disparar uma automação automaticamente quando outra terminar -- sem precisar de N8N no meio.
+          Use um disparo em cadeia para dois passos simples (automação A termina, dispara automação B). Para orquestrar
+          várias etapas com dependências, condições e acompanhamento visual, use um{" "}
+          <Link href="/flows" className="font-medium text-primary underline underline-offset-2">
+            Fluxo
+          </Link>
+          .
         </p>
       </div>
 
@@ -217,7 +223,7 @@ export function TriggersManager() {
           ))}
         </div>
       ) : (triggers.data ?? []).length === 0 ? (
-        <EmptyState icon={Webhook} title="Sem gatilhos" description="Crie um gatilho de webhook ou um encadeamento entre automações." />
+        <EmptyState icon={Webhook} title="Sem gatilhos" description="Crie um gatilho de webhook ou um disparo em cadeia entre automações." />
       ) : (
         <div className="space-y-6">
           {httpsTriggers.length > 0 && (
@@ -240,7 +246,7 @@ export function TriggersManager() {
 
           {chainedTriggers.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Encadeamentos</h3>
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Disparos em cadeia</h3>
               <div className="grid gap-4 md:grid-cols-2">
                 {chainedTriggers.map((t) => (
                   <ChainedTriggerCard
@@ -304,9 +310,9 @@ export function TriggersManager() {
               }`}
             >
               <p className="flex items-center gap-1.5 font-medium">
-                <GitBranch className="h-4 w-4" /> Encadeamento
+                <GitBranch className="h-4 w-4" /> Disparo em cadeia
               </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Disparado quando outra automação terminar.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Disparado quando outra automação terminar (dois passos simples).</p>
             </button>
           </div>
 
@@ -540,14 +546,14 @@ function ChainedTriggerCard({
     <Card className="p-5">
       <div className="flex items-center justify-between gap-2">
         <Badge tone="primary">
-          <GitBranch className="h-3 w-3" /> encadeamento
+          <GitBranch className="h-3 w-3" /> disparo em cadeia
         </Badge>
         <div className="flex items-center gap-1">
           <Badge tone={trigger.is_active ? "success" : "neutral"}>{trigger.is_active ? "Ativo" : "Inativo"}</Badge>
-          <Button size="icon" variant="ghost" onClick={() => onEdit(trigger)} title="Editar encadeamento">
+          <Button size="icon" variant="ghost" onClick={() => onEdit(trigger)} title="Editar disparo em cadeia">
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button size="icon" variant="ghost" onClick={() => onDelete(trigger)} title="Apagar encadeamento">
+          <Button size="icon" variant="ghost" onClick={() => onDelete(trigger)} title="Apagar disparo em cadeia">
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>

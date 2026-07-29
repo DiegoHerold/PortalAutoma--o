@@ -18,6 +18,7 @@ from modules.catalog.application.dto import (
 )
 from modules.catalog.domain.manifest import AutomationManifest, ValidationResult
 from modules.catalog.infrastructure.orm.models import (
+    CatalogCategoryRecord,
     CatalogAutomationRecord as Automation,
     CatalogAutomationSourceRecord as AutomationSource,
     CatalogAutomationVersionRecord as AutomationVersion,

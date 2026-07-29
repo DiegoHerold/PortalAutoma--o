@@ -57,6 +57,29 @@ export async function apiUpload<T>(path: string, formData: FormData, token: stri
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
+/**
+ * Baixa um arquivo autenticado (ex: artefato de execução) e dispara o download no navegador.
+ * Necessário porque o endpoint exige o header Authorization — um <a href> puro não bastaria.
+ */
+export async function apiDownload(path: string, token: string | null, filename?: string): Promise<void> {
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers, cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(await errorMessage(response));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename || "download";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function errorMessage(response: Response): Promise<string> {
   const text = await response.text();
   if (!text) return "Erro na comunicacao com a API.";

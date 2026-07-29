@@ -134,6 +134,12 @@ export type ExecutionLeaseInfo = {
 export type ExecutionEventsPage = {
   items: Array<{
     id: string;
+    execution_id?: string;
+    task_execution_id?: string;
+    execution_attempt_id?: string;
+    agent_id?: string;
+    agent_instance_id?: string;
+    event_sequence?: number;
     event_type: string;
     level?: string | null;
     message?: string | null;
@@ -142,4 +148,52 @@ export type ExecutionEventsPage = {
     received_at: string;
   }>;
   next_cursor?: string | null;
+};
+
+// Ver backend/modules/telemetry/application/dto/__init__.py ExecutionMetricDTO / ExecutionProcessDTO
+export type ExecutionMetric = {
+  id: string;
+  event_id: string;
+  execution_id: string;
+  task_execution_id: string;
+  execution_attempt_id: string;
+  event_sequence: number;
+  metric_name: string;
+  metric_type: string;
+  value: number;
+  unit: string | null;
+  labels: Record<string, string>;
+  occurred_at: string;
+  received_at: string;
+};
+
+export type ExecutionProcess = {
+  process_id: string;
+  execution_id: string;
+  execution_attempt_id: string;
+  name: string | null;
+  command: string | null;
+  status: string;
+  pid: number | null;
+  exit_code: number | null;
+  started_at: string | null;
+  exited_at: string | null;
+};
+
+// Ver backend/modules/storage/application/dto/__init__.py ArtifactDTO
+export type ExecutionArtifact = {
+  id: string;
+  execution_id: string;
+  task_execution_id: string;
+  execution_attempt_id: string;
+  name: string;
+  content_type: string;
+  status: string;
+  size_bytes: number | null;
+  sha256: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string | null;
+  uploaded_at: string | null;
+  failed_at: string | null;
+  failure_reason: string | null;
 };

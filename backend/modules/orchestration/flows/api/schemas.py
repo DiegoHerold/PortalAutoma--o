@@ -52,6 +52,23 @@ class FlowNodeRequest(BaseModel):
     position_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class FlowNodeUpdateRequest(BaseModel):
+    """Corpo do PATCH /flow-nodes/{id} — todos os campos opcionais (key não é editável)."""
+
+    name: str | None = None
+    node_type: str | None = None
+    automation_version_id: int | None = None
+    configuration: dict[str, Any] | None = None
+    input_mapping: dict[str, Any] | None = None
+    output_mapping: dict[str, Any] | None = None
+    condition: dict[str, Any] | None = None
+    retry_policy: dict[str, Any] | None = None
+    timeout_policy: dict[str, Any] | None = None
+    failure_policy: str | None = None
+    execution_policy: dict[str, Any] | None = None
+    position_metadata: dict[str, Any] | None = None
+
+
 class FlowEdgeRequest(BaseModel):
     source_node_id: str
     target_node_id: str

@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from infrastructure.database import Base
 
@@ -48,9 +48,6 @@ class Schedule(Base):
     created_by: Mapped[str | None] = mapped_column(String(120), index=True)
     paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    automation = relationship("Automation", back_populates="schedules")
-    jobs = relationship("Job", back_populates="schedule")
 
 
 class ScheduleExecutionRecord(Base):

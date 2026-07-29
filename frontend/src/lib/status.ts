@@ -38,6 +38,9 @@ export const JOB_STATUS: Record<string, StatusMeta> = {
   suspect: { label: "Suspeito", tone: "warning", icon: Clock, dot: "bg-warning" },
   revoked: { label: "Revogado", tone: "neutral", icon: Ban, dot: "bg-muted-foreground" },
   completed: { label: "Concluido", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  blocked: { label: "Bloqueado", tone: "warning", icon: Clock, dot: "bg-warning" },
+  skipped: { label: "Ignorado", tone: "neutral", icon: CircleDashed, dot: "bg-muted-foreground" },
+  partially_succeeded: { label: "Parcialmente concluído", tone: "warning", icon: CheckCircle2, dot: "bg-warning" },
 };
 
 export function jobStatusMeta(status?: string | null): StatusMeta {
@@ -114,6 +117,60 @@ export function occurrenceStatusMeta(status?: string | null): StatusMeta {
   return (
     (status && OCCURRENCE_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" }
   );
+}
+
+/** Flow (o "container" do fluxo) status. */
+export const FLOW_STATUS: Record<string, StatusMeta> = {
+  draft: { label: "Rascunho", tone: "neutral", icon: CircleDashed, dot: "bg-muted-foreground" },
+  active: { label: "Ativo", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  disabled: { label: "Desativado", tone: "warning", icon: Ban, dot: "bg-warning" },
+  archived: { label: "Arquivado", tone: "neutral", icon: Ban, dot: "bg-muted-foreground" },
+};
+
+export function flowStatusMeta(status?: string | null): StatusMeta {
+  return (status && FLOW_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" };
+}
+
+/** FlowVersion lifecycle (draft -> published -> deprecated/blocked). */
+export const FLOW_VERSION_STATUS: Record<string, StatusMeta> = {
+  draft: { label: "Rascunho", tone: "neutral", icon: CircleDashed, dot: "bg-muted-foreground" },
+  published: { label: "Publicada", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  deprecated: { label: "Depreciada", tone: "warning", icon: Clock, dot: "bg-warning" },
+  blocked: { label: "Bloqueada", tone: "destructive", icon: Ban, dot: "bg-destructive" },
+};
+
+export function flowVersionStatusMeta(status?: string | null): StatusMeta {
+  return (
+    (status && FLOW_VERSION_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" }
+  );
+}
+
+// Ver backend/modules/telemetry/domain/states.py::ExecutionEventType — apenas os tipos
+// realmente emitidos pelos Agents/telemetria (não inventar eventos que o backend não produz).
+export const EVENT_TYPE_LABELS: Record<string, string> = {
+  "execution.started": "Execução iniciada",
+  "execution.completed": "Execução concluída",
+  "execution.failed": "Execução falhou",
+  "execution.cancelled": "Execução cancelada",
+  "execution.timed_out": "Execução expirou (timeout)",
+  "task.started": "Automação iniciada",
+  "task.progress": "Progresso atualizado",
+  "task.completed": "Automação concluída",
+  "task.failed": "Automação falhou",
+  log: "Log",
+  warning: "Aviso",
+  error: "Erro",
+  metric: "Métrica",
+  "process.started": "Processo iniciado",
+  "process.exited": "Processo encerrado",
+  "artifact.created": "Artefato criado",
+  "artifact.available": "Artefato disponível",
+  "artifact.failed": "Artefato com falha",
+  diagnostic: "Diagnóstico",
+};
+
+export function eventTypeLabel(type: string): string {
+  return EVENT_TYPE_LABELS[type] ?? type;
 }
 
 export const EXECUTOR_LABELS: Record<string, string> = {
