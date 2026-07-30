@@ -37,11 +37,6 @@ export function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function generateSecret(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID().replace(/-/g, "");
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-}
-
 export async function syncExecutionConfig(
   token: string,
   automationId: number,
@@ -51,20 +46,8 @@ export async function syncExecutionConfig(
   existingSchedule: Schedule | undefined,
 ) {
   if (form.execution_mode === "webhook") {
-    if (!existingTrigger) {
-      const routePath = `${slug}-${Math.random().toString(36).slice(2, 8)}`;
-      await apiRequest("/triggers", {
-        method: "POST",
-        token,
-        body: JSON.stringify({
-          automation_id: automationId,
-          trigger_type: "https",
-          route_path: routePath,
-          secret_token: generateSecret(),
-          is_active: true,
-        }),
-      });
-    }
+    // Webhook creation is handled by /webhooks, where the one-time secret can
+    // be shown safely to the operator.
   } else if (existingTrigger) {
     await apiRequest(`/triggers/${existingTrigger.id}`, { method: "DELETE", token });
   }

@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
+import Link from "next/link";
 import { ArrowDown, ArrowUp, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ const EXECUTORS = ["playwright", "power_automate", "n8n", "python_script", "http
 const PRIORITIES = ["critical", "high", "normal", "low"];
 const EXECUTION_MODES: { value: ExecutionMode; label: string; hint: string }[] = [
   { value: "manual", label: "Manual", hint: "Roda apenas quando alguém clicar em Disparar." },
-  { value: "webhook", label: "Gatilho", hint: "Roda quando um sistema externo chamar a URL gerada." },
+  { value: "webhook", label: "Webhook", hint: "Use a tela Webhooks para criar URL e secret." },
   { value: "scheduled", label: "Agendamento", hint: "Roda automaticamente numa recorrência (diária, semanal, mensal ou data única)." },
 ];
 
@@ -257,7 +258,11 @@ export function AutomationForm({
         )}
         {form.execution_mode === "webhook" && !webhookPreview && (
           <p className="text-xs text-muted-foreground">
-            Uma URL de gatilho e um token de segurança serão gerados automaticamente ao salvar.
+            Crie o Webhook em{" "}
+            <Link href="/webhooks" className="font-medium text-primary underline underline-offset-2">
+              Webhooks
+            </Link>{" "}
+            para receber o secret com seguranca.
           </p>
         )}
 

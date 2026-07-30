@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "es2022"
+    ],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": false,
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/components/schedules/schedules-manager.tsx",
+    "src/components/schedules/schedules-header.tsx",
+    "src/components/schedules/schedules-summary.tsx",
+    "src/components/schedules/schedules-filter-bar.tsx",
+    "src/components/schedules/schedules-active-filters.tsx",
+    "src/components/schedules/schedules-filter-sheet.tsx",
+    "src/components/schedules/schedules-now-view.tsx",
+    "src/components/schedules/schedule-calendar-item.tsx",
+    "src/components/schedules/schedule-items-sheet.tsx",
+    "src/components/schedules/schedule-status-legend.tsx",
+    "src/components/schedules/schedule-detail-sheet.tsx",
+    "src/components/schedules/schedule-form-sheet.tsx",
+    "src/components/schedules/schedule-occurrences-preview.tsx",
+    "src/components/schedules/schedule-list-view.tsx",
+    "src/components/schedules/calendar/month-view.tsx",
+    "src/components/schedules/calendar/week-view.tsx",
+    "src/components/schedules/calendar/day-view.tsx",
+    "src/components/schedules/calendar/agenda-view.tsx",
+    "src/components/schedules/calendar/occurrence-chip.tsx",
+    "src/components/schedules/calendar/occurrence-utils.ts",
+    "src/app/(dashboard)/schedules/page.tsx"
+  ]
+}

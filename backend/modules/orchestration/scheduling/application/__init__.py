@@ -1,3 +1,4 @@
+from modules.orchestration.scheduling.application.calendar import CalendarQueryError, build_schedule_calendar
 from modules.orchestration.scheduling.application.use_cases import (
     ApplyOverlapPolicy,
     ArchiveSchedule,
@@ -23,6 +24,7 @@ __all__ = [
     "ApplyOverlapPolicy",
     "ArchiveSchedule",
     "CalculateNextScheduleRun",
+    "CalendarQueryError",
     "CreateSchedule",
     "CreateScheduleExecution",
     "DisableSchedule",
@@ -37,5 +39,6 @@ __all__ = [
     "TriggerDueSchedules",
     "TriggerScheduleManually",
     "UpdateSchedule",
+    "build_schedule_calendar",
     "occurrences_for_schedule",
 ]

@@ -10,12 +10,12 @@ export default async function ExecutionDetailPage({ params }: { params: Promise<
     <div className="space-y-6">
       <nav className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link href="/executions" className="hover:text-foreground">
-          Execuções
+          Execucoes
         </Link>
         <ChevronRight className="h-4 w-4" />
         <span className="tabular text-foreground">#{id}</span>
       </nav>
-      <PageTitle eyebrow="Detalhe" title={`Execução #${id}`} description="Linha do tempo, logs e resultado." />
+      <PageTitle eyebrow="Detalhe" title={`Execucao #${id}`} description="Timeline, eventos, logs, metricas, processos, progresso, tasks e artefatos." />
       <ExecutionDetail id={id} />
     </div>
   );

@@ -1,490 +1,280 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarClock, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 
 import { ErrorState } from "@/components/shared/error-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input, Select, Label, Field } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
+import { AgendaView } from "@/components/schedules/calendar/agenda-view";
+import { groupItemsByDay } from "@/components/schedules/calendar/occurrence-utils";
+import { DayView, type DayGroupBy } from "@/components/schedules/calendar/day-view";
+import { MonthView } from "@/components/schedules/calendar/month-view";
+import { WeekView } from "@/components/schedules/calendar/week-view";
+import { ScheduleDetailSheet } from "@/components/schedules/schedule-detail-sheet";
+import { ScheduleFormSheet } from "@/components/schedules/schedule-form-sheet";
+import { SchedulesActiveFilters } from "@/components/schedules/schedules-active-filters";
+import { SchedulesFilterBar, type QuickFilterState } from "@/components/schedules/schedules-filter-bar";
+import { SchedulesFilterSheet } from "@/components/schedules/schedules-filter-sheet";
+import { SchedulesHeader } from "@/components/schedules/schedules-header";
+import { SchedulesNowView } from "@/components/schedules/schedules-now-view";
+import { SchedulesSummary } from "@/components/schedules/schedules-summary";
+import { ScheduleStatusLegend } from "@/components/schedules/schedule-status-legend";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
-import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
-import { apiRequest } from "@/lib/api";
-import { addMonths, getMonthGridDays, isSameDay, monthLabel, toDateKey, WEEKDAY_HEADER_LABELS } from "@/lib/calendar";
-import { describeRecurrence } from "@/lib/cron";
-import { occurrenceStatusMeta } from "@/lib/status";
-import { cn } from "@/lib/utils";
+import { getWeekDays, parseDateKey, toDateKey } from "@/lib/calendar";
+import { hasPermission } from "@/lib/permissions";
+import {
+  countActiveFilters,
+  filtersToQueryPatch,
+  parseFiltersFromParams,
+  type ScheduleFilters,
+} from "@/lib/schedule-filters";
+import { parseScheduleView, scheduleViewHeaderLabel, scheduleViewRange, stepScheduleAnchor, type ScheduleView } from "@/lib/schedule-view";
+import { relativeFromNow } from "@/lib/utils";
 import type { Automation } from "@/types/automation";
-import type { RecurrenceType, Schedule, ScheduleOccurrence } from "@/types/schedule";
+import type { Flow } from "@/types/flow";
+import type { Density } from "@/components/schedules/schedule-calendar-item";
+import type { ScheduleCalendarItem, ScheduleCalendarResponse, TargetType } from "@/types/schedule";
 
-type ScheduleFormState = {
-  automation_id: string;
-  recurrence_type: RecurrenceType;
-  time_of_day: string;
-  weekdays: number[];
-  day_of_month: number;
-  specific_date: string;
-  timezone: string;
-  is_active: boolean;
-};
-
-const RECURRENCE_TYPES: { value: RecurrenceType; label: string }[] = [
-  { value: "daily", label: "Todo dia" },
-  { value: "weekly", label: "Dias da semana" },
-  { value: "monthly", label: "Mensal" },
-  { value: "once", label: "Data específica" },
-];
-
-function emptyForm(automationId?: string, specificDate?: string): ScheduleFormState {
-  return {
-    automation_id: automationId ?? "",
-    recurrence_type: specificDate ? "once" : "daily",
-    time_of_day: "08:00",
-    weekdays: [0, 1, 2, 3, 4],
-    day_of_month: 1,
-    specific_date: specificDate ?? "",
-    timezone: "America/Sao_Paulo",
-    is_active: true,
-  };
-}
-
-function scheduleToForm(schedule: Schedule): ScheduleFormState {
-  return {
-    automation_id: schedule.automation_id == null ? "" : String(schedule.automation_id),
-    recurrence_type: schedule.recurrence_type,
-    time_of_day: schedule.time_of_day,
-    weekdays: schedule.weekdays ?? [0, 1, 2, 3, 4],
-    day_of_month: schedule.day_of_month ?? 1,
-    specific_date: schedule.specific_date ?? "",
-    timezone: schedule.timezone,
-    is_active: schedule.is_active,
-  };
-}
+const DENSITY_STORAGE_KEY = "schedules.density";
 
 export function SchedulesManager() {
-  const { token } = useAuth();
-  const { toast } = useToast();
-  const automations = useApi<Automation[]>("/automations");
-  const schedules = useApi<Schedule[]>("/schedules");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
 
-  const [viewMonth, setViewMonth] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
-  const [filterAutomationId, setFilterAutomationId] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const view = parseScheduleView(searchParams.get("view"));
+  const anchor = searchParams.get("date") ? parseDateKey(searchParams.get("date")!) : todayAnchor();
+  const filters = useMemo(() => parseFiltersFromParams(searchParams), [searchParams]);
+  const dayGroupBy = (searchParams.get("group") as DayGroupBy) || "none";
 
-  const [open, setOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [editing, setEditing] = useState<Schedule | null>(null);
-  const [occurrenceContext, setOccurrenceContext] = useState<ScheduleOccurrence | null>(null);
-  const [form, setForm] = useState<ScheduleFormState>(emptyForm());
+  const [density, setDensity] = useState<Density>("comfortable");
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem(DENSITY_STORAGE_KEY) : null;
+    if (saved === "compact" || saved === "comfortable") setDensity(saved);
+  }, []);
+  function changeDensity(next: Density) {
+    setDensity(next);
+    if (typeof window !== "undefined") window.localStorage.setItem(DENSITY_STORAGE_KEY, next);
+  }
 
-  const gridDays = useMemo(() => getMonthGridDays(viewMonth), [viewMonth]);
-  const rangeFrom = toDateKey(gridDays[0].date);
-  const rangeTo = toDateKey(gridDays[gridDays.length - 1].date);
+  const [detailScheduleId, setDetailScheduleId] = useState<number | null>(null);
+  const [detailItem, setDetailItem] = useState<ScheduleCalendarItem | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [formEditingId, setFormEditingId] = useState<number | null>(null);
+  const [formPrefill, setFormPrefill] = useState<{ targetType?: TargetType; specificDate?: string } | undefined>();
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
-  const occurrences = useApi<ScheduleOccurrence[]>(`/schedules/calendar?from_date=${rangeFrom}&to_date=${rangeTo}`);
+  const automationsQuery = useApi<Automation[]>("/automations");
+  const flowsQuery = useApi<Flow[]>("/flows");
 
-  const nameOf = useMemo(() => {
-    const map = new Map<number, string>();
-    automations.data?.forEach((a) => map.set(a.id, a.name));
+  const range = useMemo(() => scheduleViewRange(view, anchor), [view, anchor]);
+
+  const calendarUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("from", toDateKey(range.from));
+    params.set("to", toDateKey(range.to));
+    params.set("timezone", filters.timezone);
+    params.set("view", view);
+    if (filters.targetType !== "all") params.set("target_type", filters.targetType);
+    if (filters.automationIds.length) params.set("automation_ids", filters.automationIds.join(","));
+    if (filters.flowIds.length) params.set("flow_ids", filters.flowIds.join(","));
+    if (filters.statuses.length) params.set("statuses", filters.statuses.join(","));
+    if (filters.owners.length) params.set("owners", filters.owners.join(","));
+    if (filters.search.trim()) params.set("search", filters.search.trim());
+    return `/schedules/calendar?${params.toString()}`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, filters, view]);
+
+  // Tempo real (seção 31): polling moderado em vez de uma conexão SSE por item do calendário.
+  // Janelas mais operacionais (Agora/Dia/Semana) atualizam mais rápido que Mês/Agenda.
+  const pollMs = view === "now" ? 15_000 : view === "day" || view === "week" ? 30_000 : 90_000;
+  const calendarQuery = useApi<ScheduleCalendarResponse>(calendarUrl, { pollMs });
+
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (calendarQuery.data) setLastUpdatedAt(Date.now());
+  }, [calendarQuery.data]);
+
+  const items = useMemo(() => calendarQuery.data?.items ?? [], [calendarQuery.data]);
+  const itemsByDay = useMemo(() => groupItemsByDay(items), [items]);
+
+  const automationById = useMemo(() => {
+    const map = new Map<number, Automation>();
+    automationsQuery.data?.forEach((a) => map.set(a.id, a));
     return map;
-  }, [automations.data]);
+  }, [automationsQuery.data]);
 
-  const filteredOccurrences = useMemo(() => {
-    let list = occurrences.data ?? [];
-    if (filterAutomationId) list = list.filter((o) => String(o.automation_id) === filterAutomationId);
-    if (filterStatus) list = list.filter((o) => o.status === filterStatus);
-    return list;
-  }, [occurrences.data, filterAutomationId, filterStatus]);
-
-  const occurrencesByDay = useMemo(() => {
-    const map = new Map<string, ScheduleOccurrence[]>();
-    for (const o of filteredOccurrences) {
-      const key = toDateKey(new Date(o.occurs_at));
-      const bucket = map.get(key) ?? [];
-      bucket.push(o);
-      map.set(key, bucket);
-    }
-    for (const bucket of map.values()) bucket.sort((a, b) => a.occurs_at.localeCompare(b.occurs_at));
+  const flowById = useMemo(() => {
+    const map = new Map<string, Flow>();
+    flowsQuery.data?.forEach((f) => map.set(f.id, f));
     return map;
-  }, [filteredOccurrences]);
+  }, [flowsQuery.data]);
 
-  const runningCount = useMemo(() => (occurrences.data ?? []).filter((o) => o.status === "running").length, [occurrences.data]);
+  const ownerOptions = useMemo(() => Array.from(new Set(items.map((i) => i.responsible).filter((v): v is string => !!v))).sort(), [items]);
 
-  function openCreate(specificDate?: string) {
-    setEditing(null);
-    setOccurrenceContext(null);
-    setForm(emptyForm(automations.data?.[0] ? String(automations.data[0].id) : "", specificDate));
-    setOpen(true);
+  function setQuery(patch: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    Object.entries(patch).forEach(([key, value]) => {
+      if (!value) params.delete(key);
+      else params.set(key, value);
+    });
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
-  function openEdit(schedule: Schedule, occurrence?: ScheduleOccurrence) {
-    setEditing(schedule);
-    setOccurrenceContext(occurrence ?? null);
-    setForm(scheduleToForm(schedule));
-    setOpen(true);
+  function updateView(next: ScheduleView) {
+    setQuery({ view: next === "week" ? null : next });
   }
 
-  function openOccurrence(occurrence: ScheduleOccurrence) {
-    const schedule = schedules.data?.find((s) => s.id === occurrence.schedule_id);
-    if (!schedule) {
-      toast({ title: "Agendamento não encontrado", kind: "error" });
-      return;
-    }
-    openEdit(schedule, occurrence);
+  function updateFilters(next: ScheduleFilters) {
+    setQuery(filtersToQueryPatch(next));
   }
 
-  function toggleWeekday(day: number) {
-    setForm((f) => ({
-      ...f,
-      weekdays: f.weekdays.includes(day) ? f.weekdays.filter((d) => d !== day) : [...f.weekdays, day].sort(),
-    }));
+  const quickFilterState: QuickFilterState = { targetType: filters.targetType, statuses: filters.statuses };
+  function updateQuickFilters(next: QuickFilterState) {
+    updateFilters({ ...filters, targetType: next.targetType, statuses: next.statuses });
   }
 
-  async function save() {
-    if (!token || !form.automation_id) return;
-    setSubmitting(true);
-    try {
-      const body = JSON.stringify({
-        automation_id: Number(form.automation_id),
-        timezone: form.timezone,
-        is_active: form.is_active,
-        recurrence_type: form.recurrence_type,
-        time_of_day: form.time_of_day,
-        weekdays: form.recurrence_type === "weekly" ? form.weekdays : null,
-        day_of_month: form.recurrence_type === "monthly" ? form.day_of_month : null,
-        specific_date: form.recurrence_type === "once" ? form.specific_date : null,
-      });
-      await apiRequest<Schedule>(editing ? `/schedules/${editing.id}` : "/schedules", {
-        method: editing ? "PUT" : "POST",
-        token,
-        body,
-      });
-      toast({ title: editing ? "Agendamento atualizado" : "Agendamento criado", kind: "success" });
-      setOpen(false);
-      setEditing(null);
-      setOccurrenceContext(null);
-      await Promise.all([schedules.refetch(), occurrences.refetch()]);
-    } catch (err) {
-      toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
-    } finally {
-      setSubmitting(false);
-    }
+  function stepAnchor(delta: number) {
+    setQuery({ date: toDateKey(stepScheduleAnchor(view, anchor, delta)) });
   }
 
-  async function remove(schedule: Schedule) {
-    if (!token) return;
-    const label = schedule.automation_id == null ? schedule.name ?? `#${schedule.id}` : nameOf.get(schedule.automation_id) ?? schedule.automation_id;
-    if (!window.confirm(`Apagar o agendamento de "${label}"?`)) return;
-    try {
-      await apiRequest<void>(`/schedules/${schedule.id}`, { method: "DELETE", token });
-      toast({ title: "Agendamento apagado", kind: "success" });
-      setOpen(false);
-      setEditing(null);
-      setOccurrenceContext(null);
-      await Promise.all([schedules.refetch(), occurrences.refetch()]);
-    } catch (err) {
-      toast({ title: "Falha ao apagar", description: err instanceof Error ? err.message : undefined, kind: "error" });
-    }
+  const headerLabel = scheduleViewHeaderLabel(view, anchor);
+
+  function openCreate(dateKey?: string) {
+    setFormPrefill({ targetType: filters.targetType !== "all" ? filters.targetType : "automation", specificDate: dateKey });
+    setFormEditingId(null);
+    setFormOpen(true);
   }
 
-  if (schedules.error) return <ErrorState message={schedules.error} onRetry={schedules.refetch} />;
-  if (automations.error) return <ErrorState message={automations.error} onRetry={automations.refetch} />;
+  function openEditFromDetail(scheduleId: number) {
+    setDetailScheduleId(null);
+    setDetailItem(null);
+    setFormPrefill(undefined);
+    setFormEditingId(scheduleId);
+    setFormOpen(true);
+  }
 
-  const today = new Date();
-  const loadingGrid = schedules.loading || occurrences.loading;
+  function openItem(item: ScheduleCalendarItem) {
+    setDetailItem(item);
+    setDetailScheduleId(item.schedule_id);
+  }
+
+  async function refetchAll() {
+    await calendarQuery.refetch();
+  }
+
+  const canWrite = hasPermission(user, "schedule.update");
+  const canTrigger = hasPermission(user, "schedule.trigger") || canWrite;
+
+  const activeFilterCount = countActiveFilters(filters);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <Button size="icon" variant="outline" onClick={() => setViewMonth((m) => addMonths(m, -1))} aria-label="Mês anterior">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <h2 className="w-44 text-center font-display text-base font-semibold capitalize">{monthLabel(viewMonth)}</h2>
-          <Button size="icon" variant="outline" onClick={() => setViewMonth((m) => addMonths(m, 1))} aria-label="Próximo mês">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1))}
-          >
-            Hoje
-          </Button>
-          {runningCount > 0 && (
-            <Badge tone="info" className="animate-pulse">
-              {runningCount} rodando agora
-            </Badge>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={filterAutomationId} onChange={(e) => setFilterAutomationId(e.target.value)} className="w-48">
-            <option value="">Todas as automações</option>
-            {automations.data?.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </Select>
-          <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-40">
-            <option value="">Todos os status</option>
-            <option value="upcoming">Agendado</option>
-            <option value="running">Executando</option>
-            <option value="success">Sucesso</option>
-            <option value="failed">Falha</option>
-            <option value="missed">Não executado</option>
-          </Select>
-          <Button onClick={() => openCreate()}>
-            <Plus className="h-4 w-4" /> Novo agendamento
-          </Button>
-        </div>
+    <div className="space-y-4">
+      <SchedulesHeader
+        view={view}
+        onViewChange={updateView}
+        headerLabel={headerLabel}
+        showDateNav={view !== "now"}
+        onPrev={() => stepAnchor(-1)}
+        onNext={() => stepAnchor(1)}
+        onToday={() => setQuery({ date: null })}
+        search={filters.search}
+        onSearchChange={(value) => updateFilters({ ...filters, search: value })}
+        timezone={filters.timezone}
+        activeFilterCount={activeFilterCount}
+        onOpenFilters={() => setFilterSheetOpen(true)}
+        onCreate={() => openCreate()}
+        canCreate={canWrite}
+      />
+
+      <SchedulesSummary summary={calendarQuery.data?.summary ?? null} />
+
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
+        <SchedulesFilterBar state={quickFilterState} onChange={updateQuickFilters} />
+        <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+          <RefreshCw className={cnAnim(calendarQuery.loading)} />
+          {calendarQuery.loading && lastUpdatedAt == null ? "Carregando…" : lastUpdatedAt ? `Atualizado ${relativeFromNow(new Date(lastUpdatedAt).toISOString())}` : ""}
+        </span>
       </div>
 
-      {loadingGrid ? (
+      <SchedulesActiveFilters filters={filters} automationById={automationById} flowById={flowById} onChange={updateFilters} onClearAll={() => updateFilters({ ...filters, targetType: "all", statuses: [], automationIds: [], flowIds: [], owners: [], search: "" })} />
+
+      <ScheduleStatusLegend />
+
+      {calendarQuery.error && !calendarQuery.data ? (
+        <ErrorState message={calendarQuery.error} onRetry={calendarQuery.refetch} />
+      ) : calendarQuery.loading && !calendarQuery.data ? (
         <Skeleton className="h-[560px] rounded-lg" />
-      ) : (occurrences.error && !occurrences.data) ? (
-        <ErrorState message={occurrences.error} onRetry={occurrences.refetch} />
+      ) : view === "now" ? (
+        <SchedulesNowView items={items} onSelect={openItem} />
+      ) : view === "month" ? (
+        <MonthView anchor={anchor} itemsByDay={itemsByDay} onSelectItem={openItem} onCreateForDate={openCreate} />
+      ) : view === "week" ? (
+        <WeekView days={getWeekDays(anchor)} items={items} onSelectItem={openItem} onCreateForDate={openCreate} />
+      ) : view === "day" ? (
+        <DayView date={anchor} items={items} onSelectItem={openItem} groupBy={dayGroupBy} onGroupByChange={(v) => setQuery({ group: v === "none" ? null : v })} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <div className="grid grid-cols-7 border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground">
-            {WEEKDAY_HEADER_LABELS.map((label) => (
-              <div key={label} className="px-2 py-2 text-center">
-                {label}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {gridDays.map(({ date, inMonth }) => {
-              const key = toDateKey(date);
-              const dayOccurrences = occurrencesByDay.get(key) ?? [];
-              const isToday = isSameDay(date, today);
-              const visible = dayOccurrences.slice(0, 3);
-              const overflow = dayOccurrences.length - visible.length;
-
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => openCreate(key)}
-                  className={cn(
-                    "flex min-h-[104px] flex-col items-stretch gap-1 border-b border-r border-border p-1.5 text-left transition-colors hover:bg-accent/40",
-                    !inMonth && "bg-muted/20 text-muted-foreground",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "self-start rounded-full px-1.5 text-xs font-medium",
-                      isToday ? "bg-primary text-primary-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    {date.getDate()}
-                  </span>
-                  <div className="flex flex-1 flex-col gap-1 overflow-hidden">
-                    {visible.map((o) => {
-                      const meta = occurrenceStatusMeta(o.status);
-                      const time = new Date(o.occurs_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-                      return (
-                        <span
-                          key={`${o.schedule_id}-${o.occurs_at}`}
-                          role="button"
-                          tabIndex={0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openOccurrence(o);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.stopPropagation();
-                              openOccurrence(o);
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-1 truncate rounded px-1 py-0.5 text-[11px] font-medium",
-                            meta.tone === "success" && "bg-success/12 text-success",
-                            meta.tone === "destructive" && "bg-destructive/12 text-destructive",
-                            meta.tone === "info" && "bg-info/12 text-info",
-                            meta.tone === "warning" && "bg-warning/15 text-warning",
-                            (meta.tone === "neutral" || meta.tone === "outline") && "bg-muted text-muted-foreground",
-                          )}
-                          title={`${nameOf.get(o.automation_id) ?? o.automation_id} — ${meta.label}`}
-                        >
-                          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", meta.dot)} />
-                          <span className="truncate">
-                            {time} {nameOf.get(o.automation_id) ?? `#${o.automation_id}`}
-                          </span>
-                        </span>
-                      );
-                    })}
-                    {overflow > 0 && <span className="px-1 text-[11px] text-muted-foreground">+{overflow} mais</span>}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <AgendaView from={range.from} to={range.to} itemsByDay={itemsByDay} onSelectItem={openItem} density={density} onLoadMore={() => stepAnchor(1)} />
       )}
 
-      {(schedules.data ?? []).length === 0 && !schedules.loading && (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <CalendarClock className="h-3.5 w-3.5" /> Nenhum agendamento cadastrado ainda -- clique em um dia do calendário ou em
-          &quot;Novo agendamento&quot;.
-        </p>
-      )}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => changeDensity(density === "comfortable" ? "compact" : "comfortable")}
+          className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+        >
+          Densidade: {density === "comfortable" ? "Confortável" : "Compacta"} — alternar
+        </button>
+      </div>
 
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={editing ? "Editar agendamento" : "Novo agendamento"}
-        description={editing ? describeRecurrence(editing) : undefined}
-        footer={
-          <>
-            {editing && (
-              <Button variant="destructive" className="mr-auto" onClick={() => remove(editing)}>
-                <Trash2 className="h-4 w-4" /> Apagar
-              </Button>
-            )}
-            <Button variant="ghost" onClick={() => setOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={save} disabled={submitting || !form.automation_id || (form.recurrence_type === "weekly" && form.weekdays.length === 0)}>
-              {submitting && <Spinner />} {editing ? "Salvar" : "Criar"}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          {occurrenceContext && (
-            <div className="rounded-md border border-info/30 bg-info/5 p-3 text-xs text-muted-foreground">
-              Ocorrência de{" "}
-              {new Date(occurrenceContext.occurs_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}:{" "}
-              <Badge tone={occurrenceStatusMeta(occurrenceContext.status).tone}>{occurrenceStatusMeta(occurrenceContext.status).label}</Badge>
-              {occurrenceContext.job_id && <span className="ml-1">(job #{occurrenceContext.job_id})</span>}
-            </div>
-          )}
+      <ScheduleDetailSheet
+        scheduleId={detailScheduleId}
+        item={detailItem}
+        open={detailScheduleId != null}
+        onClose={() => {
+          setDetailScheduleId(null);
+          setDetailItem(null);
+        }}
+        automationById={automationById}
+        flowById={flowById}
+        onEdit={openEditFromDetail}
+        onChanged={refetchAll}
+        canWrite={canWrite}
+        canTrigger={canTrigger}
+      />
 
-          <Field>
-            <Label htmlFor="s-automation">Automação</Label>
-            <Select id="s-automation" value={form.automation_id} onChange={(e) => setForm({ ...form, automation_id: e.target.value })}>
-              <option value="">Selecione...</option>
-              {automations.data?.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+      <ScheduleFormSheet
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        editingId={formEditingId}
+        prefill={formPrefill}
+        automations={automationsQuery.data ?? []}
+        flows={flowsQuery.data ?? []}
+        onSaved={refetchAll}
+      />
 
-          <div className="grid gap-2 sm:grid-cols-4">
-            {RECURRENCE_TYPES.map((r) => (
-              <button
-                type="button"
-                key={r.value}
-                onClick={() => setForm({ ...form, recurrence_type: r.value })}
-                className={cn(
-                  "rounded-md border p-2.5 text-center text-xs font-medium transition-colors",
-                  form.recurrence_type === r.value
-                    ? "border-primary bg-primary/5 text-primary"
-                    : "border-input text-muted-foreground hover:border-primary/50",
-                )}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          {form.recurrence_type === "weekly" && (
-            <Field>
-              <Label>Dias da semana</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((label, idx) => (
-                  <button
-                    type="button"
-                    key={label}
-                    onClick={() => toggleWeekday(idx)}
-                    className={cn(
-                      "h-9 w-11 rounded-md border text-xs font-medium transition-colors",
-                      form.weekdays.includes(idx)
-                        ? "border-primary bg-primary/5 text-primary"
-                        : "border-input text-muted-foreground hover:border-primary/50",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {form.weekdays.length === 0 && <p className="text-xs text-error">Selecione ao menos um dia.</p>}
-            </Field>
-          )}
-
-          {form.recurrence_type === "monthly" && (
-            <Field>
-              <Label htmlFor="s-day">Dia do mês</Label>
-              <Input
-                id="s-day"
-                type="number"
-                min={0}
-                max={31}
-                className="tabular"
-                value={form.day_of_month}
-                onChange={(e) => setForm({ ...form, day_of_month: Number(e.target.value) })}
-              />
-              <p className="text-xs text-muted-foreground">Use 0 para &quot;último dia do mês&quot; (aproximado como dia 28).</p>
-            </Field>
-          )}
-
-          {form.recurrence_type === "once" && (
-            <Field>
-              <Label htmlFor="s-date">Data</Label>
-              <Input
-                id="s-date"
-                type="date"
-                className="tabular"
-                value={form.specific_date}
-                onChange={(e) => setForm({ ...form, specific_date: e.target.value })}
-              />
-            </Field>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field>
-              <Label htmlFor="s-time">Horário</Label>
-              <Input
-                id="s-time"
-                type="time"
-                className="tabular"
-                value={form.time_of_day}
-                onChange={(e) => setForm({ ...form, time_of_day: e.target.value })}
-              />
-            </Field>
-            <Field>
-              <Label htmlFor="s-timezone">Fuso horário</Label>
-              <Input
-                id="s-timezone"
-                className="tabular"
-                value={form.timezone}
-                onChange={(e) => setForm({ ...form, timezone: e.target.value })}
-              />
-            </Field>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.is_active}
-              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-              className="h-4 w-4 accent-primary"
-            />
-            Ativo
-          </label>
-        </div>
-      </Modal>
+      <SchedulesFilterSheet
+        open={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        filters={filters}
+        automations={automationsQuery.data ?? []}
+        flows={flowsQuery.data ?? []}
+        ownerOptions={ownerOptions}
+        onApply={updateFilters}
+      />
     </div>
   );
+}
+
+function cnAnim(spinning: boolean): string {
+  return spinning ? "h-3 w-3 animate-spin" : "h-3 w-3";
+}
+
+function todayAnchor(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }

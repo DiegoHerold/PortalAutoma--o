@@ -140,6 +140,7 @@ class ExecutionSummaryResponse(ExecutionResponse):
     agent_id: str | None = None
     agent_name: str | None = None
     worker_id: int | None = None
+    trigger_id: int | None = None
 
 
 class ExecutionDetailsResponse(BaseModel):

@@ -25,6 +25,7 @@ from modules.orchestration.application.dto import ActorDTO, CreateAutomationExec
 from modules.orchestration.application.use_cases import CreateAutomationExecution, GetExecutionDetails, ListExecutions, ListExecutionSummaries, RequestExecutionCancellation
 from modules.orchestration.domain.errors import AutomationVersionNotExecutable, IdempotencyConflict, OrchestrationError
 from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
+from modules.orchestration.infrastructure.orm.models import LegacyJobMirrorRecord
 from modules.storage.infrastructure.adapters import build_storage_adapters
 from modules.telemetry.application.dto import to_payload as telemetry_payload
 from modules.telemetry.application.use_cases import GetTelemetrySummary
@@ -117,6 +118,9 @@ def list_executions(
     user: Any = Depends(get_current_user),
     limit: int = 100,
     offset: int = 0,
+    origin: str | None = None,
+    automation_id: int | None = None,
+    trigger_id: int | None = None,
 ) -> list[ExecutionSummaryResponse]:
     adapters = build_orchestration_adapters(db)
     summaries = ListExecutionSummaries(
@@ -126,7 +130,19 @@ def list_executions(
         adapters.automation_versions,
         adapters.agent_selection,
     ).execute(limit=limit, offset=offset)
-    return [ExecutionSummaryResponse.model_validate(item.to_payload()) for item in summaries]
+    responses: list[ExecutionSummaryResponse] = []
+    for item in summaries:
+        payload = item.to_payload()
+        job = db.get(LegacyJobMirrorRecord, item.execution.legacy_job_id) if item.execution.legacy_job_id else None
+        payload["trigger_id"] = job.trigger_id if job else None
+        if origin and payload.get("origin") != origin:
+            continue
+        if automation_id is not None and payload.get("automation_id") != automation_id:
+            continue
+        if trigger_id is not None and payload.get("trigger_id") != trigger_id:
+            continue
+        responses.append(ExecutionSummaryResponse.model_validate(payload))
+    return responses
 
 
 @router.get("/{execution_id}/tasks")

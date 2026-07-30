@@ -45,6 +45,15 @@ export type Execution = {
   priority?: number | null;
   agent_id?: string | null;
   agent_name?: string | null;
+  trigger_id?: number | null;
+
+  // Flow linkage is present either on FlowExecution records or inside task input
+  // when an automation task was spawned by a Flow node.
+  flow_execution_id?: string | null;
+  flow_id?: string | null;
+  flow_name?: string | null;
+  flow_version_id?: string | null;
+  flow_node_id?: string | null;
 };
 
 export type ExecutionAttempt = {
@@ -96,22 +105,45 @@ export type ExecutionDetails = {
   telemetry?: Execution["telemetry"];
 };
 
+export type ExecutionProgress = {
+  execution_id: string;
+  task_execution_id: string | null;
+  execution_attempt_id: string | null;
+  percentage: number | null;
+  current: number | null;
+  total: number | null;
+  message: string | null;
+  updated_at: string | null;
+};
+
+// Ver backend/modules/dispatch/application/dto/__init__.py — painéis de suporte/diagnóstico
+// avançado de scheduling (Fase 6). Servidos como dict cru via `to_payload` (dataclass -> dict,
+// datetime -> isoformat), sem response_model Pydantic.
+
+export type DispatchCandidate = {
+  agent_id: string;
+  agent_instance_id?: string | null;
+  worker_id?: number | null;
+  eligible: boolean;
+  rejection_reasons?: Array<Record<string, unknown>>;
+  score?: number;
+  score_components?: Record<string, number>;
+  evaluated_at?: string;
+  snapshot_revision?: number | null;
+};
+
 export type ExecutionDispatchDecision = {
   id: string;
+  scheduler_run_id?: string;
   status: string;
   selected_agent_id?: string | null;
   selected_agent_instance_id?: string | null;
   execution_attempt_id?: string | null;
   execution_offer_id?: string | null;
   decision_reason?: string | null;
-  candidates?: Array<{
-    agent_id: string;
-    agent_instance_id?: string | null;
-    eligible: boolean;
-    rejection_reasons?: Array<Record<string, unknown>>;
-    score?: number;
-    score_components?: Record<string, number>;
-  }>;
+  weights?: Record<string, number>;
+  metadata?: Record<string, unknown>;
+  candidates?: DispatchCandidate[];
   created_at?: string;
 };
 
@@ -120,15 +152,66 @@ export type ExecutionDispatchInfo = {
   decisions: ExecutionDispatchDecision[];
 };
 
+/** GET /execution-attempts/{id}/lease — ver ExecutionLeaseDTO. */
 export type ExecutionLeaseInfo = {
   execution_attempt_id: string;
   lease: {
     id: string;
+    execution_attempt_id: string;
+    agent_id: string;
+    agent_instance_id: string;
     status: string;
+    issued_at: string;
     expires_at: string;
-    grace_until: string;
+    last_renewed_at: string | null;
     renewal_sequence: number;
+    grace_until: string;
+    revoked_at: string | null;
+    revocation_reason: string | null;
   } | null;
+};
+
+/** GET /execution-attempts/{id}/reservations — reservas de slot de pool (ResourceReservationDTO), plural (0..N). */
+export type ExecutionReservation = {
+  id: string;
+  task_execution_id: string;
+  execution_attempt_id: string;
+  agent_id: string;
+  agent_instance_id: string;
+  pool_type: string;
+  units: number;
+  status: string;
+  reserved_at: string;
+  expires_at: string;
+  execution_offer_id: string | null;
+  activated_at: string | null;
+  released_at: string | null;
+  release_reason: string | null;
+};
+
+export type ExecutionReservationsInfo = {
+  execution_attempt_id: string;
+  reservations: ExecutionReservation[];
+};
+
+/** GET /execution-attempts/{id}/locks — locks de recurso exclusivo (ResourceLockDTO), ex. evitar 2 tentativas na mesma automação/máquina. */
+export type ExecutionLock = {
+  id: string;
+  resource_key: string;
+  normalized_key: string;
+  scope: string;
+  agent_id: string;
+  execution_attempt_id: string;
+  status: string;
+  acquired_at: string;
+  expires_at: string;
+  released_at: string | null;
+  release_reason: string | null;
+};
+
+export type ExecutionLocksInfo = {
+  execution_attempt_id: string;
+  locks: ExecutionLock[];
 };
 
 export type ExecutionEventsPage = {

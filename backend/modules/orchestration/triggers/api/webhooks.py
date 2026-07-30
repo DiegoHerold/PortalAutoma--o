@@ -29,6 +29,9 @@ async def webhook_trigger(
     request: Request,
     x_forwarded_for: str | None = Header(None),
     x_webhook_secret: str | None = Header(None),
+    x_trigger_secret: str | None = Header(None),
+    x_correlation_id: str | None = Header(default=None, alias="X-Correlation-ID"),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
 ):
     client_ip = x_forwarded_for or (request.client.host if request.client else "unknown")
@@ -44,9 +47,9 @@ async def webhook_trigger(
 
     headers = dict(request.headers)
     query_params = dict(request.query_params)
-    secret_token = x_webhook_secret or query_params.get("secret") or body.get("secret_token")
+    secret_token = x_trigger_secret or x_webhook_secret or query_params.get("secret") or body.get("secret_token")
     if not secret_token:
-        raise HTTPException(status_code=400, detail="Missing secret token (envie no header X-Webhook-Secret)")
+        raise HTTPException(status_code=400, detail="Missing secret token (envie no header X-Trigger-Secret)")
 
     job = dispatch_webhook_trigger(
         db,
@@ -57,6 +60,8 @@ async def webhook_trigger(
         query_params=query_params,
         ip=client_ip,
         user_agent=request.headers.get("user-agent"),
+        idempotency_key=idempotency_key,
+        correlation_id=x_correlation_id,
     )
     return JSONResponse(
         status_code=200,

@@ -11,6 +11,7 @@ class ExecutionType(StrEnum):
 class ExecutionOrigin(StrEnum):
     MANUAL = "manual"
     API = "api"
+    TRIGGER = "trigger"
     SCHEDULE = "schedule"
     FLOW = "flow"
     RETRY = "retry"

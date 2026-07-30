@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { jobStatusMeta, workerStatusMeta, priorityMeta } from "@/lib/status";
+import { jobStatusMeta, priorityMeta, webhookStatusMeta, workerStatusMeta } from "@/lib/status";
 
 export function StatusBadge({ status, className }: { status?: string | null; className?: string }) {
   const meta = jobStatusMeta(status);
@@ -27,6 +27,17 @@ export function PriorityBadge({ priority, className }: { priority?: string | nul
   const meta = priorityMeta(priority);
   return (
     <Badge tone={meta.tone} className={className}>
+      {meta.label}
+    </Badge>
+  );
+}
+
+export function WebhookStatusBadge({ status, className }: { status?: string | null; className?: string }) {
+  const meta = webhookStatusMeta(status);
+  const Icon = meta.icon;
+  return (
+    <Badge tone={meta.tone} className={className}>
+      <Icon className="h-3.5 w-3.5" />
       {meta.label}
     </Badge>
   );

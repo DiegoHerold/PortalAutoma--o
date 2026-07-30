@@ -53,7 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/flows", label: "Fluxos", icon: GitBranch, permission: "flow.read" },
       { href: "/jobs", label: "Fila de jobs", icon: ListChecks, permission: "execution.read" },
-      { href: "/triggers", label: "Gatilhos e webhooks", icon: Webhook, permission: "flow.read" },
+      { href: "/webhooks", label: "Webhooks", icon: Webhook, permission: "flow.read" },
       { href: "/schedules", label: "Agendamentos", icon: CalendarClock, permission: "schedule.read" },
     ],
   },
@@ -69,7 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Infraestrutura",
     items: [
       { href: "/workers", label: "Agents", icon: Server, permission: "agent.read" },
-      { href: "/dispatch", label: "Fila de execução", icon: ListOrdered, permission: "execution.read", comingSoon: true },
+      { href: "/dispatch", label: "Fila de execução", icon: ListOrdered, permission: "execution.read" },
       { href: "/storage", label: "Armazenamento", icon: Database, permission: "artifact.read", comingSoon: true },
     ],
   },

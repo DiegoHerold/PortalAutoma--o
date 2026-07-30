@@ -55,10 +55,15 @@ class TriggerCompatRecord(Base):
     __table_args__ = {"extend_existing": True}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str | None] = mapped_column(String(120))
     automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id"), nullable=False, index=True)
     trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
     route_path: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     secret_token: Mapped[str] = mapped_column(String(255), nullable=False)
+    secret_hash: Mapped[str | None] = mapped_column(String(64))
+    secret_last_four: Mapped[str | None] = mapped_column(String(16))
+    secret_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    secret_rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     parameter_mapping_json: Mapped[dict | None] = mapped_column(JSONB)
     template: Mapped[str | None] = mapped_column(String(50))

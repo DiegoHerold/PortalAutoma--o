@@ -19,6 +19,9 @@ def create_and_schedule_execution(
     parameters: dict[str, Any],
     priority: int,
     origin: str,
+    correlation_id: str | None = None,
+    idempotency_key: str | None = None,
+    request_hash: str | None = None,
 ):
     adapters = build_orchestration_adapters(db)
     details = CreateAutomationExecution(
@@ -40,6 +43,9 @@ def create_and_schedule_execution(
             parameters=parameters,
             priority=priority,
             origin=origin,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
         )
     )
     if details.tasks:

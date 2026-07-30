@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field, model_validator
 
 VALID_CONDITIONS = {"success", "failed", "always"}
 
 
-class TriggerCreateRequest(BaseModel):
+class TriggerBaseRequest(BaseModel):
+    name: str | None = None
     automation_id: int
     trigger_type: str = "https"
     route_path: str | None = None
-    secret_token: str | None = None
     is_active: bool = True
     parameter_mapping_json: dict[str, str] | None = None
     template: str | None = None
@@ -17,10 +19,10 @@ class TriggerCreateRequest(BaseModel):
     condition: str | None = None
 
     @model_validator(mode="after")
-    def check_type_specific_fields(self) -> "TriggerCreateRequest":
+    def check_type_specific_fields(self) -> "TriggerBaseRequest":
         if self.trigger_type == "https":
-            if not self.route_path or not self.secret_token:
-                raise ValueError("route_path e secret_token sao obrigatorios para trigger_type='https'.")
+            if not self.route_path:
+                raise ValueError("route_path e obrigatorio para trigger_type='https'.")
         elif self.trigger_type == "chained":
             if not self.source_automation_id:
                 raise ValueError("source_automation_id e obrigatorio para trigger_type='chained'.")
@@ -33,15 +35,49 @@ class TriggerCreateRequest(BaseModel):
         return self
 
 
-class TriggerUpdateRequest(TriggerCreateRequest):
+class TriggerCreateRequest(TriggerBaseRequest):
+    secret_token: str | None = None
+
+
+class TriggerUpdateRequest(TriggerBaseRequest):
     pass
 
 
-class TriggerResponse(TriggerCreateRequest):
+class TriggerResponse(BaseModel):
     id: int
+    name: str | None = None
+    automation_id: int
+    trigger_type: str
+    route_path: str
+    is_active: bool
+    parameter_mapping_json: dict[str, str] | None = None
+    template: str | None = None
+    source_automation_id: int | None = None
+    condition: str | None = None
+    secret_configured: bool
+    secret_last_four: str | None = None
+    secret_created_at: datetime | None = None
+    secret_rotated_at: datetime | None = None
+    method: str = "POST"
+    required_header: str = "X-Trigger-Secret"
+    invocation_url: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    last_invoked_at: datetime | None = None
+    last_execution_id: str | None = None
+    last_execution_status: str | None = None
+    last_execution_duration_seconds: float | None = None
 
-    class Config:
-        from_attributes = True
+
+class TriggerCreateResponse(TriggerResponse):
+    secret_token: str | None = None
+
+
+class TriggerRotateSecretResponse(BaseModel):
+    secret_token: str
+    created_at: datetime
+    previous_secret_revoked: bool = True
+    secret_last_four: str
 
 
 class TriggerDryRunRequest(BaseModel):

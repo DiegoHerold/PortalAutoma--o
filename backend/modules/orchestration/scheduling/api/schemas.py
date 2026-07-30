@@ -113,19 +113,6 @@ class ScheduleResponse(BaseModel):
     last_run_at: datetime | None = None
 
 
-class ScheduleOccurrenceResponse(BaseModel):
-    schedule_id: int
-    automation_id: int | None = None
-    automation_name: str = ""
-    category_id: int | None = None
-    recurrence_type: str
-    occurs_at: datetime
-    status: str
-    job_id: int | None = None
-    execution_id: str | None = None
-    schedule_execution_id: str | None = None
-
-
 class ScheduleExecutionResponse(BaseModel):
     id: str
     schedule_id: int
@@ -139,3 +126,98 @@ class ScheduleExecutionResponse(BaseModel):
     result: dict[str, Any] | None = None
     failure_summary: str | None = None
     created_at: datetime
+
+
+class ScheduleCalendarProgressResponse(BaseModel):
+    total: int
+    succeeded: int
+    running: int
+    failed: int
+    pending: int
+
+
+class ScheduleCalendarItemResponse(BaseModel):
+    id: str
+    schedule_id: int
+    schedule_execution_id: str | None = None
+    execution_id: str | None = None
+    flow_execution_id: str | None = None
+    target_type: str
+    target_id: str | None = None
+    target_version: str | None = None
+    target_name: str
+    schedule_name: str | None = None
+    planned_start: datetime
+    actual_start: datetime | None = None
+    actual_end: datetime | None = None
+    effective_end: datetime | None = None
+    status: str
+    temporal_status: str
+    reason: str | None = None
+    progress: ScheduleCalendarProgressResponse | None = None
+    responsible: str | None = None
+    agent: str | None = None
+    duration_seconds: float | None = None
+    estimated_duration_seconds: float | None = None
+    estimation_confidence: str | None = None
+    is_estimated: bool = False
+    recurrence_type: str
+    schedule_type: str
+    timezone: str
+    is_one_time: bool
+    overlap_group: int | None = None
+    overlap_index: int | None = None
+    overlap_count: int | None = None
+
+
+class ScheduleCalendarSummaryResponse(BaseModel):
+    total: int
+    completed: int
+    running: int
+    failed: int
+    future: int
+    cancelled: int
+    skipped: int
+    peak_from: datetime | None = None
+    peak_to: datetime | None = None
+    peak_count: int = 0
+
+
+class ScheduleCalendarDensityBucketResponse(BaseModel):
+    bucket_from: datetime
+    bucket_to: datetime
+    count: int
+    level: str
+
+
+class ScheduleCalendarRangeResponse(BaseModel):
+    date_from: datetime
+    date_to: datetime
+    timezone: str
+
+
+class ScheduleCalendarResponse(BaseModel):
+    range: ScheduleCalendarRangeResponse
+    items: list[ScheduleCalendarItemResponse]
+    summary: ScheduleCalendarSummaryResponse
+    density: list[ScheduleCalendarDensityBucketResponse]
+
+
+class SchedulePreviewRequest(BaseModel):
+    """Espelha os campos de recorrencia de ScheduleCreateRequest para pre-visualizar
+    as proximas ocorrencias antes de salvar (nao persiste nada)."""
+
+    timezone: str = "America/Sao_Paulo"
+    schedule_type: str | None = None
+    cron_expression: str | None = None
+    recurrence_type: str = "daily"
+    time_of_day: str = "08:00"
+    weekdays: list[int] | None = None
+    day_of_month: int | None = None
+    specific_date: date | None = None
+    interval_seconds: int | None = None
+    count: int = 5
+
+
+class SchedulePreviewResponse(BaseModel):
+    occurrences: list[datetime]

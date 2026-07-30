@@ -1,15 +1,15 @@
-import { ListOrdered } from "lucide-react";
+import type { Metadata } from "next";
 
-import { ComingSoonPage } from "@/components/shared/coming-soon";
+import { DispatchQueueView } from "@/components/dispatch/dispatch-queue-view";
+import { PageTitle } from "@/components/shared/page-title";
+
+export const metadata: Metadata = { title: "Fila de execução" };
 
 export default function DispatchPage() {
   return (
-    <ComingSoonPage
-      eyebrow="Infraestrutura"
-      title="Fila de execução"
-      description="Fila de dispatch, decisões de scheduling e candidatos avaliados."
-      phase="Fase 6 (Administração avançada de Agents e Dispatch)"
-      icon={ListOrdered}
-    />
+    <div className="space-y-6">
+      <PageTitle eyebrow="Infraestrutura" title="Fila de execução" description="Snapshot de tasks prontas para despacho e decisões de scheduling." />
+      <DispatchQueueView />
+    </div>
   );
 }
