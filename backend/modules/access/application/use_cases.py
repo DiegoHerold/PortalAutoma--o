@@ -281,6 +281,33 @@ class CreateOrganization:
         return created
 
 
+class UpdateOrganization:
+    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
+        self.access = access
+        self.audit = audit
+        self.transaction = transaction
+
+    def execute(self, actor: Any, organization_id: int, payload: dict[str, Any]):
+        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        updated = self.access.update_organization(organization_id, payload)
+        _audit(self.audit, actor, "organization_updated", "organization", str(updated.id), after={"key": updated.key, "status": updated.status})
+        self.transaction.commit()
+        return updated
+
+
+class DeleteOrganization:
+    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
+        self.access = access
+        self.audit = audit
+        self.transaction = transaction
+
+    def execute(self, actor: Any, organization_id: int) -> None:
+        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        self.access.delete_organization(organization_id)
+        _audit(self.audit, actor, "organization_deleted", "organization", str(organization_id))
+        self.transaction.commit()
+
+
 class ListTeams:
     def __init__(self, access: AccessRepository) -> None:
         self.access = access
@@ -302,6 +329,33 @@ class CreateTeam:
         _audit(self.audit, actor, "team_created", "team", str(created.id), after={"key": created.key})
         self.transaction.commit()
         return created
+
+
+class UpdateTeam:
+    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
+        self.access = access
+        self.audit = audit
+        self.transaction = transaction
+
+    def execute(self, actor: Any, team_id: int, payload: dict[str, Any]):
+        PermissionChecker(self.access).ensure_permission(actor, "admin.users")
+        updated = self.access.update_team(team_id, payload)
+        _audit(self.audit, actor, "team_updated", "team", str(updated.id), after={"key": updated.key, "organization_id": updated.organization_id, "status": updated.status})
+        self.transaction.commit()
+        return updated
+
+
+class DeleteTeam:
+    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
+        self.access = access
+        self.audit = audit
+        self.transaction = transaction
+
+    def execute(self, actor: Any, team_id: int) -> None:
+        PermissionChecker(self.access).ensure_permission(actor, "admin.users")
+        self.access.delete_team(team_id)
+        _audit(self.audit, actor, "team_deleted", "team", str(team_id))
+        self.transaction.commit()
 
 
 class ListServiceAccounts:
@@ -349,6 +403,33 @@ class RevokeServiceAccount:
         _audit(self.audit, actor, "service_account_revoked", "service_account", service_account_id)
         self.transaction.commit()
         return revoked
+
+
+class UpdateServiceAccount:
+    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
+        self.access = access
+        self.audit = audit
+        self.transaction = transaction
+
+    def execute(self, actor: Any, service_account_id: str, payload: dict[str, Any]) -> ServiceAccountDTO:
+        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        updated = self.access.update_service_account(service_account_id, payload)
+        _audit(self.audit, actor, "service_account_updated", "service_account", service_account_id, after={"permission_count": len(updated.permissions), "status": updated.status})
+        self.transaction.commit()
+        return updated
+
+
+class DeleteServiceAccount:
+    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
+        self.access = access
+        self.audit = audit
+        self.transaction = transaction
+
+    def execute(self, actor: Any, service_account_id: str) -> None:
+        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        self.access.delete_service_account(service_account_id)
+        _audit(self.audit, actor, "service_account_deleted", "service_account", service_account_id)
+        self.transaction.commit()
 
 
 def _role_slug(user: Any) -> str | None:

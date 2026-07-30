@@ -40,8 +40,8 @@ class ApiTemporaryUrlProvider:
     def __init__(self, api_v1_prefix: str) -> None:
         self.api_v1_prefix = api_v1_prefix.rstrip("/")
 
-    def create_upload_url(self, upload_session, expires_in_seconds: int = 900) -> str:
-        return f"{self.api_v1_prefix}/package-uploads/{upload_session.id}/bytes"
+    def create_upload_url(self, upload_session, expires_in_seconds: int = 900) -> str | None:
+        return None
 
 
 class ApiArtifactTemporaryUrlProvider:

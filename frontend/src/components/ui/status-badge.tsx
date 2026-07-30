@@ -1,6 +1,15 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { jobStatusMeta, priorityMeta, webhookStatusMeta, workerStatusMeta } from "@/lib/status";
+import {
+  automationVersionStatusMeta,
+  jobStatusMeta,
+  priorityMeta,
+  runtimeVersionStatusMeta,
+  secretStatusMeta,
+  serviceAccountStatusMeta,
+  webhookStatusMeta,
+  workerStatusMeta,
+} from "@/lib/status";
 
 export function StatusBadge({ status, className }: { status?: string | null; className?: string }) {
   const meta = jobStatusMeta(status);
@@ -41,6 +50,45 @@ export function WebhookStatusBadge({ status, className }: { status?: string | nu
       {meta.label}
     </Badge>
   );
+}
+
+export function AutomationVersionStatusBadge({ status, className }: { status?: string | null; className?: string }) {
+  const meta = automationVersionStatusMeta(status);
+  const Icon = meta.icon;
+  return (
+    <Badge tone={meta.tone} className={className}>
+      <Icon className="h-3.5 w-3.5" />
+      {meta.label}
+    </Badge>
+  );
+}
+
+export function RuntimeVersionStatusBadge({ status, className }: { status?: string | null; className?: string }) {
+  const meta = runtimeVersionStatusMeta(status);
+  const Icon = meta.icon;
+  return (
+    <Badge tone={meta.tone} className={className}>
+      <Icon className="h-3.5 w-3.5" />
+      {meta.label}
+    </Badge>
+  );
+}
+
+export function SecretStatusBadge({ status, className }: { status?: string | null; className?: string }) {
+  const meta = secretStatusMeta(status);
+  const Icon = meta.icon;
+  return (
+    <Badge tone={meta.tone} className={className}>
+      <Icon className="h-3.5 w-3.5" />
+      {meta.label}
+    </Badge>
+  );
+}
+
+export function ServiceAccountStatusBadge({ account, className }: { account: { status?: string | null; expires_at?: string | null; revoked_at?: string | null }; className?: string }) {
+  const meta = serviceAccountStatusMeta(account.status, account.expires_at, account.revoked_at);
+  const Icon = meta.icon;
+  return <Badge tone={meta.tone} className={className}><Icon className="h-3.5 w-3.5" />{meta.label}</Badge>;
 }
 
 export function StatusDot({ status, className }: { status?: string | null; className?: string }) {

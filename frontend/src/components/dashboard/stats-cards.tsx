@@ -1,6 +1,6 @@
 const stats = [
   { label: "Automacoes ativas", value: "24" },
-  { label: "Jobs na fila", value: "13" },
+  { label: "Execucoes aguardando", value: "13" },
   { label: "Workers online", value: "5" },
 ];
 

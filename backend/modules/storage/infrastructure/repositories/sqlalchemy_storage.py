@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from modules.storage.application.dto import ArtifactDTO, ArtifactUploadSessionLinkDTO
@@ -179,6 +180,24 @@ class SqlAlchemyArtifactRepository:
             .all()
         )
         return [_artifact_to_dto(row) for row in rows]
+
+    def list(
+        self,
+        *,
+        execution_id: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ArtifactDTO]:
+        statement = select(ArtifactRecord).order_by(ArtifactRecord.created_at.desc()).limit(limit).offset(offset)
+        if execution_id:
+            statement = statement.where(ArtifactRecord.execution_id == execution_id)
+        if status:
+            statement = statement.where(ArtifactRecord.status == status)
+        if search:
+            statement = statement.where(ArtifactRecord.name.ilike(f"%{search.strip()}%"))
+        return [_artifact_to_dto(row) for row in self.db.scalars(statement).all()]
 
     def count_for_execution(self, execution_id: str) -> int:
         return self.db.query(ArtifactRecord).filter(ArtifactRecord.execution_id == execution_id).count()

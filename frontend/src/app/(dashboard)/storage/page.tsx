@@ -1,15 +1,6 @@
-import { Database } from "lucide-react";
-
-import { ComingSoonPage } from "@/components/shared/coming-soon";
+import { StorageManager } from "@/components/storage/storage-manager";
+import { PageTitle } from "@/components/shared/page-title";
 
 export default function StoragePage() {
-  return (
-    <ComingSoonPage
-      eyebrow="Infraestrutura"
-      title="Armazenamento"
-      description="Artefatos gerados por execuções e fluxos."
-      phase="Fase 8 (Governança e armazenamento)"
-      icon={Database}
-    />
-  );
+  return <div className="space-y-6"><PageTitle eyebrow="Infraestrutura" title="Armazenamento" description="Localize, inspecione e baixe artefatos gerados pelas execuções autorizadas." /><StorageManager /></div>;
 }

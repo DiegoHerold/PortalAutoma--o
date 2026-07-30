@@ -22,6 +22,7 @@ class CategoryResponse(CategoryCreateRequest):
 
 
 class AutomationCreateRequest(BaseModel):
+    key: str | None = None
     name: str = Field(min_length=1)
     slug: str = Field(min_length=1)
     description: str | None = None
@@ -89,13 +90,6 @@ class RuntimeCreateRequest(BaseModel):
     description: str | None = None
 
 
-class RuntimeResponse(RuntimeCreateRequest):
-    id: str
-    status: str
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-
 class RuntimeVersionCreateRequest(BaseModel):
     version: str
     operating_system: str = "windows"
@@ -114,6 +108,14 @@ class RuntimeVersionResponse(RuntimeVersionCreateRequest):
     published_at: datetime | None = None
     deprecated_at: datetime | None = None
     blocked_at: datetime | None = None
+
+
+class RuntimeResponse(RuntimeCreateRequest):
+    id: str
+    status: str
+    versions: list[RuntimeVersionResponse] = Field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class AutomationVersionCreateRequest(BaseModel):

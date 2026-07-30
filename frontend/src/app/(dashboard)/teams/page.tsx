@@ -1,15 +1,6 @@
-import { UsersRound } from "lucide-react";
-
-import { ComingSoonPage } from "@/components/shared/coming-soon";
+import { PageTitle } from "@/components/shared/page-title";
+import { TeamsManager } from "@/components/teams/teams-manager";
 
 export default function TeamsPage() {
-  return (
-    <ComingSoonPage
-      eyebrow="Administração"
-      title="Times"
-      description="Times, membros e papéis atribuídos."
-      phase="Fase 9 (Access e administração multi-organização)"
-      icon={UsersRound}
-    />
-  );
+  return <div className="space-y-6"><PageTitle eyebrow="Administracao" title="Times" description="Times organizados por contexto e metadados operacionais." /><TeamsManager /></div>;
 }

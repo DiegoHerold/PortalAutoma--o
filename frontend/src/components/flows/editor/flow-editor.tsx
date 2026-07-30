@@ -42,7 +42,7 @@ import {
 } from "@/lib/flow-api";
 import { apiRequest } from "@/lib/api";
 import type { Automation } from "@/types/automation";
-import type { AutomationVersion } from "@/types/automation-import";
+import type { AutomationVersionResponse as AutomationVersion } from "@/types/catalog";
 import type { FlowEdge, FlowNode, FlowValidationIssue, FlowValidationResult, FlowVersion } from "@/types/flow";
 
 const EDGE_COLOR: Record<string, string> = {
@@ -123,8 +123,6 @@ export function FlowEditor({
 
   const automations = useApi<Automation[]>("/automations");
   const [automationVersions, setAutomationVersions] = useState<AutomationVersion[]>([]);
-  const loadedAutomationIds = useRef(new Set<number>());
-
   const positionHistory = useRef<{ nodeId: string; previous: { x: number; y: number } }[]>([]);
 
   // Carrega nós/arestas desta versão e roda validação inicial.
@@ -438,8 +436,7 @@ export function FlowEditor({
   }
 
   function loadAutomationVersionsFor(automationId: number) {
-    if (!token || loadedAutomationIds.current.has(automationId)) return;
-    loadedAutomationIds.current.add(automationId);
+    if (!token) return;
     apiRequest<AutomationVersion[]>(`/automations/${automationId}/versions`, { token })
       .then((versions) => setAutomationVersions((prev) => [...prev.filter((v) => v.automation_id !== automationId), ...versions]))
       .catch(() => undefined);

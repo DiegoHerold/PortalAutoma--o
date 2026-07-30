@@ -1,15 +1,20 @@
-import { Package } from "lucide-react";
+import type { Metadata } from "next";
 
-import { ComingSoonPage } from "@/components/shared/coming-soon";
+import { RuntimesManager } from "@/components/runtimes/runtimes-manager";
+import { PageTitle } from "@/components/shared/page-title";
+
+export const metadata: Metadata = { title: "Runtimes" };
 
 export default function RuntimesPage() {
   return (
-    <ComingSoonPage
-      eyebrow="Catálogo"
-      title="Runtimes"
-      description="Runtimes, versões e compatibilidade com Agents."
-      phase="Fase 7 (Runtimes e versões de automações)"
-      icon={Package}
-    />
+    <div className="space-y-6">
+      <PageTitle
+        eyebrow="Catalogo"
+        title="Runtimes"
+        description="Gestao de runtimes, versoes publicadas e compatibilidade informativa com Agents."
+      />
+      <RuntimesManager />
+    </div>
   );
 }
+

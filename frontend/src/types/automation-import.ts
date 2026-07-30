@@ -18,24 +18,7 @@ export type AutomationImportPreview = {
   package_size: number;
 };
 
-export type AutomationVersion = {
-  id: number;
-  automation_id: number;
-  version: string;
-  status: "draft" | "validating" | "invalid" | "ready" | "published" | "deprecated" | "blocked" | "disabled";
-  runtime_id: string;
-  runtime_version?: string | null;
-  entrypoint_type: string;
-  application_type: string;
-  artifact_bucket: string;
-  artifact_object_key: string;
-  artifact_size: number;
-  artifact_sha256: string;
-  source_commit_sha?: string | null;
-  source_path?: string | null;
-  created_at: string;
-  published_at?: string | null;
-};
+export type { AutomationVersionResponse as AutomationVersion } from "@/types/catalog";
 
 export type AutomationSource = {
   id: number;

@@ -12,7 +12,7 @@ import { ConditionEditor } from "@/components/flows/editor/condition-editor";
 import { MappingEditor } from "@/components/flows/editor/mapping-editor";
 import type { FlowCanvasNode } from "@/components/flows/editor/types";
 import type { Automation } from "@/types/automation";
-import type { AutomationVersion } from "@/types/automation-import";
+import type { AutomationVersionResponse as AutomationVersion } from "@/types/catalog";
 import type { FlowFailurePolicy } from "@/types/flow";
 
 export type NodeConfigPatch = {

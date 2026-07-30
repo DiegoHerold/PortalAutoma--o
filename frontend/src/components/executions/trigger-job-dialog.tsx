@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Select, Textarea, Label, Field } from "@/components/ui/input";
+import { Field, Label, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
@@ -11,19 +11,12 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
 import { priorityScoreFromLabel } from "@/lib/status";
 import type { Automation } from "@/types/automation";
-import type { Execution } from "@/types/execution";
+import type { AutomationVersionResponse } from "@/types/catalog";
+import type { Execution, ExecutionDetails } from "@/types/execution";
 
 const PRIORITIES = ["critical", "high", "normal", "low"];
 
-type AutomationVersion = {
-  id: number;
-  automation_id: number;
-  version: string;
-  status: string;
-  published_at: string | null;
-};
-
-export function DispatchDialog({
+export function TriggerJobDialog({
   open,
   onClose,
   automations,
@@ -32,7 +25,7 @@ export function DispatchDialog({
   open: boolean;
   onClose: () => void;
   automations: Automation[];
-  onDispatched: () => void;
+  onDispatched: (execution: Execution) => void;
 }) {
   const { token } = useAuth();
   const { toast } = useToast();
@@ -43,33 +36,31 @@ export function DispatchDialog({
   const [payloadError, setPayloadError] = useState<string | null>(null);
 
   async function dispatch() {
-    if (!token || !automationId) return;
+    if (!token || !automationId || submitting) return;
     let parsed: Record<string, unknown> = {};
     if (payload.trim()) {
       try {
-        parsed = JSON.parse(payload);
+        parsed = JSON.parse(payload) as Record<string, unknown>;
       } catch {
         setPayloadError("JSON inválido");
         return;
       }
     }
+
     setPayloadError(null);
     setSubmitting(true);
     try {
-      // /executions requires a specific automation_version_id (an Execution
-      // is always tied to one published version) — resolve the latest
-      // published version of the chosen automation first, same as the old
-      // JobDispatcherService did server-side via get_latest_published_version.
-      const versions = await apiRequest<AutomationVersion[]>(`/automations/${automationId}/versions`, { token });
-      const published = versions
-        .filter((v) => v.status === "published")
-        .sort((a, b) => new Date(b.published_at ?? 0).getTime() - new Date(a.published_at ?? 0).getTime());
-      const version = published[0];
+      const versions = await apiRequest<AutomationVersionResponse[]>(`/automations/${automationId}/versions`, { token });
+      const version = versions
+        .filter((item) => item.status === "published")
+        .sort((a, b) => new Date(b.published_at ?? 0).getTime() - new Date(a.published_at ?? 0).getTime())[0];
+
       if (!version) {
-        toast({ title: "Falha ao despachar", description: "Esta automação não tem versão publicada.", kind: "error" });
+        toast({ title: "Falha ao disparar", description: "Esta automação não tem versão publicada.", kind: "error" });
         return;
       }
-      await apiRequest<Execution>("/executions", {
+
+      const created = await apiRequest<ExecutionDetails>("/executions", {
         method: "POST",
         token,
         body: JSON.stringify({
@@ -78,11 +69,12 @@ export function DispatchDialog({
           parameters: parsed,
         }),
       });
-      toast({ title: "Job despachado", kind: "success" });
+
+      toast({ title: "Job disparado", description: `Execução #${created.execution.id} criada.`, kind: "success" });
+      onDispatched(created.execution);
       onClose();
-      onDispatched();
     } catch (err) {
-      toast({ title: "Falha ao despachar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha ao disparar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -93,10 +85,10 @@ export function DispatchDialog({
       open={open}
       onClose={onClose}
       title="Disparar job"
-      description="Cria um job manual para a automação selecionada."
+      description="Cria uma execução manual para a automação selecionada."
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Cancelar
           </Button>
           <Button onClick={dispatch} disabled={submitting || !automationId}>
@@ -107,33 +99,35 @@ export function DispatchDialog({
     >
       <div className="space-y-4">
         <Field>
-          <Label htmlFor="d-automation">Automação</Label>
-          <Select id="d-automation" value={automationId} onChange={(e) => setAutomationId(e.target.value)}>
-            <option value="">Selecione…</option>
-            {automations.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
+          <Label htmlFor="execution-automation">Automação</Label>
+          <Select id="execution-automation" value={automationId} onChange={(event) => setAutomationId(event.target.value)}>
+            <option value="">Selecione...</option>
+            {automations.map((automation) => (
+              <option key={automation.id} value={automation.id}>
+                {automation.name}
               </option>
             ))}
           </Select>
         </Field>
+
         <Field>
-          <Label htmlFor="d-priority">Prioridade</Label>
-          <Select id="d-priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
+          <Label htmlFor="execution-priority">Prioridade</Label>
+          <Select id="execution-priority" value={priority} onChange={(event) => setPriority(event.target.value)}>
+            {PRIORITIES.map((item) => (
+              <option key={item} value={item}>
+                {item}
               </option>
             ))}
           </Select>
         </Field>
+
         <Field>
-          <Label htmlFor="d-payload">Payload (JSON)</Label>
+          <Label htmlFor="execution-payload">Payload (JSON)</Label>
           <Textarea
-            id="d-payload"
+            id="execution-payload"
             className="tabular min-h-[120px]"
             value={payload}
-            onChange={(e) => setPayload(e.target.value)}
+            onChange={(event) => setPayload(event.target.value)}
           />
           {payloadError && <p className="text-xs text-destructive">{payloadError}</p>}
         </Field>

@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useApi } from "@/hooks/use-api";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useRealtimeStatus } from "@/components/layout/realtime-provider";
-import { PRIORITY, priorityLabelFromScore } from "@/lib/status";
+import { executionLifecycleStatus, isExecutionActiveStatus, isExecutionSuccessStatus, isExecutionWaitingStatus, PRIORITY, priorityLabelFromScore } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import type { Execution } from "@/types/execution";
 import type { Worker } from "@/types/worker";
@@ -46,16 +46,16 @@ export function DashboardView() {
   const workerList = workers.data ?? [];
 
   const kpis = useMemo(() => {
-    const running = jobList.filter((j) => j.status === "running").length;
-    const queued = jobList.filter((j) => ["queued", "pending", "created", "ready"].includes(j.status ?? "")).length;
-    const success = jobList.filter((j) => ["success", "succeeded"].includes(j.status ?? "")).length;
-    const failed = jobList.filter((j) => j.status === "failed").length;
+    const running = jobList.filter((j) => executionLifecycleStatus(j) === "running").length;
+    const queued = jobList.filter((j) => isExecutionWaitingStatus(executionLifecycleStatus(j))).length;
+    const success = jobList.filter((j) => isExecutionSuccessStatus(executionLifecycleStatus(j))).length;
+    const failed = jobList.filter((j) => executionLifecycleStatus(j) === "failed").length;
     const online = workerList.filter((w) => w.status === "online" || w.status === "busy").length;
     return { running, queued, success, failed, online };
   }, [jobList, workerList]);
 
   const queueByPriority = useMemo(() => {
-    const active = jobList.filter((j) => ["queued", "pending", "created", "ready"].includes(j.status ?? ""));
+    const active = jobList.filter((j) => isExecutionWaitingStatus(executionLifecycleStatus(j)));
     return Object.keys(PRIORITY).map((p) => ({
       priority: p,
       count: active.filter((j) => priorityLabelFromScore(j.priority) === p).length,
@@ -63,7 +63,7 @@ export function DashboardView() {
   }, [jobList]);
 
   const activeJobs = jobList
-    .filter((j) => ["running", "queued", "pending", "created", "ready"].includes(j.status ?? ""))
+    .filter((j) => isExecutionActiveStatus(executionLifecycleStatus(j)))
     .slice(0, 6);
 
   const loading = jobs.loading || workers.loading;
@@ -81,11 +81,11 @@ export function DashboardView() {
       <div className="grid gap-6 lg:grid-cols-3">
         <SectionCard
           className="lg:col-span-2"
-          title="Fila em andamento"
-          description="Jobs em execução ou aguardando worker"
+          title="Execuções em andamento"
+          description="Execuções rodando ou aguardando Agent"
           actions={
             <Button asChild variant="ghost" size="sm">
-              <Link href="/jobs">Ver tudo</Link>
+              <Link href="/executions">Ver tudo</Link>
             </Button>
           }
           bodyClassName="p-0"
@@ -98,7 +98,7 @@ export function DashboardView() {
             </div>
           ) : activeJobs.length === 0 ? (
             <div className="p-5">
-              <EmptyState title="Nada na fila" description="Nenhum job em execução ou aguardando no momento." icon={ListChecks} />
+              <EmptyState title="Nada em andamento" description="Nenhuma execução ativa ou aguardando no momento." icon={ListChecks} />
             </div>
           ) : (
             <ul className="divide-y divide-border">
@@ -107,18 +107,18 @@ export function DashboardView() {
                 return (
                   <li key={job.id}>
                     <Link
-                      href={`/jobs/${job.id}`}
+                      href={`/executions/${job.id}`}
                       className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-muted/50"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">
                           {job.automation_name ?? automation?.name ?? (job.automation_id != null ? `Automação #${job.automation_id}` : "—")}
                         </p>
-                        <p className="tabular text-xs text-muted-foreground">Job #{job.id}</p>
+                        <p className="tabular text-xs text-muted-foreground">Execução #{job.id}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <PriorityBadge priority={priorityLabelFromScore(job.priority)} />
-                        <StatusBadge status={job.status ?? "pending"} />
+                        <StatusBadge status={executionLifecycleStatus(job)} />
                       </div>
                     </Link>
                   </li>

@@ -4,14 +4,16 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from infrastructure.config import get_settings
 from infrastructure.database import get_db
 from modules.access.api.dependencies import get_current_user
-from modules.access.api.authorization import ensure_automation_action
+from modules.access.api.authorization import ensure_automation_action, ensure_permission
+from modules.governance.application.use_cases import ListSystemLimits
+from modules.governance.infrastructure.adapters import build_governance_adapters
 from modules.orchestration.application.use_cases import GetExecutionDetails
 from modules.orchestration.domain.errors import OrchestrationError
 from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
@@ -32,6 +34,7 @@ from modules.storage.application.use_cases import (
     FailArtifactUpload,
     GetArtifact,
     InitiateArtifactUpload,
+    ListArtifacts,
     ListExecutionArtifacts,
     StoreUploadedArtifactBytes,
 )
@@ -53,6 +56,9 @@ def initiate_artifact_upload(
     if context is None:
         raise HTTPException(status_code=404, detail="ExecutionAttempt not found.")
     _ensure_execution_view(db, user, context.execution_id)
+    max_bytes = _system_limit_bytes(db, "artifact.max_size_mb", get_settings().max_upload_size_mb)
+    if payload.size_bytes is not None and payload.size_bytes > max_bytes:
+        raise HTTPException(status_code=422, detail="Artifact exceeds the configured maximum size.")
     try:
         result = InitiateArtifactUpload(
             adapters.artifacts,
@@ -86,8 +92,7 @@ async def upload_artifact_bytes(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    settings = get_settings()
-    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    max_bytes = _system_limit_bytes(db, "artifact.max_size_mb", get_settings().max_upload_size_mb)
     content_type = request.headers.get("content-type") or "application/octet-stream"
     temp_path: Path | None = None
     try:
@@ -176,6 +181,37 @@ def fail_artifact_upload(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.get("/artifacts")
+def list_artifacts(
+    execution_id: str | None = None,
+    artifact_status: str | None = Query(None, alias="status"),
+    search: str | None = None,
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    ensure_permission(db, user, "artifact.read")
+    adapters = build_storage_adapters(db)
+    candidates = ListArtifacts(adapters.artifacts).execute(
+        execution_id=execution_id,
+        status=artifact_status,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    visible = []
+    for artifact in candidates:
+        try:
+            _ensure_execution_view(db, user, artifact.execution_id)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_403_FORBIDDEN:
+                continue
+            raise
+        visible.append(artifact)
+    return to_payload(visible)
+
+
 @router.get("/artifacts/{artifact_id}")
 def get_artifact(
     artifact_id: str,
@@ -244,3 +280,9 @@ def _ensure_execution_view(db: Session, user: Any, execution_id: str):
     if details.automation_version is not None:
         ensure_automation_action(db, user, details.automation_version.automation_id, "can_view")
     return details
+
+
+def _system_limit_bytes(db: Session, key: str, fallback_megabytes: int) -> int:
+    limits = ListSystemLimits(build_governance_adapters(db).governance).execute()
+    configured = next((item.value for item in limits if item.key == key and item.organization_id is None), fallback_megabytes)
+    return max(0, int(configured)) * 1024 * 1024

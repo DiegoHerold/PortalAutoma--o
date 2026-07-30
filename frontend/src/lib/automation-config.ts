@@ -1,6 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import type { Automation } from "@/types/automation";
-import type { AutomationVersion } from "@/types/automation-import";
+import type { AutomationVersionResponse as AutomationVersion } from "@/types/catalog";
 import type { RecurrenceType, Schedule } from "@/types/schedule";
 import type { Trigger } from "@/types/trigger";
 

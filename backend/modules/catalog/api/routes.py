@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile,
 from sqlalchemy.orm import Session
 
 from infrastructure.github import GithubApiError, GithubAppClient, GithubAppNotConfiguredError
+from infrastructure.config import get_settings
 from infrastructure.database import get_db
 from modules.access.api.authorization import ensure_automation_action
 from modules.access.api.dependencies import get_current_user
@@ -41,7 +42,7 @@ from modules.catalog.api.schemas import (
     WorkerPreferenceResponse,
     WorkerPreferenceUpdateRequest,
 )
-from modules.catalog.application.dto import ActorDTO
+from modules.catalog.application.dto import ActorDTO, RuntimeDTO, RuntimeVersionDTO
 from modules.catalog.application.use_cases import (
     AbortPackageUpload,
     ArchiveAutomation,
@@ -66,6 +67,7 @@ from modules.catalog.application.use_cases import (
     InitiatePackageUpload,
     ListAutomations,
     ListRuntimes,
+    ListRuntimeVersions,
     ListAutomationVersions,
     ListCategories,
     PublishAutomationVersion,
@@ -79,8 +81,12 @@ from modules.catalog.infrastructure.adapters import build_catalog_adapters
 from modules.fleet.application.use_cases import GetAutomationWorkerPreferences, ReplaceAutomationWorkerPreferences
 from modules.fleet.infrastructure.repositories import SqlAlchemyAutomationWorkerPreferenceRepository
 from modules.governance.domain.audit import AuditEvent
+from modules.governance.application.use_cases import ListSystemLimits
+from modules.governance.infrastructure.adapters import build_governance_adapters
 from modules.shared.application.idempotency import IdempotencyRecord, IdempotencyReplayStatus
 from modules.shared.infrastructure.repositories import SqlAlchemyIdempotencyStore
+from modules.storage.domain.stored_object import StoredObject, StoredObjectStatus
+from modules.storage.domain.upload_session import UploadSession, UploadSessionStatus
 
 router = APIRouter()
 
@@ -212,12 +218,15 @@ def create_automation(
 ) -> AutomationResponse:
     adapters = build_catalog_adapters(db)
     _ensure_category_action(db, user, payload.category_id, "can_create")
-    replay = _reserve_idempotency(db, "automation:create", idempotency_key, payload.model_dump())
+    payload_data = payload.model_dump()
+    if not payload_data.get("key"):
+        payload_data["key"] = payload_data.get("slug")
+    replay = _reserve_idempotency(db, "automation:create", idempotency_key, payload_data)
     if replay is not None:
         return AutomationResponse.model_validate(replay)
     try:
         result = CreateAutomation(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(
-            {**payload.model_dump(), "idempotency_key": idempotency_key},
+            {**payload_data, "idempotency_key": idempotency_key},
             _actor(user),
         )
     except CatalogError as exc:
@@ -527,6 +536,9 @@ def initiate_package_upload(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> PackageUploadResponse:
     adapters = build_catalog_adapters(db)
+    max_bytes = _system_limit_bytes(db, "package.max_size_mb", get_settings().max_upload_size_mb)
+    if payload.expected_size_bytes is not None and payload.expected_size_bytes > max_bytes:
+        raise HTTPException(status_code=422, detail="Package exceeds the configured maximum size.")
     replay = _reserve_idempotency(db, "package-upload:initiate", idempotency_key, {"version_id": version_id, **payload.model_dump()})
     if replay is not None:
         return PackageUploadResponse.model_validate(replay)
@@ -548,30 +560,65 @@ def initiate_package_upload(
     return response
 
 
-@router.put("/package-uploads/{upload_session_id}/bytes", response_model=PackageResponse)
+@router.put("/package-uploads/{upload_session_id}/bytes", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def upload_package_bytes(
     upload_session_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: Any = Depends(get_current_user),
-) -> PackageResponse:
+) -> None:
     adapters = build_catalog_adapters(db)
+    upload_session = adapters.upload_sessions.get(upload_session_id)
+    if upload_session is None:
+        raise HTTPException(status_code=404, detail="Upload session not found.")
+    if upload_session.status in {UploadSessionStatus.COMPLETED, UploadSessionStatus.ABORTED, UploadSessionStatus.EXPIRED}:
+        raise HTTPException(status_code=422, detail=f"Upload session is already {upload_session.status}.")
+    stored_object = adapters.stored_objects.get(upload_session.stored_object_id)
+    if stored_object is None:
+        raise HTTPException(status_code=422, detail="Stored object not found.")
     with tempfile.TemporaryDirectory(prefix="package_upload_") as tmp:
         target = Path(tmp) / (file.filename or "package.zip")
         with target.open("wb") as out:
             shutil.copyfileobj(file.file, out)
-        result = CompletePackageUpload(
-            adapters.catalog,
-            adapters.stored_objects,
-            adapters.upload_sessions,
-            adapters.object_storage,
-            adapters.package_validator,
-            adapters.audit,
-            adapters.outbox,
-            adapters.transaction,
-            adapters.max_package_size_bytes,
-        ).execute(upload_session_id, _actor(user), target)
-    return PackageResponse.model_validate(result, from_attributes=True)
+        max_bytes = _system_limit_bytes(db, "package.max_size_mb", get_settings().max_upload_size_mb)
+        if target.stat().st_size > max_bytes:
+            raise HTTPException(status_code=422, detail="Package exceeds the configured maximum size.")
+        uploaded_object = adapters.object_storage.put_file(
+            stored_object.bucket,
+            stored_object.object_key,
+            target,
+            stored_object.content_type,
+        )
+    adapters.stored_objects.update(
+        StoredObject(
+            id=stored_object.id,
+            bucket=uploaded_object.bucket,
+            object_key=uploaded_object.object_key,
+            content_type=uploaded_object.content_type,
+            size_bytes=uploaded_object.size_bytes,
+            sha256=uploaded_object.sha256,
+            etag=uploaded_object.etag,
+            provider=uploaded_object.provider,
+            status=StoredObjectStatus.UPLOADED,
+            created_at=stored_object.created_at,
+            verified_at=stored_object.verified_at,
+            deleted_at=stored_object.deleted_at,
+        )
+    )
+    adapters.upload_sessions.update(
+        UploadSession(
+            id=upload_session.id,
+            stored_object_id=upload_session.stored_object_id,
+            upload_url=upload_session.upload_url,
+            status=UploadSessionStatus.UPLOADING,
+            expected_size_bytes=upload_session.expected_size_bytes,
+            expected_sha256=upload_session.expected_sha256,
+            created_by=upload_session.created_by,
+            created_at=upload_session.created_at,
+            expires_at=upload_session.expires_at,
+        )
+    )
+    adapters.transaction.commit()
 
 
 @router.post("/package-uploads/{upload_session_id}/complete", response_model=PackageResponse)
@@ -635,7 +682,10 @@ def list_runtimes(
     user: Any = Depends(get_current_user),
 ) -> list[RuntimeResponse]:
     adapters = build_catalog_adapters(db)
-    return [RuntimeResponse.model_validate(item, from_attributes=True) for item in ListRuntimes(adapters.catalog).execute()]
+    return [
+        _runtime_response(item, adapters.catalog.list_runtime_versions(item.id))
+        for item in ListRuntimes(adapters.catalog).execute()
+    ]
 
 
 @router.post("/runtimes", response_model=RuntimeResponse, status_code=status.HTTP_201_CREATED)
@@ -666,7 +716,7 @@ def get_runtime(
 ) -> RuntimeResponse:
     adapters = build_catalog_adapters(db)
     result = GetRuntime(adapters.catalog).execute(runtime_id)
-    return RuntimeResponse.model_validate(result, from_attributes=True)
+    return _runtime_response(result, ListRuntimeVersions(adapters.catalog).execute(runtime_id))
 
 
 @router.post("/runtimes/{runtime_id}/versions", response_model=RuntimeVersionResponse, status_code=status.HTTP_201_CREATED)
@@ -736,8 +786,26 @@ def block_runtime_version(
     return RuntimeVersionResponse.model_validate(result, from_attributes=True)
 
 
+def _system_limit_bytes(db: Session, key: str, fallback_megabytes: int) -> int:
+    limits = ListSystemLimits(build_governance_adapters(db).governance).execute()
+    configured = next((item.value for item in limits if item.key == key and item.organization_id is None), fallback_megabytes)
+    return max(0, int(configured)) * 1024 * 1024
+
+
 def _actor(user: Any) -> ActorDTO:
     return ActorDTO(actor_type="user", actor_id=str(user.id), actor_email=user.email)
+
+
+def _runtime_response(runtime: RuntimeDTO, versions: list[RuntimeVersionDTO]) -> RuntimeResponse:
+    response = RuntimeResponse.model_validate(runtime, from_attributes=True)
+    return response.model_copy(
+        update={
+            "versions": [
+                RuntimeVersionResponse.model_validate(version, from_attributes=True)
+                for version in versions
+            ]
+        }
+    )
 
 
 def _is_admin(user: Any) -> bool:

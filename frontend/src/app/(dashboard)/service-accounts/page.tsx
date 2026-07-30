@@ -1,15 +1,6 @@
-import { IdCard } from "lucide-react";
-
-import { ComingSoonPage } from "@/components/shared/coming-soon";
+import { PageTitle } from "@/components/shared/page-title";
+import { ServiceAccountsManager } from "@/components/service-accounts/service-accounts-manager";
 
 export default function ServiceAccountsPage() {
-  return (
-    <ComingSoonPage
-      eyebrow="Administração"
-      title="Contas de serviço"
-      description="Credenciais de máquina a máquina, permissões e rotação."
-      phase="Fase 9 (Access e administração multi-organização)"
-      icon={IdCard}
-    />
-  );
+  return <div className="space-y-6"><PageTitle eyebrow="Administracao" title="Contas de servico" description="Identidades de maquina com permissoes e credenciais de exibicao unica." /><ServiceAccountsManager /></div>;
 }

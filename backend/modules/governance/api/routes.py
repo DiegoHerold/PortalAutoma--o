@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, status
@@ -13,6 +14,7 @@ from modules.access.domain import AuthorizationDenied
 from modules.access.infrastructure.adapters import build_access_adapters
 from modules.governance.api.schemas import (
     AuditEntryResponse,
+    AuditEventFacetsResponse,
     AuditEventResponse,
     RetentionPolicyResponse,
     RetentionPolicyUpsertRequest,
@@ -65,9 +67,12 @@ def list_audit_compat(
 
 @router.get("/governance/audit-events", response_model=list[AuditEventResponse])
 def list_audit_events(
-    actor: str | None = None,
+    query: str | None = None,
+    actor_type: str | None = None,
     resource_type: str | None = None,
     action: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -77,8 +82,27 @@ def list_audit_events(
     adapters = build_governance_adapters(db)
     return [
         AuditEventResponse(**to_payload(item))
-        for item in ListAuditEvents(adapters.audit).execute(actor=actor, resource_type=resource_type, action=action, limit=limit, offset=offset)
+        for item in ListAuditEvents(adapters.audit).execute(
+            query=query,
+            actor_type=actor_type,
+            resource_type=resource_type,
+            action=action,
+            occurred_from=_start_of_day(date_from),
+            occurred_until=_start_of_next_day(date_to),
+            limit=limit,
+            offset=offset,
+        )
     ]
+
+
+@router.get("/governance/audit-events/facets", response_model=AuditEventFacetsResponse)
+def list_audit_event_facets(
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> AuditEventFacetsResponse:
+    _ensure(db, user, "audit.read")
+    actions, resource_types, actor_types = build_governance_adapters(db).audit.facets()
+    return AuditEventFacetsResponse(actions=actions, resource_types=resource_types, actor_types=actor_types)
 
 
 @router.get("/secrets", response_model=list[SecretResponse])
@@ -212,3 +236,11 @@ def _audit_compat(event) -> AuditEntryResponse:
         after=event.after,
         message=str(message) if message is not None else None,
     )
+
+
+def _start_of_day(value: date | None) -> datetime | None:
+    return datetime.combine(value, time.min, tzinfo=UTC) if value else None
+
+
+def _start_of_next_day(value: date | None) -> datetime | None:
+    return datetime.combine(value + timedelta(days=1), time.min, tzinfo=UTC) if value else None

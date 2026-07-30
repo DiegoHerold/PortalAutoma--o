@@ -45,8 +45,12 @@ class ListAuditEvents:
         self,
         *,
         actor: str | None = None,
+        query: str | None = None,
+        actor_type: str | None = None,
         resource_type: str | None = None,
         action: str | None = None,
+        occurred_from: datetime | None = None,
+        occurred_until: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[AuditEventDTO]:
@@ -67,7 +71,17 @@ class ListAuditEvents:
                 user_agent=row.user_agent,
                 occurred_at=row.occurred_at,
             )
-            for row in self.audit.list(actor=actor, resource_type=resource_type, action=action, limit=limit, offset=offset)
+            for row in self.audit.list(
+                actor=actor,
+                query=query,
+                actor_type=actor_type,
+                resource_type=resource_type,
+                action=action,
+                occurred_from=occurred_from,
+                occurred_until=occurred_until,
+                limit=limit,
+                offset=offset,
+            )
         ]
 
 

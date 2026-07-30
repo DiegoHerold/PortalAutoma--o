@@ -162,7 +162,7 @@ export function AutomationsManager() {
       toast({
         title: blocked ? "Automação tem execuções ativas" : "Falha ao apagar",
         description: blocked
-          ? "Cancele os jobs em andamento ou na fila (na tela de Jobs) antes de apagar esta automação."
+          ? "Cancele as execuções em andamento ou aguardando na página de Execuções antes de apagar esta automação."
           : message,
         kind: "error",
       });

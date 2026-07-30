@@ -92,6 +92,16 @@ class CreateRuntimeVersion:
 
 
 @dataclass
+class ListRuntimeVersions:
+    catalog: CatalogRepository
+
+    def execute(self, runtime_id: str) -> list[RuntimeVersionDTO]:
+        if self.catalog.get_runtime(runtime_id) is None:
+            raise CatalogValidationError("Runtime not found.")
+        return self.catalog.list_runtime_versions(runtime_id)
+
+
+@dataclass
 class GetRuntimeVersion:
     catalog: CatalogRepository
 

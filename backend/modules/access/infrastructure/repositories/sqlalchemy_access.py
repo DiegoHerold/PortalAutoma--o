@@ -15,7 +15,7 @@ from modules.access.application.dto import (
     TeamDTO,
     UserDTO,
 )
-from modules.access.domain import ADMIN_PERMISSION, INITIAL_PERMISSIONS, RoleSlug, UserStatus, normalize_email
+from modules.access.domain import ADMIN_PERMISSION, INITIAL_PERMISSIONS, AccessConflict, AccessResourceNotFound, RoleSlug, UserStatus, normalize_email
 from modules.access.infrastructure.orm.models import (
     AccessOrganizationRecord,
     AccessRoleRecord,
@@ -217,14 +217,46 @@ class SqlAlchemyAccessRepository:
         return [_organization_to_dto(row) for row in rows]
 
     def create_organization(self, payload: dict) -> OrganizationDTO:
+        key = str(payload["key"]).strip().lower()
+        if self.db.scalar(select(AccessOrganizationRecord.id).where(AccessOrganizationRecord.key == key)) is not None:
+            raise AccessConflict("Organization key already exists.")
         row = AccessOrganizationRecord(
-            key=str(payload["key"]).strip().lower(),
+            key=key,
             name=str(payload["name"]).strip(),
             status=str(payload.get("status") or "active"),
         )
         self.db.add(row)
         self.db.flush()
         return _organization_to_dto(row)
+
+    def update_organization(self, organization_id: int, payload: dict) -> OrganizationDTO:
+        row = self.db.get(AccessOrganizationRecord, organization_id)
+        if row is None:
+            raise AccessResourceNotFound("Organization not found.")
+        key = str(payload["key"]).strip().lower()
+        duplicate = self.db.scalar(select(AccessOrganizationRecord.id).where(AccessOrganizationRecord.key == key, AccessOrganizationRecord.id != organization_id))
+        if duplicate is not None:
+            raise AccessConflict("Organization key already exists.")
+        row.key, row.name, row.status, row.updated_at = key, str(payload["name"]).strip(), str(payload["status"]), utcnow()
+        self.db.add(row)
+        self.db.flush()
+        return _organization_to_dto(row)
+
+    def delete_organization(self, organization_id: int) -> None:
+        row = self.db.get(AccessOrganizationRecord, organization_id)
+        if row is None:
+            raise AccessResourceNotFound("Organization not found.")
+        if self.db.scalar(select(exists().where(AccessTeamRecord.organization_id == organization_id))) or self.db.scalar(select(exists().where(AccessUserRecord.organization_id == organization_id))) or self.db.scalar(select(exists().where(ServiceAccountRecord.organization_id == organization_id))):
+            raise AccessConflict("Organization still has linked users, teams, or service accounts.")
+        governance_resources = (
+            table("secrets", column("organization_id")),
+            table("system_limits", column("organization_id")),
+            table("retention_policies", column("organization_id")),
+        )
+        if any(self.db.scalar(select(exists().where(resource.c.organization_id == organization_id))) for resource in governance_resources):
+            raise AccessConflict("Organization still has linked governance settings.")
+        self.db.delete(row)
+        self.db.flush()
 
     def list_teams(self, organization_id: int | None = None) -> list[TeamDTO]:
         stmt = select(AccessTeamRecord).order_by(AccessTeamRecord.name)
@@ -233,15 +265,44 @@ class SqlAlchemyAccessRepository:
         return [_team_to_dto(row) for row in self.db.scalars(stmt).all()]
 
     def create_team(self, payload: dict) -> TeamDTO:
+        organization_id = int(payload["organization_id"])
+        if self.db.get(AccessOrganizationRecord, organization_id) is None:
+            raise AccessResourceNotFound("Selected organization was not found.")
+        key = str(payload["key"]).strip().lower()
+        if self.db.scalar(select(AccessTeamRecord.id).where(AccessTeamRecord.organization_id == organization_id, AccessTeamRecord.key == key)) is not None:
+            raise AccessConflict("Team key already exists in this organization.")
         row = AccessTeamRecord(
-            organization_id=int(payload["organization_id"]),
-            key=str(payload["key"]).strip().lower(),
+            organization_id=organization_id,
+            key=key,
             name=str(payload["name"]).strip(),
             status=str(payload.get("status") or "active"),
         )
         self.db.add(row)
         self.db.flush()
         return _team_to_dto(row)
+
+    def update_team(self, team_id: int, payload: dict) -> TeamDTO:
+        row = self.db.get(AccessTeamRecord, team_id)
+        if row is None:
+            raise AccessResourceNotFound("Team not found.")
+        organization_id = int(payload["organization_id"])
+        if self.db.get(AccessOrganizationRecord, organization_id) is None:
+            raise AccessResourceNotFound("Selected organization was not found.")
+        key = str(payload["key"]).strip().lower()
+        duplicate = self.db.scalar(select(AccessTeamRecord.id).where(AccessTeamRecord.organization_id == organization_id, AccessTeamRecord.key == key, AccessTeamRecord.id != team_id))
+        if duplicate is not None:
+            raise AccessConflict("Team key already exists in this organization.")
+        row.organization_id, row.key, row.name, row.status, row.updated_at = organization_id, key, str(payload["name"]).strip(), str(payload["status"]), utcnow()
+        self.db.add(row)
+        self.db.flush()
+        return _team_to_dto(row)
+
+    def delete_team(self, team_id: int) -> None:
+        row = self.db.get(AccessTeamRecord, team_id)
+        if row is None:
+            raise AccessResourceNotFound("Team not found.")
+        self.db.delete(row)
+        self.db.flush()
 
     def list_service_accounts(self) -> list[ServiceAccountDTO]:
         rows = self.db.scalars(select(ServiceAccountRecord).order_by(ServiceAccountRecord.created_at.desc())).all()
@@ -260,6 +321,28 @@ class SqlAlchemyAccessRepository:
         self.db.add(row)
         self.db.flush()
         return _service_account_to_dto(row)
+
+    def update_service_account(self, service_account_id: str, payload: dict) -> ServiceAccountDTO:
+        row = self.db.get(ServiceAccountRecord, service_account_id)
+        if row is None:
+            raise AccessResourceNotFound("Service account not found.")
+        organization_id = payload.get("organization_id")
+        if organization_id is not None and self.db.get(AccessOrganizationRecord, int(organization_id)) is None:
+            raise AccessResourceNotFound("Selected organization was not found.")
+        row.name = str(payload["name"]).strip()
+        row.organization_id = organization_id
+        row.permissions = list(payload.get("permissions") or [])
+        row.expires_at = payload.get("expires_at")
+        self.db.add(row)
+        self.db.flush()
+        return _service_account_to_dto(row)
+
+    def delete_service_account(self, service_account_id: str) -> None:
+        row = self.db.get(ServiceAccountRecord, service_account_id)
+        if row is None:
+            raise AccessResourceNotFound("Service account not found.")
+        self.db.delete(row)
+        self.db.flush()
 
     def revoke_service_account(self, service_account_id: str) -> ServiceAccountDTO:
         row = self.db.get(ServiceAccountRecord, service_account_id)

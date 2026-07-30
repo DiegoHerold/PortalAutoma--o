@@ -133,6 +133,9 @@ class CatalogRepository(Protocol):
     def create_runtime_version(self, payload: dict[str, Any]) -> RuntimeVersionDTO:
         raise NotImplementedError
 
+    def list_runtime_versions(self, runtime_id: str) -> list[RuntimeVersionDTO]:
+        raise NotImplementedError
+
     def get_runtime_version(self, runtime_version_id: str) -> RuntimeVersionDTO | None:
         raise NotImplementedError
 

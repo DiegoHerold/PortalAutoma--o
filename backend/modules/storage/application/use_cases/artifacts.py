@@ -332,6 +332,28 @@ class ListExecutionArtifacts:
         return self.artifacts.list_for_execution(execution_id)
 
 
+class ListArtifacts:
+    def __init__(self, artifacts: ArtifactRepository) -> None:
+        self.artifacts = artifacts
+
+    def execute(
+        self,
+        *,
+        execution_id: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ArtifactDTO]:
+        return self.artifacts.list(
+            execution_id=execution_id,
+            status=status,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+
+
 def _require_context(attempts: ExecutionAttemptContextReader, execution_attempt_id: str):
     context = attempts.get_context(execution_attempt_id)
     if context is None:

@@ -27,6 +27,7 @@ from modules.catalog.application.use_cases.runtimes import (
     DeprecateRuntimeVersion,
     GetRuntime,
     GetRuntimeVersion,
+    ListRuntimeVersions,
     ListRuntimes,
     PublishRuntimeVersion,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "ListAutomations",
     "ListAutomationVersions",
     "ListCategories",
+    "ListRuntimeVersions",
     "ListRuntimes",
     "PublishAutomationVersion",
     "PublishRuntimeVersion",

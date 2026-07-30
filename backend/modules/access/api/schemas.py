@@ -90,6 +90,10 @@ class OrganizationCreateRequest(BaseModel):
     status: str = "active"
 
 
+class OrganizationUpdateRequest(OrganizationCreateRequest):
+    pass
+
+
 class OrganizationResponse(BaseModel):
     id: int
     key: str
@@ -104,6 +108,10 @@ class TeamCreateRequest(BaseModel):
     key: str = Field(min_length=1)
     name: str = Field(min_length=1)
     status: str = "active"
+
+
+class TeamUpdateRequest(TeamCreateRequest):
+    pass
 
 
 class TeamResponse(BaseModel):
@@ -121,6 +129,10 @@ class ServiceAccountCreateRequest(BaseModel):
     organization_id: int | None = None
     permissions: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
+
+
+class ServiceAccountUpdateRequest(ServiceAccountCreateRequest):
+    pass
 
 
 class ServiceAccountResponse(BaseModel):

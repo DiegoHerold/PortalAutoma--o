@@ -23,6 +23,13 @@ export function useApi<T>(path: string | null, { pollMs, enabled = true }: Optio
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
 
+  // A full URL is the request identity. Clear stale data before loading a new scope.
+  useEffect(() => {
+    setData(null);
+    setError(null);
+    setLoading(Boolean(token && path && enabled));
+  }, [token, path, enabled]);
+
   const load = useCallback(
     async (silent = false) => {
       if (!token || !path || !enabled) return;

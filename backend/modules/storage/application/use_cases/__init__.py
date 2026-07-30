@@ -3,6 +3,7 @@ from modules.storage.application.use_cases.artifacts import (
     FailArtifactUpload,
     GetArtifact,
     InitiateArtifactUpload,
+    ListArtifacts,
     ListExecutionArtifacts,
     StoreUploadedArtifactBytes,
 )
@@ -12,6 +13,7 @@ __all__ = [
     "FailArtifactUpload",
     "GetArtifact",
     "InitiateArtifactUpload",
+    "ListArtifacts",
     "ListExecutionArtifacts",
     "StoreUploadedArtifactBytes",
 ]

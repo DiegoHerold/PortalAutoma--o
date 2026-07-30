@@ -1,19 +1,18 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { JobsManager } from "@/components/jobs/jobs-manager";
-import { PageTitle } from "@/components/shared/page-title";
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-export const metadata: Metadata = { title: "Fila de jobs" };
+export default async function JobsPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = normalizeSearchParams(await searchParams);
+  if (!params.has("status")) params.set("status", "active");
+  redirect(`/executions?${params.toString()}`);
+}
 
-export default function JobsPage() {
-  return (
-    <div className="space-y-6">
-      <PageTitle
-        eyebrow="Fila"
-        title="Jobs"
-        description="Despacho, prioridade e estimativa de início e término em tempo real."
-      />
-      <JobsManager />
-    </div>
-  );
+function normalizeSearchParams(values: Record<string, string | string[] | undefined>): URLSearchParams {
+  const params = new URLSearchParams();
+  Object.entries(values).forEach(([key, value]) => {
+    if (Array.isArray(value)) value.forEach((item) => params.append(key, item));
+    else if (value) params.set(key, value);
+  });
+  return params;
 }

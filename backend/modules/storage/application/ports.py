@@ -67,6 +67,17 @@ class ArtifactRepository(Protocol):
     def list_for_execution(self, execution_id: str) -> list[ArtifactDTO]:
         raise NotImplementedError
 
+    def list(
+        self,
+        *,
+        execution_id: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ArtifactDTO]:
+        raise NotImplementedError
+
     def count_for_execution(self, execution_id: str) -> int:
         raise NotImplementedError
 

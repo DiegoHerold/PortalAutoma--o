@@ -60,6 +60,49 @@ export function jobStatusMeta(status?: string | null): StatusMeta {
   return (status && JOB_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" };
 }
 
+export const EXECUTION_WAITING_STATUSES = new Set(["created", "pending", "ready", "queued"]);
+export const EXECUTION_RUNNING_STATUSES = new Set(["offered", "accepted", "committed", "preparing", "running"]);
+export const EXECUTION_CANCELLING_STATUSES = new Set(["cancelling", "cancel_requested"]);
+export const EXECUTION_SUCCESS_STATUSES = new Set(["success", "succeeded", "completed", "partially_succeeded"]);
+export const EXECUTION_FAILURE_STATUSES = new Set(["failed", "timed_out", "lost", "rejected", "expired"]);
+export const EXECUTION_CANCELLED_STATUSES = new Set(["cancelled"]);
+
+export function executionLifecycleStatus(execution: { execution_status?: string | null; status?: string | null }): string {
+  return execution.execution_status ?? execution.status ?? "pending";
+}
+
+export function isExecutionWaitingStatus(status?: string | null): boolean {
+  return Boolean(status && EXECUTION_WAITING_STATUSES.has(status));
+}
+
+export function isExecutionRunningStatus(status?: string | null): boolean {
+  return Boolean(status && EXECUTION_RUNNING_STATUSES.has(status));
+}
+
+export function isExecutionCancellingStatus(status?: string | null): boolean {
+  return Boolean(status && EXECUTION_CANCELLING_STATUSES.has(status));
+}
+
+export function isExecutionActiveStatus(status?: string | null): boolean {
+  return isExecutionWaitingStatus(status) || isExecutionRunningStatus(status) || isExecutionCancellingStatus(status);
+}
+
+export function isExecutionSuccessStatus(status?: string | null): boolean {
+  return Boolean(status && EXECUTION_SUCCESS_STATUSES.has(status));
+}
+
+export function isExecutionFailureStatus(status?: string | null): boolean {
+  return Boolean(status && EXECUTION_FAILURE_STATUSES.has(status));
+}
+
+export function isExecutionCancelledStatus(status?: string | null): boolean {
+  return Boolean(status && EXECUTION_CANCELLED_STATUSES.has(status));
+}
+
+export function isExecutionTerminalStatus(status?: string | null): boolean {
+  return isExecutionSuccessStatus(status) || isExecutionFailureStatus(status) || isExecutionCancelledStatus(status);
+}
+
 /** Worker statuses. */
 export const WORKER_STATUS: Record<string, StatusMeta> = {
   online: { label: "Online", tone: "success", icon: CheckCircle2, dot: "bg-success" },
@@ -243,6 +286,63 @@ export function flowVersionStatusMeta(status?: string | null): StatusMeta {
   return (
     (status && FLOW_VERSION_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" }
   );
+}
+
+/** AutomationVersion lifecycle (draft/validating -> published -> deprecated/blocked). */
+export const AUTOMATION_VERSION_STATUS: Record<string, StatusMeta> = {
+  draft: { label: "Rascunho", tone: "neutral", icon: CircleDashed, dot: "bg-muted-foreground" },
+  validating: { label: "Validando", tone: "info", icon: Loader, dot: "bg-info" },
+  ready: { label: "Pronta", tone: "info", icon: CheckCircle2, dot: "bg-info" },
+  invalid: { label: "Invalida", tone: "destructive", icon: XCircle, dot: "bg-destructive" },
+  published: { label: "Publicada", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  deprecated: { label: "Depreciada", tone: "warning", icon: Clock, dot: "bg-warning" },
+  blocked: { label: "Bloqueada", tone: "destructive", icon: Ban, dot: "bg-destructive" },
+};
+
+export function automationVersionStatusMeta(status?: string | null): StatusMeta {
+  return (
+    (status && AUTOMATION_VERSION_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" }
+  );
+}
+
+/** RuntimeVersion lifecycle mirrors AutomationVersion in Catalog. */
+export const RUNTIME_VERSION_STATUS: Record<string, StatusMeta> = {
+  draft: { label: "Rascunho", tone: "neutral", icon: CircleDashed, dot: "bg-muted-foreground" },
+  validating: { label: "Validando", tone: "info", icon: Loader, dot: "bg-info" },
+  published: { label: "Publicada", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  deprecated: { label: "Depreciada", tone: "warning", icon: Clock, dot: "bg-warning" },
+  blocked: { label: "Bloqueada", tone: "destructive", icon: Ban, dot: "bg-destructive" },
+};
+
+export function runtimeVersionStatusMeta(status?: string | null): StatusMeta {
+  return (
+    (status && RUNTIME_VERSION_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" }
+  );
+}
+
+/** Secret lifecycle states emitted by Governance. Expiration is version metadata, not a secret status. */
+export const SECRET_STATUS: Record<string, StatusMeta> = {
+  active: { label: "Ativo", tone: "success", icon: CheckCircle2, dot: "bg-success" },
+  disabled: { label: "Desabilitado", tone: "warning", icon: Ban, dot: "bg-warning" },
+  revoked: { label: "Revogado", tone: "destructive", icon: XCircle, dot: "bg-destructive" },
+  archived: { label: "Arquivado", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" },
+};
+
+/** Service-account presentation state. Revocation takes precedence over expiration. */
+export function serviceAccountStatusMeta(
+  status?: string | null,
+  expiresAt?: string | null,
+  revokedAt?: string | null,
+): StatusMeta {
+  if (revokedAt || status === "revoked") return { label: "Revogada", tone: "destructive", icon: XCircle, dot: "bg-destructive" };
+  if (expiresAt && new Date(expiresAt).getTime() < Date.now()) return { label: "Expirada", tone: "warning", icon: Clock, dot: "bg-warning" };
+  if (status === "disabled") return { label: "Desabilitada", tone: "neutral", icon: Ban, dot: "bg-muted-foreground" };
+  if (status === "archived") return { label: "Arquivada", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" };
+  return { label: "Ativa", tone: "success", icon: CheckCircle2, dot: "bg-success" };
+}
+
+export function secretStatusMeta(status?: string | null): StatusMeta {
+  return (status && SECRET_STATUS[status]) || { label: status || "—", tone: "neutral", icon: Circle, dot: "bg-muted-foreground" };
 }
 
 // Ver backend/modules/telemetry/domain/states.py::ExecutionEventType — apenas os tipos

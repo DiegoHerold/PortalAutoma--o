@@ -23,6 +23,12 @@ class AuditEventResponse(BaseModel):
     occurred_at: datetime | None = None
 
 
+class AuditEventFacetsResponse(BaseModel):
+    actions: list[str] = Field(default_factory=list)
+    resource_types: list[str] = Field(default_factory=list)
+    actor_types: list[str] = Field(default_factory=list)
+
+
 class AuditEntryResponse(BaseModel):
     id: str
     actor: str | None = None
@@ -98,7 +104,8 @@ class SecretGrantResponse(BaseModel):
 
 
 class SystemLimitUpsertRequest(BaseModel):
-    key: str = Field(min_length=1)
+    # The key is supplied by the route path and injected by the API handler.
+    key: str | None = None
     value: int = Field(ge=0)
     unit: str = Field(min_length=1)
     description: str | None = None
@@ -117,7 +124,8 @@ class SystemLimitResponse(BaseModel):
 
 
 class RetentionPolicyUpsertRequest(BaseModel):
-    resource_type: str = Field(min_length=1)
+    # The resource type is supplied by the route path and injected by the API handler.
+    resource_type: str | None = None
     retention_days: int = Field(ge=0)
     archive_after_days: int | None = Field(default=None, ge=0)
     delete_after_days: int | None = Field(default=None, ge=0)

@@ -1,15 +1,19 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { DispatchQueueView } from "@/components/dispatch/dispatch-queue-view";
-import { PageTitle } from "@/components/shared/page-title";
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-export const metadata: Metadata = { title: "Fila de execução" };
+export default async function DispatchPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = normalizeSearchParams(await searchParams);
+  params.set("status", "waiting");
+  params.delete("limit");
+  redirect(`/executions?${params.toString()}`);
+}
 
-export default function DispatchPage() {
-  return (
-    <div className="space-y-6">
-      <PageTitle eyebrow="Infraestrutura" title="Fila de execução" description="Snapshot de tasks prontas para despacho e decisões de scheduling." />
-      <DispatchQueueView />
-    </div>
-  );
+function normalizeSearchParams(values: Record<string, string | string[] | undefined>): URLSearchParams {
+  const params = new URLSearchParams();
+  Object.entries(values).forEach(([key, value]) => {
+    if (Array.isArray(value)) value.forEach((item) => params.append(key, item));
+    else if (value) params.set(key, value);
+  });
+  return params;
 }

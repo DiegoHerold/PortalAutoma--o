@@ -27,7 +27,7 @@ import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
-import { EVENT_TYPE_LABELS, eventTypeLabel, executionOriginLabel, executionTypeLabel } from "@/lib/status";
+import { EVENT_TYPE_LABELS, eventTypeLabel, executionLifecycleStatus, executionOriginLabel, executionTypeLabel, isExecutionActiveStatus } from "@/lib/status";
 import { formatDateTime, formatDuration } from "@/lib/utils";
 import type {
   Execution,
@@ -39,8 +39,6 @@ import type {
   ExecutionProgress,
 } from "@/types/execution";
 import type { FlowExecution, FlowExecutionDetails } from "@/types/flow";
-
-const ACTIVE_STATUSES = new Set(["created", "pending", "ready", "queued", "offered", "accepted", "committed", "preparing", "running", "cancelling", "cancel_requested"]);
 
 export function ExecutionDetail({ id }: { id: string }) {
   const { token } = useAuth();
@@ -65,12 +63,12 @@ export function ExecutionDetail({ id }: { id: string }) {
   const details = useApi<ExecutionDetails | Execution>(`/executions/${id}`, { pollMs: terminal ? undefined : 4000 });
   const normalized = details.data ? normalizeDetails(details.data) : null;
   const execution = normalized?.execution ?? null;
-  const status = execution ? executionStatus(execution) : "pending";
-  const active = ACTIVE_STATUSES.has(status);
+  const status = execution ? executionLifecycleStatus(execution) : "pending";
+  const active = isExecutionActiveStatus(status);
 
   useEffect(() => {
     if (!execution) return;
-    setTerminal(!ACTIVE_STATUSES.has(executionStatus(execution)));
+    setTerminal(!isExecutionActiveStatus(executionLifecycleStatus(execution)));
     setLastRefreshedAt(Date.now());
   }, [execution]);
 
@@ -399,7 +397,7 @@ function OverviewTab({
       <div className="space-y-5">
         <SectionCard title="Execucao">
           <div className="space-y-3">
-            <InfoRow label="Status" value={<StatusBadge status={executionStatus(execution)} />} />
+            <InfoRow label="Status" value={<StatusBadge status={executionLifecycleStatus(execution)} />} />
             <InfoRow label="Tipo" value={<span className="text-sm">{executionTypeLabel(execution.type)}</span>} />
             <InfoRow label="Origem" value={<span className="text-sm">{executionOriginLabel(execution.origin)}</span>} />
             <InfoRow label="Criada" value={<span className="tabular text-sm">{formatDateTime(execution.created_at)}</span>} />
@@ -694,10 +692,6 @@ function normalizeDetails(payload: ExecutionDetails | Execution): ExecutionDetai
     automation_version: null,
     telemetry: payload.telemetry ?? null,
   };
-}
-
-function executionStatus(execution: Execution): string {
-  return execution.execution_status ?? execution.status ?? "pending";
 }
 
 function executionFinishedAt(execution: Execution): string | null {

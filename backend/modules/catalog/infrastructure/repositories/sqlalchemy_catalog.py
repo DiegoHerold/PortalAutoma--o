@@ -392,6 +392,14 @@ class SqlAlchemyCatalogRepository:
         self.db.flush()
         return self._runtime_version_to_dto(row)
 
+    def list_runtime_versions(self, runtime_id: str) -> list[RuntimeVersionDTO]:
+        rows = self.db.scalars(
+            select(RuntimeVersionRecord)
+            .where(RuntimeVersionRecord.runtime_id == runtime_id)
+            .order_by(RuntimeVersionRecord.created_at.desc())
+        ).all()
+        return [self._runtime_version_to_dto(row) for row in rows]
+
     def get_runtime_version(self, runtime_version_id: str) -> RuntimeVersionDTO | None:
         row = self.db.get(RuntimeVersionRecord, runtime_version_id)
         return self._runtime_version_to_dto(row) if row else None

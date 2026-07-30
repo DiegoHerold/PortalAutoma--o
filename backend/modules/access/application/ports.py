@@ -87,16 +87,34 @@ class AccessRepository(Protocol):
     def create_organization(self, payload: dict) -> OrganizationDTO:
         raise NotImplementedError
 
+    def update_organization(self, organization_id: int, payload: dict) -> OrganizationDTO:
+        raise NotImplementedError
+
+    def delete_organization(self, organization_id: int) -> None:
+        raise NotImplementedError
+
     def list_teams(self, organization_id: int | None = None) -> list[TeamDTO]:
         raise NotImplementedError
 
     def create_team(self, payload: dict) -> TeamDTO:
         raise NotImplementedError
 
+    def update_team(self, team_id: int, payload: dict) -> TeamDTO:
+        raise NotImplementedError
+
+    def delete_team(self, team_id: int) -> None:
+        raise NotImplementedError
+
     def list_service_accounts(self) -> list[ServiceAccountDTO]:
         raise NotImplementedError
 
     def create_service_account(self, payload: dict) -> ServiceAccountDTO:
+        raise NotImplementedError
+
+    def update_service_account(self, service_account_id: str, payload: dict) -> ServiceAccountDTO:
+        raise NotImplementedError
+
+    def delete_service_account(self, service_account_id: str) -> None:
         raise NotImplementedError
 
     def revoke_service_account(self, service_account_id: str) -> ServiceAccountDTO:

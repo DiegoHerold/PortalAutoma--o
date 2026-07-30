@@ -1,5 +1,6 @@
 export type Automation = {
   id: number;
+  key?: string | null;
   name: string;
   slug: string;
   description?: string | null;

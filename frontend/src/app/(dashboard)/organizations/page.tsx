@@ -1,15 +1,6 @@
-import { Building2 } from "lucide-react";
-
-import { ComingSoonPage } from "@/components/shared/coming-soon";
+import { OrganizationsManager } from "@/components/organizations/organizations-manager";
+import { PageTitle } from "@/components/shared/page-title";
 
 export default function OrganizationsPage() {
-  return (
-    <ComingSoonPage
-      eyebrow="Administração"
-      title="Organizações"
-      description="Organizações, limites e atividade multi-tenant."
-      phase="Fase 9 (Access e administração multi-organização)"
-      icon={Building2}
-    />
-  );
+  return <div className="space-y-6"><PageTitle eyebrow="Administracao" title="Organizacoes" description="Contextos administrativos para times, secrets e configuracoes." /><OrganizationsManager /></div>;
 }

@@ -44,7 +44,7 @@ import { agentLabelFor, attemptsFor, edgeRuntimeState, flowProgress, nodeExecuti
 import { cancelFlowExecution } from "@/lib/flow-api";
 import type { FlowCanvasEdge, FlowCanvasNode } from "@/components/flows/editor/types";
 import type { Automation } from "@/types/automation";
-import type { AutomationVersion } from "@/types/automation-import";
+import type { AutomationVersionResponse as AutomationVersion } from "@/types/catalog";
 import type { ExecutionArtifact, ExecutionEventsPage, ExecutionMetric } from "@/types/execution";
 import type { ExecutionAttempt, Flow, FlowExecutionDetails, TaskExecution } from "@/types/flow";
 import type { Worker } from "@/types/worker";
