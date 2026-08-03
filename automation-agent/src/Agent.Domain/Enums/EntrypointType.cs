@@ -6,5 +6,6 @@ public enum EntrypointType
     PythonModule,
     PowerShellScript,
     Executable,
-    BrowserPlaywright
+    BrowserPlaywright,
+    PythonDesktop
 }

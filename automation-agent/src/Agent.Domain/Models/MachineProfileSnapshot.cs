@@ -13,5 +13,15 @@ public sealed class MachineProfileSnapshot
     public SessionInfo Session { get; init; } = default!;
     public IReadOnlyList<InstalledSoftware> Software { get; init; } = Array.Empty<InstalledSoftware>();
     public IReadOnlyList<Capability> Capabilities { get; init; } = Array.Empty<Capability>();
+    public IReadOnlyList<MachineInteractiveSessionSummary> InteractiveSessions { get; init; } = Array.Empty<MachineInteractiveSessionSummary>();
     public MachineProfileType ProfileType { get; init; }
+}
+
+public sealed class MachineInteractiveSessionSummary
+{
+    public int SessionId { get; init; }
+    public string? Type { get; init; }
+    public string? State { get; init; }
+    public bool? Locked { get; init; }
+    public bool RunnerConnected { get; init; }
 }

@@ -61,6 +61,66 @@ public sealed class TestHelper : IDisposable
         return new PortalConnectionRepository(DbManager, identity);
     }
 
+    public OutboxRepository CreateOutboxRepository()
+    {
+        return new OutboxRepository(DbManager);
+    }
+
+    public InboxRepository CreateInboxRepository()
+    {
+        return new InboxRepository(DbManager);
+    }
+
+    public MessageAcknowledgementRepository CreateAcknowledgementRepository()
+    {
+        return new MessageAcknowledgementRepository(DbManager);
+    }
+
+    public SessionRunnerRepository CreateSessionRunnerRepository()
+    {
+        return new SessionRunnerRepository(DbManager);
+    }
+
+    public InteractiveSessionRepository CreateInteractiveSessionRepository()
+    {
+        return new InteractiveSessionRepository(DbManager);
+    }
+
+    public SessionEventRepository CreateSessionEventRepository()
+    {
+        return new SessionEventRepository(DbManager);
+    }
+
+    public SessionRunnerConnectionRepository CreateSessionRunnerConnectionRepository()
+    {
+        return new SessionRunnerConnectionRepository(DbManager);
+    }
+
+    public DesktopLockRepository CreateDesktopLockRepository()
+    {
+        return new DesktopLockRepository(DbManager);
+    }
+
+    public InteractiveExecutionAssignmentRepository CreateInteractiveExecutionAssignmentRepository()
+    {
+        return new InteractiveExecutionAssignmentRepository(DbManager);
+    }
+
+    public InteractiveExecutionProcessRepository CreateInteractiveExecutionProcessRepository()
+    {
+        return new InteractiveExecutionProcessRepository(DbManager);
+    }
+
+    public InteractiveExecutionScreenshotRepository CreateInteractiveExecutionScreenshotRepository()
+    {
+        return new InteractiveExecutionScreenshotRepository(DbManager);
+    }
+
+    public ApplicationProcessOwnershipRepository CreateApplicationProcessOwnershipRepository()
+    {
+        return new ApplicationProcessOwnershipRepository(DbManager);
+    }
+
     /// <summary>
     /// Atalho para testes que precisam de um Agent já registrado (agent_id + credencial
     /// salvos), sem passar pelo fluxo completo de <c>AgentRegistrationService</c>.

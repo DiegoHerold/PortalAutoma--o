@@ -16,6 +16,7 @@ public sealed class MachineProfilerService : IMachineProfiler
     private readonly ISessionInfoCollector _sessionCollector;
     private readonly ISoftwareDetector _softwareDetector;
     private readonly ICapabilityDetector _capabilityDetector;
+    private readonly IInteractiveSessionRepository? _interactiveSessions;
     private readonly IClock _clock;
     private readonly AgentOptions _agentOptions;
     private readonly ILogger<MachineProfilerService> _logger;
@@ -30,7 +31,8 @@ public sealed class MachineProfilerService : IMachineProfiler
         ICapabilityDetector capabilityDetector,
         IClock clock,
         IOptions<AgentOptions> agentOptions,
-        ILogger<MachineProfilerService> logger)
+        ILogger<MachineProfilerService> logger,
+        IInteractiveSessionRepository? interactiveSessions = null)
     {
         _osCollector = osCollector;
         _cpuCollector = cpuCollector;
@@ -39,6 +41,7 @@ public sealed class MachineProfilerService : IMachineProfiler
         _sessionCollector = sessionCollector;
         _softwareDetector = softwareDetector;
         _capabilityDetector = capabilityDetector;
+        _interactiveSessions = interactiveSessions;
         _clock = clock;
         _agentOptions = agentOptions.Value;
         _logger = logger;
@@ -55,6 +58,21 @@ public sealed class MachineProfilerService : IMachineProfiler
         var session = SafeCollect("Session", () => _sessionCollector.Collect(), new SessionInfo { Status = SessionStatus.Unknown, Type = SessionType.Unknown });
         var software = SafeCollect("Software", () => _softwareDetector.DetectAll(), Array.Empty<InstalledSoftware>());
         var capabilities = await SafeCollectAsync("Capabilities", () => _capabilityDetector.DetectAllAsync(ct), Array.Empty<Capability>());
+        var interactiveSessions = _interactiveSessions is null
+            ? Array.Empty<MachineInteractiveSessionSummary>()
+            : (await SafeCollectAsync(
+                "InteractiveSessions",
+                async () => (await _interactiveSessions.GetAllAsync(ct))
+                    .Select(s => new MachineInteractiveSessionSummary
+                    {
+                        SessionId = s.SessionId,
+                        Type = s.SessionType.ToString(),
+                        State = s.State.ToString(),
+                        Locked = s.IsLocked,
+                        RunnerConnected = s.SessionRunnerInstanceId is not null
+                    })
+                    .ToArray(),
+                Array.Empty<MachineInteractiveSessionSummary>()));
 
         var profileType = RecommendProfile(session);
 
@@ -68,6 +86,7 @@ public sealed class MachineProfilerService : IMachineProfiler
             Session = session,
             Software = software,
             Capabilities = capabilities,
+            InteractiveSessions = interactiveSessions,
             ProfileType = Enum.TryParse<MachineProfileType>(_agentOptions.Profile, ignoreCase: true, out var configured)
                 ? configured : profileType
         };

@@ -156,10 +156,12 @@ não dependem de Windows real) antes de avançar para o próximo — conforme ex
 |---|---|
 | 0 — Correção do baseline | **concluído e verificado** (11 defeitos de compilação corrigidos) |
 | 1 — Protocolo e registro | **concluído e verificado** — `dotnet build` limpo, 165/165 testes passando |
-| 2 a 12 | pendentes |
+| 2 — WebSocket e heartbeat | **concluído e verificado** — `dotnet build` limpo, 203/203 testes passando |
+| 3 — Outbox e Inbox persistentes | **concluído e verificado** — `dotnet build` limpo, 210/210 testes passando |
+| 4 a 12 | pendentes |
 
 Verificado em: `dotnet build AutomationAgent.sln` (êxito, 9 projetos) e
-`dotnet test AutomationAgent.sln` (165 testes, 0 falhas), rodado pelo usuário no Windows.
+`dotnet test AutomationAgent.sln` (210 testes, 0 falhas), rodado no Windows.
 
 O total de 11 defeitos de baseline (não 3, como estimado na inspeção inicial) só
 apareceu ao rodar o compilador de verdade — a leitura de código não pega ambiguidade
@@ -248,3 +250,172 @@ docs/database.md, docs/configuration.md
 Confirmado no Windows: `dotnet build AutomationAgent.sln` fecha limpo (9 projetos) e
 `dotnet test AutomationAgent.sln` passa 165/165, incluindo os ~45 testes novos desta
 fase (protocolo, credenciais, registro, migration 3) e todos os testes das Fases 1 e 2.
+
+## 10. O que o Incremento 2 entregou
+
+**Criados**
+
+```
+src/Agent.Domain/Enums/ConnectionState.cs
+src/Agent.Domain/StateMachines/ConnectionStateMachine.cs
+src/Agent.Domain/Models/Connections/ConnectionStatus.cs
+src/Agent.Domain/Contracts/IWebSocketTransport.cs
+src/Agent.Domain/Contracts/IPortalConnectionManager.cs
+src/Agent.Domain/Contracts/IConnectionStateRepository.cs
+src/Agent.Protocol/Messages/HeartbeatPayload.cs
+src/Agent.Application/Heartbeat/HeartbeatSnapshotBuilder.cs
+src/Agent.Application/Heartbeat/HeartbeatService.cs
+src/Agent.Application/Connection/ConnectionBackoffCalculator.cs
+src/Agent.Application/Connection/PortalConnectionManager.cs
+src/Agent.Application/Connection/PortalConnectionHostedService.cs
+src/Agent.Infrastructure/WebSockets/ClientWebSocketTransport.cs
+src/Agent.Infrastructure/Persistence/PortalConnectionRepository.cs
+tests/Agent.IntegrationTests/Helpers/FakeWebSocketTransport.cs
+tests/Agent.IntegrationTests/Connection/PortalConnectionManagerTests.cs
+tests/Agent.IntegrationTests/Connection/HeartbeatServiceTests.cs
+tests/Agent.UnitTests/StateMachines/ConnectionStateMachineTests.cs
+tests/Agent.UnitTests/Connection/ConnectionBackoffCalculatorTests.cs
+docs/websocket.md
+docs/heartbeat.md
+```
+
+**Alterados**
+
+```
+src/Agent.Application/HealthChecks/HealthCheckRunner.cs   + websocket, + heartbeat
+src/Agent.Service/Program.cs                              DI do Incremento 2
+src/Agent.Service/AgentWorker.cs                           portal status (+connection),
+                                                             portal connection-events
+tests/Agent.IntegrationTests/Helpers/TestHelper.cs         CreateConnectionRepository,
+                                                             SeedRegisteredAgentAsync
+docs/phase-3-testing.md                                    tabela do Incremento 2
+```
+
+### Decisões de projeto que valem registro
+
+1. **`Disconnected → Reconnecting` é proibido de propósito.** A primeira versão do
+   `MainLoopAsync` tentava essa transição sempre que uma conexão falhava, inclusive na
+   primeira tentativa (antes do registro terminar) — o que a máquina de estados rejeita
+   silenciosamente (só um log em Debug), deixando `GetStatus()` reportar um estado
+   defasado. Corrigido movendo toda decisão de transição para dentro de
+   `TryConnectAndPumpAsync`/`HandleDisconnectAsync`: o loop principal só decide *quando*
+   tentar de novo (backoff), nunca *para qual* estado ir.
+
+2. **`TrySendAsync` descarta em vez de reter.** Cheguei a documentar o oposto na
+   primeira versão do contrato (`IPortalConnectionManager`) — dizia que a mensagem
+   "aguarda na fila" quando a conexão cai. A implementação real sempre descartou
+   (retorna `false` e quem chamou decide o que fazer). Corrigi o comentário para bater
+   com o código: reter e reenviar é trabalho do Outbox (Incremento 3), não desta classe.
+
+3. **Cada tentativa de reconexão usa um transporte novo.** Tanto
+   `ClientWebSocketTransportFactory` quanto `FakeWebSocketTransportFactory` (teste)
+   criam uma instância por chamada — nunca reaproveitam um socket que já caiu. Isso é
+   verificado por teste (`ConnectionDrop_TriggersReconnect_WithFreshTransportInstance`
+   compara identidade de objeto, não só contagem).
+
+4. **`Degraded` existe na máquina de estados mas não é usado pelo
+   `PortalConnectionManager` ainda.** É reservado para "socket de pé, Portal não
+   responde" — que hoje só o health check de heartbeat detecta (via ausência de ack),
+   sem forçar a conexão em si a mudar de estado. Evita adicionar uma segunda forma de
+   "meio conectado" que teria que ser reconciliada com o watchdog de silêncio.
+
+5. **CLI não controla um Agent já em execução.** Cheguei a planejar `portal
+   connect`/`portal disconnect` como comandos de controle, mas cada invocação de CLI é
+   um processo novo — não haveria como afetar o `PortalConnectionManager` do serviço
+   Windows já rodando sem um canal de IPC que não existe ainda. Implementei em vez
+   disso `portal status` estendido (bloco `connection`) e `portal connection-events`,
+   que são diagnóstico honesto do que já é possível hoje.
+
+### Verificação
+
+Confirmado no Windows, .NET 8:
+
+```
+Construir êxito em 13,0s (9 projetos)
+Resumo do teste: total: 203; falhou: 0; bem-sucedido: 203; ignorado: 0; duração: 7,3s
+```
+
+Um defeito surgiu na primeira rodada e foi corrigido antes desta confirmação: o campo
+`PortalConnectionManager._running` era escrito mas nunca lido (CS0414, erro por
+`TreatWarningsAsErrors=true`) — sobra de um rascunho anterior que guardava o estado de
+execução sem expô-lo. Corrigido expondo `public bool IsRunning => _running;`, que é
+diagnóstico legítimo (mesmo padrão de `CurrentState`) em vez de apenas suprimir o aviso.
+
+203 testes = 165 das Fases 1/2 e do Incremento 1 + 38 novos deste incremento (conexão,
+heartbeat, máquina de estados de conexão, backoff).
+
+## 11. O que o Incremento 3 entregou
+
+**Criados**
+
+```
+src/Agent.Domain/Configuration/MessagingOptions.cs
+src/Agent.Domain/Models/Messaging/OutboxMessage.cs
+src/Agent.Domain/Models/Messaging/InboxCommand.cs
+src/Agent.Domain/Models/Messaging/MessagingDiagnostics.cs
+src/Agent.Domain/Models/Messaging/MessageAcknowledgement.cs
+src/Agent.Domain/Contracts/IOutboxRepository.cs
+src/Agent.Domain/Contracts/IInboxRepository.cs
+src/Agent.Domain/Contracts/IMessageAcknowledgementRepository.cs
+src/Agent.Protocol/Messages/AcknowledgementPayloads.cs
+src/Agent.Infrastructure/Persistence/OutboxRepository.cs
+src/Agent.Infrastructure/Persistence/InboxRepository.cs
+src/Agent.Infrastructure/Persistence/MessageAcknowledgementRepository.cs
+src/Agent.Application/Messaging/OutboxMessagePublisher.cs
+src/Agent.Application/Messaging/OutboxBatchSender.cs
+src/Agent.Application/Messaging/PortalMessageAcknowledgementService.cs
+src/Agent.Application/Messaging/PortalInboxService.cs
+src/Agent.Application/Messaging/InboxCommandProcessor.cs
+src/Agent.Application/Messaging/InboxCommandHandler.cs
+tests/Agent.IntegrationTests/Messaging/OutboxInboxTests.cs
+docs/outbox-inbox.md
+```
+
+**Alterados**
+
+```
+src/Agent.Application/Connection/PortalConnectionManager.cs  envio serializado durável
+src/Agent.Domain/Contracts/IPortalConnectionManager.cs       TrySendSerializedAsync
+src/Agent.Application/Heartbeat/HeartbeatService.cs          outbox_pending real
+src/Agent.Application/HealthChecks/HealthCheckRunner.cs      durable_messaging
+src/Agent.Application/Diagnostics/DiagnosticsExporter.cs     messaging-diagnostics.json
+src/Agent.Service/Program.cs                                 DI do Incremento 3
+src/Agent.Service/AgentWorker.cs                             portal messaging/status
+src/Agent.Service/appsettings.json                           seção Messaging
+tests/Agent.IntegrationTests/Helpers/TestHelper.cs           fábricas dos repositórios
+docs/database.md, docs/configuration.md, docs/heartbeat.md
+```
+
+### Decisões de projeto que valem registro
+
+1. **O contrato de conexão não depende de `ProtocolEnvelope`.** `Agent.Protocol` já
+   referencia `Agent.Domain`; colocar o envelope no contrato do domínio criaria ciclo.
+   A fronteira ficou como `TrySendSerializedAsync`: a aplicação monta e valida o envelope,
+   e o connection manager só enfileira o JSON já validado.
+
+2. **`command.ack` também passa pelo Outbox.** ACK de comando é uma mensagem importante
+   de saída, então não usa envio best-effort direto. Ele é persistido, enviado e
+   confirmado como qualquer outra mensagem Agent -> Portal.
+
+3. **Comando sem handler permanece pendente.** O Incremento 4 ainda vai implementar
+   oferta/reserva/commit. Para não mascarar integração ausente, o dispatcher só processa
+   comandos com `IInboxCommandHandler` registrado; os demais ficam na Inbox para replay
+   futuro em vez de fingirem sucesso.
+
+4. **Ordenação é conservadora por tentativa.** Uma mensagem com sequence maior para o
+   mesmo `execution_attempt_id` não é enviada enquanto existir sequence anterior não
+   `acknowledged`/`dead_letter`. É menos agressivo que pipelining, mas evita confirmar
+   fora de ordem nesta fase.
+
+### Verificação
+
+Confirmado no Windows, .NET 8:
+
+```
+Compilação com êxito (9 projetos, 0 warnings)
+Resumo do teste: total: 210; falhou: 0; bem-sucedido: 210; ignorado: 0
+```
+
+Os 7 testes novos cobrem `outbox-persist-before-send`, `offline-spool`,
+`outbox-replay`, `duplicated-event`, `inbox-deduplication`, `acknowledgement`,
+`dead-letter` e recuperação de pendências após reinício pelo mesmo mecanismo de replay.

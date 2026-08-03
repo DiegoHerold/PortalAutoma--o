@@ -155,14 +155,35 @@ Cobertura adicional:
 
 Detalhes de arquitetura e decisões de projeto: `docs/websocket.md`, `docs/heartbeat.md`.
 
+## Incremento 3 — Outbox e Inbox persistentes
+
+### Mensageria durável (`Agent.IntegrationTests/Messaging/OutboxInboxTests.cs`)
+
+| Teste obrigatório | Método |
+|---|---|
+| `outbox-persist-before-send` | `Outbox_PersistsBeforeSend_AndOfflineSpool_DoesNotLoseMessage` |
+| `offline-spool` | `Outbox_PersistsBeforeSend_AndOfflineSpool_DoesNotLoseMessage` |
+| `outbox-replay` | `Outbox_ReplaysUnacknowledgedMessage_WithSameMessageId` |
+| `duplicated-event` | `Outbox_DeduplicatesByMessageId` |
+| `inbox-deduplication` | `Inbox_StoresBeforeProcessing_AndDeduplicatesCommand` |
+| `restart-with-pending-events` | `Outbox_ReplaysUnacknowledgedMessage_WithSameMessageId` |
+| `acknowledgement` | `Outbox_DispatchesPersistedEnvelope_AndMessageAckConfirmsIt` |
+| `dead-letter` | `Outbox_OversizedMessage_IsPersistedAsDeadLetter`, `Inbox_HandlerFailuresEventuallyDeadLetterCommand` |
+
+Cobertura adicional:
+
+- `command.ack` é persistido no Outbox, não enviado best-effort.
+- Replays preservam o mesmo `message_id`.
+- Handler de Inbox só roda depois que o comando existe no SQLite.
+- Duplicata com mesmo `message_id` não altera o payload original persistido.
+
 ## Testes ainda não implementados
 
-Os incrementos 3 a 12 do brief permanecem pendentes. Os testes obrigatórios
+Os incrementos 4 a 12 do brief permanecem pendentes. Os testes obrigatórios
 correspondentes ainda não existem:
 
 | Bloco | Testes pendentes |
 |---|---|
-| Outbox e Inbox | `outbox-persist-before-send`, `offline-spool`, `outbox-replay`, `duplicated-event`, `inbox-deduplication`, `restart-with-pending-events`, `acknowledgement`, `dead-letter` |
 | Oferta e commit | `execution-offer-accept`, `execution-offer-reject`, `reservation-expiration`, `late-commit`, `duplicated-commit`, `commit-starts-preparation` |
 | Lease | `lease-renewal`, `temporary-network-loss`, `lease-expiration`, `lease-recovery` |
 | Session Runner | `session-runner-register`, `session-runner-authentication`, `session-runner-reconnect`, `session-detection`, `session-locked`, `session-unlocked`, `session-disconnected`, `session-logoff` |
@@ -190,10 +211,25 @@ havia sido compilado de ponta a ponta antes desta sessão.
 
 ## Verificação — Incremento 2
 
-**Ainda não verificado neste ambiente** (mesma limitação de sandbox do Incremento 1 —
-sem `dotnet` disponível aqui). Escrito e revisado por leitura, mas só fecha "concluído"
-depois de rodar `dotnet build AutomationAgent.sln && dotnet test AutomationAgent.sln`
-no Windows e os 165 testes anteriores + os novos deste incremento passarem juntos.
+Confirmado no Windows, .NET 8:
+
+```
+Construir êxito em 13,0s (9 projetos)
+Resumo do teste: total: 203; falhou: 0; bem-sucedido: 203; ignorado: 0; duração: 7,3s
+```
+
+Um defeito (introduzido neste incremento, não herdado das fases anteriores): campo
+`PortalConnectionManager._running` escrito mas nunca lido (CS0414). Corrigido expondo
+`IsRunning` como propriedade pública de diagnóstico. Detalhes em `docs/phase-3-plan.md`.
+
+## Verificação — Incremento 3
+
+Confirmado no Windows, .NET 8:
+
+```
+Compilação com êxito (9 projetos, 0 warnings)
+Resumo do teste: total: 210; falhou: 0; bem-sucedido: 210; ignorado: 0
+```
 
 Testes que exigem Windows de verdade e não rodam em CI Linux (fora do escopo desta
 verificação, mas relevantes para os próximos incrementos):

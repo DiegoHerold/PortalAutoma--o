@@ -610,6 +610,126 @@ public static class Migrations
             ALTER TABLE executions ADD COLUMN lease_id TEXT;
             ALTER TABLE executions ADD COLUMN origin TEXT NOT NULL DEFAULT 'local';
             ALTER TABLE executions ADD COLUMN offer_message_id TEXT;
+            """),
+
+        new(4, "session_runner_connections", """
+            CREATE TABLE session_runner_connections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_runner_instance_id TEXT NOT NULL,
+                session_id INTEGER NOT NULL,
+                connected_at_utc TEXT NOT NULL,
+                authenticated_at_utc TEXT,
+                disconnected_at_utc TEXT,
+                disconnect_reason TEXT,
+                remote_process_id INTEGER,
+                protocol_version TEXT,
+                status TEXT NOT NULL
+            );
+
+            CREATE INDEX idx_session_runner_connections_runner
+                ON session_runner_connections(session_runner_instance_id, connected_at_utc DESC);
+
+            CREATE INDEX idx_session_runner_connections_time
+                ON session_runner_connections(connected_at_utc DESC);
+            """),
+
+        new(5, "interactive_pool_execution", """
+            -- Fase 2 / Bloco 5: pool interativo, locks, processos e artifacts de screenshot.
+            -- Evolucao aditiva da tabela resource_locks criada no Bloco 4.
+            ALTER TABLE resource_locks ADD COLUMN status TEXT NOT NULL DEFAULT 'Reserved';
+
+            CREATE INDEX idx_resource_locks_status
+                ON resource_locks(status, lease_expires_at_utc);
+
+            CREATE TABLE interactive_execution_assignments (
+                execution_id TEXT NOT NULL,
+                execution_attempt_id TEXT NOT NULL,
+                session_id INTEGER NOT NULL,
+                session_runner_instance_id TEXT NOT NULL,
+                reservation_id TEXT,
+                workspace_path TEXT,
+                runtime_path TEXT,
+                package_path TEXT,
+                status TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL,
+                started_at_utc TEXT,
+                completed_at_utc TEXT,
+                last_heartbeat_at_utc TEXT,
+                cancellation_requested_at_utc TEXT,
+                execution_host_process_id INTEGER,
+                exit_code INTEGER,
+                error_code TEXT,
+                error_message TEXT,
+                PRIMARY KEY (execution_id, execution_attempt_id)
+            );
+
+            CREATE INDEX idx_interactive_assignments_status
+                ON interactive_execution_assignments(status, session_id);
+
+            CREATE INDEX idx_interactive_assignments_runner
+                ON interactive_execution_assignments(session_runner_instance_id, status);
+
+            CREATE TABLE interactive_execution_processes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                execution_attempt_id TEXT NOT NULL,
+                process_id INTEGER NOT NULL,
+                parent_process_id INTEGER,
+                session_id INTEGER,
+                process_path TEXT,
+                process_owner TEXT,
+                started_at_utc TEXT,
+                observed_at_utc TEXT NOT NULL,
+                exited_at_utc TEXT,
+                exit_code INTEGER,
+                kind TEXT NOT NULL,
+                status TEXT NOT NULL
+            );
+
+            CREATE INDEX idx_interactive_processes_attempt
+                ON interactive_execution_processes(execution_id, execution_attempt_id);
+
+            CREATE INDEX idx_interactive_processes_pid
+                ON interactive_execution_processes(process_id, session_id);
+
+            CREATE TABLE interactive_execution_screenshots (
+                artifact_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                execution_attempt_id TEXT NOT NULL,
+                session_id INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                local_path TEXT NOT NULL,
+                captured_at_utc TEXT NOT NULL,
+                width INTEGER,
+                height INTEGER,
+                sha256 TEXT,
+                size_bytes INTEGER NOT NULL
+            );
+
+            CREATE INDEX idx_interactive_screenshots_attempt
+                ON interactive_execution_screenshots(execution_id, execution_attempt_id);
+
+            CREATE TABLE application_process_ownership (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                execution_attempt_id TEXT NOT NULL,
+                application_key TEXT NOT NULL,
+                process_id INTEGER NOT NULL,
+                session_id INTEGER,
+                process_path TEXT,
+                window_title TEXT,
+                started_at_utc TEXT,
+                observed_at_utc TEXT NOT NULL,
+                ownership_kind TEXT NOT NULL,
+                policy TEXT NOT NULL,
+                status TEXT NOT NULL
+            );
+
+            CREATE INDEX idx_app_process_ownership_attempt
+                ON application_process_ownership(execution_id, execution_attempt_id);
+
+            CREATE INDEX idx_app_process_ownership_app
+                ON application_process_ownership(application_key, session_id, status);
             """)
     };
 }

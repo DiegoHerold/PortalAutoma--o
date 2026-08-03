@@ -17,6 +17,9 @@ public sealed class ExecutionConfig
     [JsonPropertyName("automation_id")]
     public string AutomationId { get; init; } = default!;
 
+    [JsonPropertyName("mode")]
+    public string Mode { get; init; } = "background";
+
     [JsonPropertyName("pipe_name")]
     public string PipeName { get; init; } = default!;
 
@@ -37,6 +40,9 @@ public sealed class ExecutionConfig
 
     [JsonPropertyName("environment")]
     public Dictionary<string, string>? Environment { get; init; }
+
+    [JsonPropertyName("interactive_context")]
+    public InteractiveContextConfig? InteractiveContext { get; init; }
 }
 
 public sealed class EntrypointConfig
@@ -85,4 +91,37 @@ public sealed class PathsConfig
 
     [JsonPropertyName("logs_path")]
     public string LogsPath { get; init; } = default!;
+}
+
+public sealed class InteractiveContextConfig
+{
+    [JsonPropertyName("session_id")]
+    public int SessionId { get; init; }
+
+    [JsonPropertyName("session_type")]
+    public string? SessionType { get; init; }
+
+    [JsonPropertyName("desktop_resolution")]
+    public DesktopResolutionConfig? DesktopResolution { get; init; }
+
+    [JsonPropertyName("dpi_scale")]
+    public double? DpiScale { get; init; }
+
+    [JsonPropertyName("monitor_count")]
+    public int? MonitorCount { get; init; }
+
+    [JsonPropertyName("session_runner_instance_id")]
+    public string? SessionRunnerInstanceId { get; init; }
+
+    [JsonPropertyName("desktop_locked")]
+    public bool DesktopLocked { get; init; }
+}
+
+public sealed class DesktopResolutionConfig
+{
+    [JsonPropertyName("width")]
+    public int Width { get; init; }
+
+    [JsonPropertyName("height")]
+    public int Height { get; init; }
 }

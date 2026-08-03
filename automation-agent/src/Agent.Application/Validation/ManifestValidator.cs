@@ -10,12 +10,13 @@ public sealed class ManifestValidator : IManifestValidator
 {
     private static readonly HashSet<string> ValidEntrypointTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "python_function", "python_module", "powershell_script", "executable", "browser_playwright"
+        "python_function", "python_module", "powershell_script", "executable", "browser_playwright", "python_desktop"
     };
 
     private static readonly HashSet<string> ValidRuntimeIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "python-embedded", "powershell", "executable", "playwright-browser"
+        "python-core", "python-embedded", "python-browser", "python-desktop", "python-desktop-3.13",
+        "powershell", "executable", "playwright-browser"
     };
 
     private readonly ILogger<ManifestValidator> _logger;
@@ -86,6 +87,9 @@ public sealed class ManifestValidator : IManifestValidator
         if (raw.Runtime is null) errors.Add("runtime is required");
         else if (string.IsNullOrWhiteSpace(raw.Runtime.Id)) errors.Add("runtime.id is required");
 
+        if (raw.Runtime is not null && !string.IsNullOrWhiteSpace(raw.Runtime.Id) && !ValidRuntimeIds.Contains(raw.Runtime.Id))
+            errors.Add($"Unknown runtime.id: {raw.Runtime.Id}");
+
         if (raw.Entrypoint is null) errors.Add("entrypoint is required");
         else if (string.IsNullOrWhiteSpace(raw.Entrypoint.Type)) errors.Add("entrypoint.type is required");
         else if (!ValidEntrypointTypes.Contains(raw.Entrypoint.Type)) errors.Add($"Unknown entrypoint.type: {raw.Entrypoint.Type}");
@@ -126,6 +130,9 @@ public sealed class ManifestValidator : IManifestValidator
             case "browser_playwright":
                 if (string.IsNullOrWhiteSpace(ep.Module)) errors.Add("entrypoint.module is required for browser_playwright");
                 break;
+            case "python_desktop":
+                if (string.IsNullOrWhiteSpace(ep.Module)) errors.Add("entrypoint.module is required for python_desktop");
+                break;
         }
     }
 
@@ -139,6 +146,16 @@ public sealed class ManifestValidator : IManifestValidator
         Category = raw.Category,
         Runtime = new ManifestRuntime { Id = raw.Runtime!.Id!, Version = raw.Runtime.Version },
         Entrypoint = MapEntrypoint(raw.Entrypoint!),
+        Execution = raw.Execution is not null
+            ? new ManifestExecution
+            {
+                Mode = raw.Execution.Mode ?? "background",
+                TimeoutSeconds = raw.Execution.TimeoutSeconds,
+                GracefulCancellationSeconds = raw.Execution.GracefulCancellationSeconds,
+                SessionPolicy = raw.Execution.SessionPolicy,
+                SessionId = raw.Execution.SessionId
+            }
+            : null,
         Capabilities = raw.Capabilities is not null
             ? new ManifestCapabilities { Required = raw.Capabilities.Required ?? Array.Empty<string>() }
             : null,
@@ -147,7 +164,8 @@ public sealed class ManifestValidator : IManifestValidator
             {
                 Pool = Enum.TryParse<PoolType>(raw.Resources.Pool, true, out var pt) ? pt : PoolType.Background,
                 Slots = raw.Resources.Slots ?? 1,
-                MaxMemoryMb = raw.Resources.MaxMemoryMb
+                MaxMemoryMb = raw.Resources.MaxMemoryMb,
+                ExclusiveResources = raw.Resources.ExclusiveResources ?? Array.Empty<string>()
             }
             : null,
         Timeout = raw.Timeout is not null
@@ -169,6 +187,7 @@ public sealed class ManifestValidator : IManifestValidator
             "powershell_script" => EntrypointType.PowerShellScript,
             "executable" => EntrypointType.Executable,
             "browser_playwright" => EntrypointType.BrowserPlaywright,
+            "python_desktop" => EntrypointType.PythonDesktop,
             _ => EntrypointType.PythonFunction
         };
         return new ManifestEntrypoint
@@ -193,6 +212,7 @@ public sealed class ManifestValidator : IManifestValidator
         public string? Category { get; set; }
         public ManifestRuntimeRaw? Runtime { get; set; }
         public ManifestEntrypointRaw? Entrypoint { get; set; }
+        public ManifestExecutionRaw? Execution { get; set; }
         public ManifestCapabilitiesRaw? Capabilities { get; set; }
         public ManifestResourcesRaw? Resources { get; set; }
         public ManifestTimeoutRaw? Timeout { get; set; }
@@ -200,7 +220,8 @@ public sealed class ManifestValidator : IManifestValidator
     }
     private sealed class ManifestRuntimeRaw { public string? Id { get; set; } public string? Version { get; set; } }
     private sealed class ManifestEntrypointRaw { public string? Type { get; set; } public string? Module { get; set; } public string? Callable { get; set; } public string? Script { get; set; } public string? Path { get; set; } public string? Args { get; set; } }
+    private sealed class ManifestExecutionRaw { public string? Mode { get; set; } public int? TimeoutSeconds { get; set; } public int? GracefulCancellationSeconds { get; set; } public string? SessionPolicy { get; set; } public int? SessionId { get; set; } }
     private sealed class ManifestCapabilitiesRaw { public IReadOnlyList<string>? Required { get; set; } }
-    private sealed class ManifestResourcesRaw { public string? Pool { get; set; } public int? Slots { get; set; } public long? MaxMemoryMb { get; set; } }
+    private sealed class ManifestResourcesRaw { public string? Pool { get; set; } public int? Slots { get; set; } public long? MaxMemoryMb { get; set; } public IReadOnlyList<string>? ExclusiveResources { get; set; } }
     private sealed class ManifestTimeoutRaw { public int? ExecutionSeconds { get; set; } public int? GracefulShutdownSeconds { get; set; } }
 }

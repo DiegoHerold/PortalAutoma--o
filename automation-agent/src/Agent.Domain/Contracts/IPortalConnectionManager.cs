@@ -37,6 +37,12 @@ public interface IPortalConnectionManager : IAsyncDisposable
     /// </summary>
     Task<bool> TrySendAsync(string messageType, object payload, string? correlationId = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Tenta enfileirar um envelope jÃ¡ serializado e validado. Usado pelo Outbox para
+    /// preservar <c>message_id</c>, correlaÃ§Ã£o e sequÃªncia em replays.
+    /// </summary>
+    Task<bool> TrySendSerializedAsync(string serializedEnvelope, CancellationToken ct = default);
+
     /// <summary>Desabilita a conexão deliberadamente (não tenta reconectar até <see cref="EnableAsync"/>).</summary>
     Task DisableAsync(string reason, CancellationToken ct = default);
 

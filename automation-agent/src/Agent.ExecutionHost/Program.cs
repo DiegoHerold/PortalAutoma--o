@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Biason.AutomationAgent.ExecutionHost.Launchers;
 using Biason.AutomationAgent.ExecutionHost.Protocol;
@@ -89,6 +90,16 @@ try
         .CreateLogger();
 
     Log.Information("ExecutionHost starting for {ExecutionId}/{AttemptId}", config.ExecutionId, config.AttemptId);
+    if (string.Equals(config.Mode, "interactive", StringComparison.OrdinalIgnoreCase))
+    {
+        ConfigureInteractiveDpi();
+        Log.Information("ExecutionHost interactive context: session={SessionId}, dpi={Dpi}, monitors={Monitors}, resolution={Width}x{Height}",
+            config.InteractiveContext?.SessionId,
+            config.InteractiveContext?.DpiScale,
+            config.InteractiveContext?.MonitorCount,
+            config.InteractiveContext?.DesktopResolution?.Width,
+            config.InteractiveContext?.DesktopResolution?.Height);
+    }
 
     // Validate paths
     ValidatePaths(config.Paths);
@@ -359,3 +370,26 @@ static async Task CollectMetricsAsync(
         Log.Warning(ex, "Error writing metrics file");
     }
 }
+
+static void ConfigureInteractiveDpi()
+{
+    if (!OperatingSystem.IsWindows())
+        return;
+
+    try
+    {
+        // Per-monitor awareness where supported; fallback to system DPI aware.
+        if (!SetProcessDpiAwarenessContext(new IntPtr(-4)))
+            SetProcessDPIAware();
+    }
+    catch
+    {
+        try { SetProcessDPIAware(); } catch { }
+    }
+}
+
+[DllImport("user32.dll")]
+static extern bool SetProcessDPIAware();
+
+[DllImport("user32.dll")]
+static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);

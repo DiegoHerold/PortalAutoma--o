@@ -28,6 +28,7 @@ public sealed class ExecutionManager : IExecutionManager
     private readonly IClock _clock;
     private readonly ExecutionOptions _options;
     private readonly ILogger<ExecutionManager> _logger;
+    private readonly IInteractiveExecutionCoordinator? _interactiveCoordinator;
 
     private readonly Dictionary<string, ProcessHandle> _activeProcesses = new();
     private readonly object _lock = new();
@@ -47,7 +48,8 @@ public sealed class ExecutionManager : IExecutionManager
         IEnumerable<ILauncher> launchers,
         IClock clock,
         IOptions<ExecutionOptions> options,
-        ILogger<ExecutionManager> logger)
+        ILogger<ExecutionManager> logger,
+        IInteractiveExecutionCoordinator? interactiveCoordinator = null)
     {
         _execRepo = execRepo;
         _attemptRepo = attemptRepo;
@@ -64,6 +66,7 @@ public sealed class ExecutionManager : IExecutionManager
         _clock = clock;
         _options = options.Value;
         _logger = logger;
+        _interactiveCoordinator = interactiveCoordinator;
     }
 
     public async Task<ExecutionResult> ExecuteAsync(ExecutionRecord execution, AutomationManifest manifest, string? inputJson, CancellationToken ct = default)
@@ -71,6 +74,21 @@ public sealed class ExecutionManager : IExecutionManager
         var attemptId = $"att_{Guid.NewGuid():N}";
         var pool = manifest.Resources?.Pool ?? PoolType.Background;
         var timeoutSeconds = manifest.Timeout?.ExecutionSeconds ?? _options.DefaultTimeoutSeconds;
+
+        if (IsInteractive(manifest, pool))
+        {
+            if (_interactiveCoordinator is null)
+                return new ExecutionResult
+                {
+                    ExecutionId = execution.ExecutionId,
+                    AttemptId = attemptId,
+                    Success = false,
+                    ErrorOutput = "Interactive execution services are not registered.",
+                    CompletedAtUtc = _clock.UtcNow
+                };
+
+            return await _interactiveCoordinator.ExecuteAsync(execution, manifest, attemptId, inputJson, ct);
+        }
 
         // Transition: Committed → Preparing
         await TransitionAsync(execution, ExecutionState.Preparing, "Preparing execution");
@@ -223,6 +241,8 @@ public sealed class ExecutionManager : IExecutionManager
     public async Task CancelAsync(string executionId, CancellationToken ct = default)
     {
         await _cancellation.RequestCancellationAsync(executionId, ct);
+        if (_interactiveCoordinator is not null)
+            await _interactiveCoordinator.CancelAsync(executionId, ct);
 
         ProcessHandle? handle;
         lock (_lock) { _activeProcesses.TryGetValue(executionId, out handle); }
@@ -232,6 +252,10 @@ public sealed class ExecutionManager : IExecutionManager
             await _processManager.TerminateAsync(handle, _options.GracefulShutdownSeconds * 1000, ct);
         }
     }
+
+    private static bool IsInteractive(AutomationManifest manifest, PoolType pool) =>
+        pool == PoolType.Interactive ||
+        string.Equals(manifest.Execution?.Mode, "interactive", StringComparison.OrdinalIgnoreCase);
 
     public Task<IReadOnlyList<ExecutionRecord>> GetActiveExecutionsAsync(CancellationToken ct = default)
         => _execRepo.GetActiveAsync(ct);

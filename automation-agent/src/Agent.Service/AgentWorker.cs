@@ -32,6 +32,15 @@ public sealed class AgentWorker : BackgroundService
     private readonly ICredentialProtector _credentialProtector;
     private readonly IPortalConnectionManager _connectionManager;
     private readonly IConnectionStateRepository _connectionStateRepo;
+    private readonly IOutboxRepository _outbox;
+    private readonly IInboxRepository _inbox;
+    private readonly IInteractiveSessionRepository _interactiveSessions;
+    private readonly ISessionRunnerRepository _sessionRunners;
+    private readonly ISessionRunnerConnectionRepository _sessionRunnerConnections;
+    private readonly ISessionEventRepository _sessionEvents;
+    private readonly IInteractiveSessionSelector _interactiveSessionSelector;
+    private readonly ISessionCapabilityService _sessionCapabilityService;
+    private readonly Biason.AutomationAgent.Application.Sessions.SessionRunnerPipeServer _sessionRunnerPipeServer;
     private readonly ILogger<AgentWorker> _logger;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -61,6 +70,15 @@ public sealed class AgentWorker : BackgroundService
         ICredentialProtector credentialProtector,
         IPortalConnectionManager connectionManager,
         IConnectionStateRepository connectionStateRepo,
+        IOutboxRepository outbox,
+        IInboxRepository inbox,
+        IInteractiveSessionRepository interactiveSessions,
+        ISessionRunnerRepository sessionRunners,
+        ISessionRunnerConnectionRepository sessionRunnerConnections,
+        ISessionEventRepository sessionEvents,
+        IInteractiveSessionSelector interactiveSessionSelector,
+        ISessionCapabilityService sessionCapabilityService,
+        Biason.AutomationAgent.Application.Sessions.SessionRunnerPipeServer sessionRunnerPipeServer,
         ILogger<AgentWorker> logger)
     {
         _lifetime = lifetime;
@@ -83,6 +101,15 @@ public sealed class AgentWorker : BackgroundService
         _credentialProtector = credentialProtector;
         _connectionManager = connectionManager;
         _connectionStateRepo = connectionStateRepo;
+        _outbox = outbox;
+        _inbox = inbox;
+        _interactiveSessions = interactiveSessions;
+        _sessionRunners = sessionRunners;
+        _sessionRunnerConnections = sessionRunnerConnections;
+        _sessionEvents = sessionEvents;
+        _interactiveSessionSelector = interactiveSessionSelector;
+        _sessionCapabilityService = sessionCapabilityService;
+        _sessionRunnerPipeServer = sessionRunnerPipeServer;
         _logger = logger;
     }
 
@@ -124,6 +151,10 @@ public sealed class AgentWorker : BackgroundService
             var identity = await _identityService.GetOrCreateIdentityAsync(stoppingToken);
             _logger.LogInformation("Agent identity: InstallationId={InstallationId}, InstanceId={InstanceId}",
                 identity.InstallationId, identity.InstanceId);
+
+            var earlyCliArgs = Environment.GetCommandLineArgs();
+            if (await TryHandleSessionCliAsync(earlyCliArgs, stoppingToken))
+                return;
 
             // Machine profiling
             _logger.LogInformation("Running machine profiler...");
@@ -230,6 +261,69 @@ public sealed class AgentWorker : BackgroundService
                 return;
             }
 
+            if (cliArgs.Contains("session", StringComparer.OrdinalIgnoreCase) &&
+                cliArgs.Contains("list", StringComparer.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(await _interactiveSessions.GetAllAsync(stoppingToken), JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
+            if (cliArgs.Contains("session", StringComparer.OrdinalIgnoreCase) &&
+                cliArgs.Contains("show", StringComparer.OrdinalIgnoreCase))
+            {
+                var idText = cliArgs.SkipWhile(a => !a.Equals("show", StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
+                var session = int.TryParse(idText, out var id)
+                    ? await _interactiveSessions.GetAsync(id, stoppingToken)
+                    : null;
+                Console.WriteLine(JsonSerializer.Serialize(session, JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
+            if (cliArgs.Contains("session", StringComparer.OrdinalIgnoreCase) &&
+                cliArgs.Contains("select", StringComparer.OrdinalIgnoreCase))
+            {
+                var selected = await _interactiveSessionSelector.SelectAsync(
+                    new Biason.AutomationAgent.Domain.Models.Sessions.InteractiveSessionSelectionRequest
+                    {
+                        Policy = Biason.AutomationAgent.Domain.Enums.InteractiveSessionSelectionPolicy.ActiveUnlocked
+                    },
+                    stoppingToken);
+                Console.WriteLine(JsonSerializer.Serialize(selected, JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
+            if (cliArgs.Contains("session", StringComparer.OrdinalIgnoreCase) &&
+                cliArgs.Contains("capabilities", StringComparer.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(await _sessionCapabilityService.GetCapabilitiesAsync(stoppingToken), JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
+            if (cliArgs.Contains("session-runner", StringComparer.OrdinalIgnoreCase) &&
+                (cliArgs.Contains("list", StringComparer.OrdinalIgnoreCase) || cliArgs.Contains("status", StringComparer.OrdinalIgnoreCase)))
+            {
+                var payload = new
+                {
+                    runners = await _sessionRunners.GetAllAsync(stoppingToken),
+                    connections = await _sessionRunnerConnections.GetRecentAsync(20, stoppingToken)
+                };
+                Console.WriteLine(JsonSerializer.Serialize(payload, JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
+            if (cliArgs.Contains("pipe", StringComparer.OrdinalIgnoreCase) &&
+                (cliArgs.Contains("status", StringComparer.OrdinalIgnoreCase) || cliArgs.Contains("test", StringComparer.OrdinalIgnoreCase)))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(_sessionRunnerPipeServer.GetStatus(), JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
             // portal status — estado do registro, sem expor segredos
             if (cliArgs.Contains("portal", StringComparer.OrdinalIgnoreCase) &&
                 cliArgs.Contains("status", StringComparer.OrdinalIgnoreCase))
@@ -265,7 +359,12 @@ public sealed class AgentWorker : BackgroundService
                     // congelado. Não existe canal para controlar remotamente um Agent
                     // já em execução como serviço Windows a partir de uma segunda
                     // invocação de CLI; esse comando é para diagnóstico local.
-                    connection = _connectionManager.GetStatus()
+                    connection = _connectionManager.GetStatus(),
+                    messaging = new
+                    {
+                        outbox = await _outbox.GetDiagnosticsAsync(stoppingToken),
+                        inbox = await _inbox.GetDiagnosticsAsync(stoppingToken)
+                    }
                 };
 
                 Console.WriteLine(JsonSerializer.Serialize(portalStatus, JsonOpts));
@@ -280,6 +379,20 @@ public sealed class AgentWorker : BackgroundService
             {
                 var events = await _connectionStateRepo.GetRecentEventsAsync(50, stoppingToken);
                 Console.WriteLine(JsonSerializer.Serialize(events, JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
+            // portal messaging — diagnóstico rápido das filas duráveis locais.
+            if (cliArgs.Contains("portal", StringComparer.OrdinalIgnoreCase) &&
+                cliArgs.Contains("messaging", StringComparer.OrdinalIgnoreCase))
+            {
+                var messaging = new
+                {
+                    outbox = await _outbox.GetDiagnosticsAsync(stoppingToken),
+                    inbox = await _inbox.GetDiagnosticsAsync(stoppingToken)
+                };
+                Console.WriteLine(JsonSerializer.Serialize(messaging, JsonOpts));
                 _lifetime.StopApplication();
                 return;
             }
@@ -362,5 +475,73 @@ public sealed class AgentWorker : BackgroundService
         }
         catch { /* best effort */ }
         _lifetime.StopApplication();
+    }
+
+    private async Task<bool> TryHandleSessionCliAsync(string[] cliArgs, CancellationToken ct)
+    {
+        if (cliArgs.Contains("session", StringComparer.OrdinalIgnoreCase) &&
+            cliArgs.Contains("list", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(await _interactiveSessions.GetAllAsync(ct), JsonOpts));
+            _lifetime.StopApplication();
+            return true;
+        }
+
+        if (cliArgs.Contains("session", StringComparer.OrdinalIgnoreCase) &&
+            cliArgs.Contains("show", StringComparer.OrdinalIgnoreCase))
+        {
+            var idText = cliArgs.SkipWhile(a => !a.Equals("show", StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
+            var session = int.TryParse(idText, out var id)
+                ? await _interactiveSessions.GetAsync(id, ct)
+                : null;
+            Console.WriteLine(JsonSerializer.Serialize(session, JsonOpts));
+            _lifetime.StopApplication();
+            return true;
+        }
+
+        if (cliArgs.Contains("session", StringComparer.OrdinalIgnoreCase) &&
+            cliArgs.Contains("select", StringComparer.OrdinalIgnoreCase))
+        {
+            var selected = await _interactiveSessionSelector.SelectAsync(
+                new Biason.AutomationAgent.Domain.Models.Sessions.InteractiveSessionSelectionRequest
+                {
+                    Policy = Biason.AutomationAgent.Domain.Enums.InteractiveSessionSelectionPolicy.ActiveUnlocked
+                },
+                ct);
+            Console.WriteLine(JsonSerializer.Serialize(selected, JsonOpts));
+            _lifetime.StopApplication();
+            return true;
+        }
+
+        if (cliArgs.Contains("session", StringComparer.OrdinalIgnoreCase) &&
+            cliArgs.Contains("capabilities", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(await _sessionCapabilityService.GetCapabilitiesAsync(ct), JsonOpts));
+            _lifetime.StopApplication();
+            return true;
+        }
+
+        if (cliArgs.Contains("session-runner", StringComparer.OrdinalIgnoreCase) &&
+            (cliArgs.Contains("list", StringComparer.OrdinalIgnoreCase) || cliArgs.Contains("status", StringComparer.OrdinalIgnoreCase)))
+        {
+            var payload = new
+            {
+                runners = await _sessionRunners.GetAllAsync(ct),
+                connections = await _sessionRunnerConnections.GetRecentAsync(20, ct)
+            };
+            Console.WriteLine(JsonSerializer.Serialize(payload, JsonOpts));
+            _lifetime.StopApplication();
+            return true;
+        }
+
+        if (cliArgs.Contains("pipe", StringComparer.OrdinalIgnoreCase) &&
+            (cliArgs.Contains("status", StringComparer.OrdinalIgnoreCase) || cliArgs.Contains("test", StringComparer.OrdinalIgnoreCase)))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(_sessionRunnerPipeServer.GetStatus(), JsonOpts));
+            _lifetime.StopApplication();
+            return true;
+        }
+
+        return false;
     }
 }

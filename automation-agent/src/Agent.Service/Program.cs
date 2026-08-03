@@ -1,5 +1,7 @@
 using Biason.AutomationAgent.Application.Diagnostics;
 using Biason.AutomationAgent.Application.HealthChecks;
+using Biason.AutomationAgent.Application.Interactive;
+using Biason.AutomationAgent.Application.Sessions;
 using Biason.AutomationAgent.Application.Services;
 using Biason.AutomationAgent.Application.Validation;
 using Biason.AutomationAgent.Domain.Configuration;
@@ -14,6 +16,9 @@ using Biason.AutomationAgent.Windows.Detection;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Formatting.Compact;
+
+if (await EarlySessionCli.TryHandleAsync(args, CancellationToken.None))
+    return;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -66,6 +71,41 @@ builder.Services.AddOptions<CapacityOptions>()
 
 builder.Services.AddOptions<DownloadOptions>()
     .Bind(builder.Configuration.GetSection(DownloadOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<MessagingOptions>()
+    .Bind(builder.Configuration.GetSection(MessagingOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<SessionRunnerOptions>()
+    .Bind(builder.Configuration.GetSection(SessionRunnerOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<InteractiveSessionsOptions>()
+    .Bind(builder.Configuration.GetSection(InteractiveSessionsOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<InteractivePoolOptions>()
+    .Bind(builder.Configuration.GetSection(InteractivePoolOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<InteractiveExecutionOptions>()
+    .Bind(builder.Configuration.GetSection(InteractiveExecutionOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<ScreenshotOptions>()
+    .Bind(builder.Configuration.GetSection(ScreenshotOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<LocalProtocolOptions>()
+    .Bind(builder.Configuration.GetSection(LocalProtocolOptions.Section))
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
@@ -145,6 +185,22 @@ builder.Services.AddSingleton<IExecutionAttemptRepository, ExecutionAttemptRepos
 builder.Services.AddSingleton<IExecutionEventRepository, ExecutionEventRepository>();
 builder.Services.AddSingleton<IReservationRepository, ReservationRepository>();
 
+// Repositories — Phase 3 durable messaging
+builder.Services.AddSingleton<IOutboxRepository, OutboxRepository>();
+builder.Services.AddSingleton<IInboxRepository, InboxRepository>();
+builder.Services.AddSingleton<IMessageAcknowledgementRepository, MessageAcknowledgementRepository>();
+
+// Repositories — local interactive sessions
+builder.Services.AddSingleton<ISessionRunnerRepository, SessionRunnerRepository>();
+builder.Services.AddSingleton<IInteractiveSessionRepository, InteractiveSessionRepository>();
+builder.Services.AddSingleton<ISessionEventRepository, SessionEventRepository>();
+builder.Services.AddSingleton<ISessionRunnerConnectionRepository, SessionRunnerConnectionRepository>();
+builder.Services.AddSingleton<IDesktopLockRepository, DesktopLockRepository>();
+builder.Services.AddSingleton<IInteractiveExecutionAssignmentRepository, InteractiveExecutionAssignmentRepository>();
+builder.Services.AddSingleton<IInteractiveExecutionProcessRepository, InteractiveExecutionProcessRepository>();
+builder.Services.AddSingleton<IInteractiveExecutionScreenshotRepository, InteractiveExecutionScreenshotRepository>();
+builder.Services.AddSingleton<IApplicationProcessOwnershipRepository, ApplicationProcessOwnershipRepository>();
+
 // Validation
 builder.Services.AddSingleton<IManifestValidator, ManifestValidator>();
 
@@ -180,6 +236,18 @@ builder.Services.AddSingleton<IExecutionManager, Biason.AutomationAgent.Applicat
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.ExecutionMetricsCollector>();
 builder.Services.AddSingleton<ICacheManager, Biason.AutomationAgent.Application.Execution.CacheManager>();
 
+// Local interactive sessions and Session Runner
+builder.Services.AddSingleton<ISessionRunnerRegistry, SessionRunnerRegistry>();
+builder.Services.AddSingleton<IInteractiveExecutionTokenService, InteractiveExecutionTokenService>();
+builder.Services.AddSingleton<IInteractiveSessionSelector, InteractiveSessionSelector>();
+builder.Services.AddSingleton<ISessionCapabilityService, SessionCapabilityService>();
+builder.Services.AddSingleton<IDesktopLockManager, DesktopLockManager>();
+builder.Services.AddSingleton<IInteractivePoolService, InteractivePoolService>();
+builder.Services.AddSingleton<IInteractiveExecutionCoordinator, InteractiveExecutionCoordinator>();
+builder.Services.AddSingleton<SessionRunnerPipeServer>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SessionRunnerPipeServer>());
+builder.Services.AddHostedService<WindowsSessionDiscoveryService>();
+
 // Windows collectors
 builder.Services.AddSingleton<IOsInfoCollector>(sp =>
     new WindowsOsInfoCollector(sp.GetRequiredService<ILogger<WindowsOsInfoCollector>>(),
@@ -187,10 +255,14 @@ builder.Services.AddSingleton<IOsInfoCollector>(sp =>
 builder.Services.AddSingleton<ICpuInfoCollector, WindowsCpuInfoCollector>();
 builder.Services.AddSingleton<IMemoryInfoCollector, WindowsMemoryInfoCollector>();
 builder.Services.AddSingleton<IDiskInfoCollector, WindowsDiskInfoCollector>();
+builder.Services.AddSingleton<IDesktopStateReader, WindowsDesktopStateReader>();
+builder.Services.AddSingleton<IWindowsSessionDiscovery, WindowsSessionDiscovery>();
 builder.Services.AddSingleton<ISessionInfoCollector, WindowsSessionInfoCollector>();
 builder.Services.AddSingleton<ISoftwareDetector, WindowsSoftwareDetector>();
 builder.Services.AddSingleton<ICapabilityDetector, WindowsCapabilityDetector>();
 builder.Services.AddSingleton<ICpuUsageProvider, WindowsCpuUsageCollector>();
+builder.Services.AddSingleton<ISessionRunnerProcessValidator, Biason.AutomationAgent.Windows.Process.WindowsSessionRunnerProcessValidator>();
+builder.Services.AddSingleton<IApplicationProcessInspector, Biason.AutomationAgent.Windows.Process.WindowsApplicationProcessInspector>();
 
 // === Fase 3 — Registro e credenciais ===
 // A proteção da credencial é escolhida por plataforma: DPAPI no Windows,
@@ -231,11 +303,22 @@ builder.Services.AddSingleton<Biason.AutomationAgent.Application.Heartbeat.Heart
 builder.Services.AddHostedService(sp =>
     sp.GetRequiredService<Biason.AutomationAgent.Application.Heartbeat.HeartbeatService>());
 
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.OutboxMessagePublisher>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.PortalInboxService>();
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Biason.AutomationAgent.Application.Messaging.PortalInboxService>());
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.PortalMessageAcknowledgementService>();
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Biason.AutomationAgent.Application.Messaging.PortalMessageAcknowledgementService>());
+builder.Services.AddHostedService<Biason.AutomationAgent.Application.Messaging.OutboxBatchSender>();
+builder.Services.AddHostedService<Biason.AutomationAgent.Application.Messaging.InboxCommandProcessor>();
+
 // Application services
 builder.Services.AddSingleton<IMachineProfiler, MachineProfilerService>();
 builder.Services.AddSingleton<HealthCheckRunner>();
 builder.Services.AddSingleton<MachineReportGenerator>();
 builder.Services.AddSingleton<DiagnosticsExporter>();
+builder.Services.AddSingleton<SessionCliHandler>();
 
 // Resource monitor (background service)
 builder.Services.AddSingleton<ResourceMonitorService>();
@@ -245,5 +328,27 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ResourceMonitorSer
 // Agent worker (main background service)
 builder.Services.AddHostedService<AgentWorker>();
 
-var host = builder.Build();
+using var host = builder.Build();
+
+if (SessionCliHandler.IsSessionCommand(Environment.GetCommandLineArgs()))
+{
+    var dirs = host.Services.GetRequiredService<IDirectoryResolver>();
+    if (!dirs.Validate(out var errors))
+    {
+        Console.Error.WriteLine($"Directory validation failed: {string.Join("; ", errors)}");
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    dirs.EnsureDirectoriesExist();
+    await host.Services.GetRequiredService<SqliteDatabaseManager>().InitializeAsync();
+
+    var handled = await host.Services
+        .GetRequiredService<SessionCliHandler>()
+        .TryHandleAsync(Environment.GetCommandLineArgs(), CancellationToken.None);
+
+    if (handled)
+        return;
+}
+
 await host.RunAsync();

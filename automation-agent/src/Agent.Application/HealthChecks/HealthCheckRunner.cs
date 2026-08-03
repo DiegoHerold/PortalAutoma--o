@@ -1,4 +1,5 @@
 using Biason.AutomationAgent.Application.Heartbeat;
+using Biason.AutomationAgent.Application.Sessions;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Enums;
 using Biason.AutomationAgent.Domain.Models;
@@ -19,6 +20,16 @@ public sealed class HealthCheckRunner
     private readonly Domain.Configuration.PortalOptions? _portalOptions;
     private readonly IPortalConnectionManager? _connectionManager;
     private readonly HeartbeatService? _heartbeatService;
+    private readonly IOutboxRepository? _outbox;
+    private readonly IInboxRepository? _inbox;
+    private readonly IWindowsSessionDiscovery? _sessionDiscovery;
+    private readonly ISessionRunnerRegistry? _sessionRunnerRegistry;
+    private readonly SessionRunnerPipeServer? _sessionRunnerPipeServer;
+    private readonly IInteractiveSessionRepository? _interactiveSessions;
+    private readonly IInteractivePoolService? _interactivePool;
+    private readonly IDesktopLockManager? _desktopLocks;
+    private readonly IInteractiveExecutionAssignmentRepository? _interactiveAssignments;
+    private readonly Domain.Configuration.SessionRunnerOptions? _sessionRunnerOptions;
     private readonly ILogger<HealthCheckRunner> _logger;
 
     public HealthCheckRunner(
@@ -32,7 +43,17 @@ public sealed class HealthCheckRunner
         ICredentialProtector? credentialProtector = null,
         Microsoft.Extensions.Options.IOptions<Domain.Configuration.PortalOptions>? portalOptions = null,
         IPortalConnectionManager? connectionManager = null,
-        HeartbeatService? heartbeatService = null)
+        HeartbeatService? heartbeatService = null,
+        IOutboxRepository? outbox = null,
+        IInboxRepository? inbox = null,
+        IWindowsSessionDiscovery? sessionDiscovery = null,
+        ISessionRunnerRegistry? sessionRunnerRegistry = null,
+        SessionRunnerPipeServer? sessionRunnerPipeServer = null,
+        IInteractiveSessionRepository? interactiveSessions = null,
+        Microsoft.Extensions.Options.IOptions<Domain.Configuration.SessionRunnerOptions>? sessionRunnerOptions = null,
+        IInteractivePoolService? interactivePool = null,
+        IDesktopLockManager? desktopLocks = null,
+        IInteractiveExecutionAssignmentRepository? interactiveAssignments = null)
     {
         _dbManager = dbManager;
         _dirs = dirs;
@@ -44,6 +65,16 @@ public sealed class HealthCheckRunner
         _portalOptions = portalOptions?.Value;
         _connectionManager = connectionManager;
         _heartbeatService = heartbeatService;
+        _outbox = outbox;
+        _inbox = inbox;
+        _sessionDiscovery = sessionDiscovery;
+        _sessionRunnerRegistry = sessionRunnerRegistry;
+        _sessionRunnerPipeServer = sessionRunnerPipeServer;
+        _interactiveSessions = interactiveSessions;
+        _interactivePool = interactivePool;
+        _desktopLocks = desktopLocks;
+        _interactiveAssignments = interactiveAssignments;
+        _sessionRunnerOptions = sessionRunnerOptions?.Value;
         _logger = logger;
     }
 
@@ -61,7 +92,17 @@ public sealed class HealthCheckRunner
             CheckExecutionHostAvailability(),
             await CheckAgentRegistrationAsync(ct),
             CheckWebSocketConnection(),
-            CheckHeartbeat()
+            CheckHeartbeat(),
+            await CheckDurableMessagingAsync(ct),
+            await CheckWindowsSessionDiscoveryAsync(ct),
+            await CheckSessionRunnerRegistryAsync(ct),
+            CheckSessionRunnerPipe(),
+            await CheckInteractiveSessionsAsync(ct),
+            await CheckInteractivePoolAsync(ct),
+            await CheckDesktopLocksAsync(ct),
+            await CheckInteractiveExecutionAsync(ct),
+            CheckDesktopLauncher(),
+            CheckPythonDesktopRuntime()
         };
 
         foreach (var r in results)
@@ -564,6 +605,312 @@ public sealed class HealthCheckRunner
                 Component = "execution_host",
                 Status = HealthStatus.Degraded,
                 Message = $"ExecutionHost check error: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private HealthCheckResult CheckDesktopLauncher()
+    {
+        try
+        {
+            var candidates = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "ExecutionHost.exe"),
+            };
+            var found = candidates.Any(File.Exists);
+            return new HealthCheckResult
+            {
+                Component = "desktop_launcher",
+                Status = found ? HealthStatus.Healthy : HealthStatus.Degraded,
+                Message = found ? "Interactive desktop launcher can resolve ExecutionHost.exe" : "ExecutionHost.exe not found for interactive launcher",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "desktop_launcher",
+                Status = HealthStatus.Degraded,
+                Message = $"Desktop launcher check error: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private HealthCheckResult CheckPythonDesktopRuntime()
+    {
+        try
+        {
+            var root = _dirs.RuntimesPath;
+            var candidates = new[]
+            {
+                Path.Combine(root, "python-desktop", "latest"),
+                Path.Combine(root, "python-desktop", "3.13"),
+                Path.Combine(root, "python-desktop-3.13", "latest")
+            };
+            var found = candidates.Any(Directory.Exists);
+            return new HealthCheckResult
+            {
+                Component = "python_desktop_runtime",
+                Status = found ? HealthStatus.Healthy : HealthStatus.Degraded,
+                Message = found ? "python-desktop runtime found" : "python-desktop runtime not installed in local store",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "python_desktop_runtime",
+                Status = HealthStatus.Degraded,
+                Message = $"python-desktop runtime check error: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private async Task<HealthCheckResult> CheckWindowsSessionDiscoveryAsync(CancellationToken ct)
+    {
+        if (_sessionDiscovery is null)
+            return NotConfigured("windows_session_discovery");
+
+        try
+        {
+            var sessions = await _sessionDiscovery.DiscoverAsync(ct);
+            return new HealthCheckResult
+            {
+                Component = "windows_session_discovery",
+                Status = HealthStatus.Healthy,
+                Message = $"Discovered {sessions.Count} Windows session(s)",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "windows_session_discovery",
+                Status = HealthStatus.Degraded,
+                Message = $"Session discovery failed: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private async Task<HealthCheckResult> CheckSessionRunnerRegistryAsync(CancellationToken ct)
+    {
+        if (_sessionRunnerRegistry is null)
+            return NotConfigured("session_runner_registry");
+
+        try
+        {
+            var runners = await _sessionRunnerRegistry.GetSnapshotAsync(ct);
+            var connected = runners.Count(r => r.State == SessionRunnerConnectionState.Connected);
+            return new HealthCheckResult
+            {
+                Component = "session_runner_registry",
+                Status = HealthStatus.Healthy,
+                Message = $"{connected} connected Session Runner(s), {runners.Count} known",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "session_runner_registry",
+                Status = HealthStatus.Degraded,
+                Message = $"Session Runner registry check failed: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private HealthCheckResult CheckSessionRunnerPipe()
+    {
+        if (_sessionRunnerPipeServer is null)
+            return NotConfigured("session_runner_pipe");
+
+        return new HealthCheckResult
+        {
+            Component = "session_runner_pipe",
+            Status = HealthStatus.Healthy,
+            Message = "Session Runner named pipe server is configured",
+            CheckedAtUtc = _clock.UtcNow
+        };
+    }
+
+    private async Task<HealthCheckResult> CheckInteractiveSessionsAsync(CancellationToken ct)
+    {
+        if (_interactiveSessions is null)
+            return NotConfigured("interactive_sessions");
+
+        try
+        {
+            var sessions = await _interactiveSessions.GetAllAsync(ct);
+            var active = sessions.Where(s => s.State == WindowsSessionState.Active).ToList();
+            var activeWithoutRunner = active.Count(s => s.SessionRunnerInstanceId is null);
+            var status = _sessionRunnerOptions?.ExpectRunnerForActiveSessions == true && activeWithoutRunner > 0
+                ? HealthStatus.Degraded
+                : HealthStatus.Healthy;
+
+            return new HealthCheckResult
+            {
+                Component = "interactive_sessions",
+                Status = status,
+                Message = active.Count == 0
+                    ? "No active interactive sessions; interactive unavailable"
+                    : $"{active.Count} active session(s), {activeWithoutRunner} without runner",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "interactive_sessions",
+                Status = HealthStatus.Degraded,
+                Message = $"Interactive session check failed: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private async Task<HealthCheckResult> CheckInteractivePoolAsync(CancellationToken ct)
+    {
+        if (_interactivePool is null)
+            return NotConfigured("interactive_pool");
+
+        try
+        {
+            var active = await _interactivePool.CountActiveAsync(ct);
+            return new HealthCheckResult
+            {
+                Component = "interactive_pool",
+                Status = active <= 1 ? HealthStatus.Healthy : HealthStatus.Unhealthy,
+                Message = $"{active} active interactive execution(s)",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "interactive_pool",
+                Status = HealthStatus.Degraded,
+                Message = $"Interactive pool check failed: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private async Task<HealthCheckResult> CheckDesktopLocksAsync(CancellationToken ct)
+    {
+        if (_desktopLocks is null)
+            return NotConfigured("desktop_locks");
+
+        try
+        {
+            var recovered = await _desktopLocks.RecoverExpiredAsync(ct);
+            var locks = await _desktopLocks.GetAllAsync(ct);
+            var active = locks.Count(l => l.Status is DesktopLockStatus.Reserved or DesktopLockStatus.Committed or DesktopLockStatus.Active);
+            return new HealthCheckResult
+            {
+                Component = "desktop_locks",
+                Status = HealthStatus.Healthy,
+                Message = $"{active} active desktop lock(s), {recovered} expired lock(s) recovered",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "desktop_locks",
+                Status = HealthStatus.Degraded,
+                Message = $"Desktop lock check failed: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private async Task<HealthCheckResult> CheckInteractiveExecutionAsync(CancellationToken ct)
+    {
+        if (_interactiveAssignments is null)
+            return NotConfigured("interactive_execution");
+
+        try
+        {
+            var active = await _interactiveAssignments.GetActiveAsync(ct);
+            var status = active.Count <= 1 ? HealthStatus.Healthy : HealthStatus.Unhealthy;
+            return new HealthCheckResult
+            {
+                Component = "interactive_execution",
+                Status = status,
+                Message = $"{active.Count} active interactive assignment(s)",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = "interactive_execution",
+                Status = HealthStatus.Degraded,
+                Message = $"Interactive execution check failed: {ex.Message}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+    }
+
+    private HealthCheckResult NotConfigured(string component) => new()
+    {
+        Component = component,
+        Status = HealthStatus.Degraded,
+        Message = $"{component} is not configured",
+        CheckedAtUtc = _clock.UtcNow
+    };
+
+    private async Task<HealthCheckResult> CheckDurableMessagingAsync(CancellationToken ct)
+    {
+        const string component = "durable_messaging";
+
+        if (_outbox is null || _inbox is null)
+        {
+            return new HealthCheckResult
+            {
+                Component = component,
+                Status = HealthStatus.Degraded,
+                Message = "Outbox/Inbox repositories unavailable",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+
+        try
+        {
+            var outbox = await _outbox.GetDiagnosticsAsync(ct);
+            var inbox = await _inbox.GetDiagnosticsAsync(ct);
+            var deadLetters = outbox.DeadLetter + inbox.DeadLetter;
+
+            return new HealthCheckResult
+            {
+                Component = component,
+                Status = deadLetters > 0 ? HealthStatus.Degraded : HealthStatus.Healthy,
+                Message = $"Outbox pending={outbox.Pending}, sent_unacked={outbox.Sent}, dead_letter={outbox.DeadLetter}; " +
+                          $"Inbox pending={inbox.Pending}, processing={inbox.Processing}, dead_letter={inbox.DeadLetter}",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            return new HealthCheckResult
+            {
+                Component = component,
+                Status = HealthStatus.Degraded,
+                Message = $"Durable messaging check error: {ex.Message}",
                 CheckedAtUtc = _clock.UtcNow
             };
         }

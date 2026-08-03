@@ -12,6 +12,7 @@ public sealed class AutomationManifest
     public string? Category { get; init; }
     public ManifestRuntime Runtime { get; init; } = default!;
     public ManifestEntrypoint Entrypoint { get; init; } = default!;
+    public ManifestExecution? Execution { get; init; }
     public ManifestCapabilities? Capabilities { get; init; }
     public ManifestResources? Resources { get; init; }
     public ManifestTimeout? Timeout { get; init; }
@@ -44,10 +45,20 @@ public sealed class ManifestResources
     public PoolType Pool { get; init; } = PoolType.Background;
     public int Slots { get; init; } = 1;
     public long? MaxMemoryMb { get; init; }
+    public IReadOnlyList<string> ExclusiveResources { get; init; } = Array.Empty<string>();
 }
 
 public sealed class ManifestTimeout
 {
     public int ExecutionSeconds { get; init; } = 3600;
     public int GracefulShutdownSeconds { get; init; } = 30;
+}
+
+public sealed class ManifestExecution
+{
+    public string Mode { get; init; } = "background";
+    public int? TimeoutSeconds { get; init; }
+    public int? GracefulCancellationSeconds { get; init; }
+    public string? SessionPolicy { get; init; }
+    public int? SessionId { get; init; }
 }

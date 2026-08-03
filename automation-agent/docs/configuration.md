@@ -13,6 +13,7 @@
 | Execution | Timeout, cancelamento gracioso, reservas |
 | Capacity | Tamanho dos pools background/browser/interactive |
 | Download | Retries, timeout, limites de extração |
+| **Messaging** | **Outbox/Inbox, batch sender, ACK timeout e dead letter** |
 | Security | Verificação de hash, assinatura, path traversal |
 | **Portal** | **Endpoints, registro, heartbeat, reconexão (Fase 3)** |
 | Development | Diretório alternativo, console logging |
@@ -38,6 +39,16 @@ O token de registro **não deve** ficar em `appsettings.json` versionado:
 ```powershell
 $env:AUTOMATION_AGENT_Portal__RegistrationToken = "token-de-uso-limitado"
 ```
+
+## Seção Messaging
+
+| Chave | Padrão | Descrição |
+|---|---|---|
+| `OutboxBatchSize` | 500 | Máximo de mensagens por ciclo do sender |
+| `PollIntervalSeconds` | 1 | Intervalo dos loops de Outbox e Inbox |
+| `AcknowledgementTimeoutSeconds` | 30 | Tempo para reenviar mensagem sem `message.ack` |
+| `MaxAttempts` | 5 | Tentativas antes de `dead_letter` |
+| `RetryDelaySeconds` | 5 | Reservado para backoff de retry fino |
 
 ## Fontes (em ordem de precedência)
 

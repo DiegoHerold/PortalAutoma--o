@@ -73,3 +73,19 @@ Consequências práticas dessa escolha:
 
 Essas três são a última linha de defesa contra duplicação: mesmo que a lógica de
 aplicação falhe, o banco rejeita.
+
+## Outbox/Inbox em runtime
+
+O Incremento 3 passou a usar as tabelas `outbox_events`, `inbox_commands` e
+`message_acknowledgements` em produção:
+
+- Outbox escreve `event_type` e `message_type` com o mesmo valor para preservar a coluna
+  legada `event_type NOT NULL`.
+- `outbox_events.status`: `pending`, `failed`, `sent`, `acknowledged`, `dead_letter`.
+- `inbox_commands.status`: `pending`, `processing`, `processed`, `dead_letter`.
+- `message_acknowledgements.direction`: `inbound` para ACK recebido do Portal e
+  `outbound` para ACK emitido pelo Agent.
+
+O replay do Outbox é feito alterando mensagens `sent` sem ACK para `failed`, respeitando
+`attempt_count`/`MaxAttempts`. A Inbox usa `message_id` como chave de idempotência e nunca
+processa duas vezes o mesmo comando.

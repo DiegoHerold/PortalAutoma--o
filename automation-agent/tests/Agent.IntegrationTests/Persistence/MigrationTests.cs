@@ -5,7 +5,7 @@ using Xunit;
 namespace Biason.AutomationAgent.IntegrationTests.Persistence;
 
 /// <summary>
-/// Cobertura das migrations 1 a 3.
+/// Cobertura das migrations 1 a 5.
 ///
 /// Usa <see cref="TestHelper"/> em vez de construir o SqliteDatabaseManager
 /// diretamente: ele exige IDirectoryResolver e IOptions&lt;DatabaseOptions&gt;,
@@ -86,7 +86,12 @@ public sealed class MigrationTests : IAsyncLifetime
         tables.Should().Contain("session_runners");
         tables.Should().Contain("interactive_sessions");
         tables.Should().Contain("session_events");
+        tables.Should().Contain("session_runner_connections");
         tables.Should().Contain("resource_locks");
+        tables.Should().Contain("interactive_execution_assignments");
+        tables.Should().Contain("interactive_execution_processes");
+        tables.Should().Contain("interactive_execution_screenshots");
+        tables.Should().Contain("application_process_ownership");
         tables.Should().Contain("pending_artifacts");
         tables.Should().Contain("artifact_upload_attempts");
         tables.Should().Contain("protocol_errors");
@@ -140,6 +145,56 @@ public sealed class MigrationTests : IAsyncLifetime
         columns.Should().Contain("lease_id");
         columns.Should().Contain("origin");
         columns.Should().Contain("offer_message_id");
+    }
+
+    [Fact]
+    public async Task Migration5_ExtendsResourceLocksAndCreatesInteractiveTables()
+    {
+        var lockColumns = await GetColumnsAsync("resource_locks");
+        lockColumns.Should().Contain("resource_key");
+        lockColumns.Should().Contain("owner_execution_id");
+        lockColumns.Should().Contain("owner_execution_attempt_id");
+        lockColumns.Should().Contain("session_id");
+        lockColumns.Should().Contain("lease_expires_at_utc");
+        lockColumns.Should().Contain("last_renewed_at_utc");
+        lockColumns.Should().Contain("status");
+
+        (await GetColumnsAsync("interactive_execution_assignments")).Should().Contain(new[]
+        {
+            "execution_id",
+            "execution_attempt_id",
+            "session_id",
+            "session_runner_instance_id",
+            "status",
+            "execution_host_process_id"
+        });
+
+        (await GetColumnsAsync("interactive_execution_processes")).Should().Contain(new[]
+        {
+            "process_id",
+            "session_id",
+            "process_path",
+            "kind",
+            "status"
+        });
+
+        (await GetColumnsAsync("interactive_execution_screenshots")).Should().Contain(new[]
+        {
+            "artifact_id",
+            "reason",
+            "local_path",
+            "sha256",
+            "size_bytes"
+        });
+
+        (await GetColumnsAsync("application_process_ownership")).Should().Contain(new[]
+        {
+            "application_key",
+            "process_id",
+            "policy",
+            "ownership_kind",
+            "status"
+        });
     }
 
     // inbox-deduplication (nível de esquema): o índice único é a garantia final
@@ -225,7 +280,7 @@ public sealed class MigrationTests : IAsyncLifetime
         while (await reader.ReadAsync())
             versions.Add(reader.GetInt32(0));
 
-        versions.Should().Equal(1, 2, 3);
+        versions.Should().Equal(1, 2, 3, 4, 5);
     }
 
     [Fact]
@@ -239,6 +294,6 @@ public sealed class MigrationTests : IAsyncLifetime
         using var conn = _helper.DbManager.CreateConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-        Convert.ToInt64(await cmd.ExecuteScalarAsync()).Should().Be(3);
+        Convert.ToInt64(await cmd.ExecuteScalarAsync()).Should().Be(5);
     }
 }

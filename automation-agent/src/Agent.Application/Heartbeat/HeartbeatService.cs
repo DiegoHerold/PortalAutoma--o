@@ -24,6 +24,7 @@ public sealed class HeartbeatService : BackgroundService
     private readonly HeartbeatSnapshotBuilder _snapshotBuilder;
     private readonly IClock _clock;
     private readonly PortalOptions _options;
+    private readonly IOutboxRepository? _outbox;
     private readonly ILogger<HeartbeatService> _logger;
 
     private DateTime? _lastSentAtUtc;
@@ -35,12 +36,14 @@ public sealed class HeartbeatService : BackgroundService
         HeartbeatSnapshotBuilder snapshotBuilder,
         IClock clock,
         IOptions<PortalOptions> options,
-        ILogger<HeartbeatService> logger)
+        ILogger<HeartbeatService> logger,
+        IOutboxRepository? outbox = null)
     {
         _connection = connection;
         _snapshotBuilder = snapshotBuilder;
         _clock = clock;
         _options = options.Value;
+        _outbox = outbox;
         _logger = logger;
 
         _connection.MessageReceived += OnMessageReceivedAsync;
@@ -87,9 +90,10 @@ public sealed class HeartbeatService : BackgroundService
         try
         {
             var status = _connection.GetStatus();
+            var outboxPending = _outbox is null ? 0 : await _outbox.CountPendingAsync(ct);
             var payload = await _snapshotBuilder.BuildAsync(
                 _connection.CurrentState,
-                outboxPending: 0, // Outbox chega no Incremento 3 — sem fila persistente ainda.
+                outboxPending: outboxPending,
                 pendingArtifacts: 0, // Upload de artefatos chega no Incremento 6.
                 ct);
 
@@ -118,7 +122,13 @@ public sealed class HeartbeatService : BackgroundService
         if (message.MessageType == PortalMessageTypes.HeartbeatAck)
         {
             _lastAckAtUtc = _clock.UtcNow;
-            _logger.LogDebug("Heartbeat ack recebido (correlation_id={CorrelationId}).", message.CorrelationId);
+
+            // Correlacionar não é obrigatório (qualquer ack é sinal de vida do Portal),
+            // mas ajuda a diagnosticar acks atrasados/fora de ordem nos logs.
+            var matchesLastSent = string.Equals(message.CorrelationId, _lastCorrelationId, StringComparison.Ordinal);
+            _logger.LogDebug(
+                "Heartbeat ack recebido (correlation_id={CorrelationId}, corresponde ao último enviado={Matches}).",
+                message.CorrelationId, matchesLastSent);
         }
 
         return Task.CompletedTask;

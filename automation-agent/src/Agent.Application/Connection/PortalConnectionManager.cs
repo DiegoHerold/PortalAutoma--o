@@ -72,6 +72,9 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
 
     public ConnectionState CurrentState => _state;
 
+    /// <summary>True enquanto <see cref="RunAsync"/> está ativo nesta instância. Diagnóstico/teste.</summary>
+    public bool IsRunning => _running;
+
     public event Func<ConnectionState, ConnectionState, Task>? StateChanged;
     public event Func<InboundPortalMessage, Task>? MessageReceived;
 
@@ -252,12 +255,6 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
 
     public async Task<bool> TrySendAsync(string messageType, object payload, string? correlationId = null, CancellationToken ct = default)
     {
-        Channel<string>? channel;
-        lock (_lock) { channel = _outbound; }
-
-        if (channel is null || !ConnectionStateMachine.IsOperational(_state))
-            return false;
-
         var identity = await _identity.GetIdentityAsync(ct);
 
         var envelope = ProtocolEnvelope.Create(
@@ -275,10 +272,21 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
             return false;
         }
 
+        return await TrySendSerializedAsync(json, ct);
+    }
+
+    public Task<bool> TrySendSerializedAsync(string serializedEnvelope, CancellationToken ct = default)
+    {
+        Channel<string>? channel;
+        lock (_lock) { channel = _outbound; }
+
+        if (channel is null || !ConnectionStateMachine.IsOperational(_state))
+            return Task.FromResult(false);
+
         // TryWrite é não bloqueante de propósito: "Try"Send não deve travar o chamador
         // (ex.: o laço do heartbeat) se a fila estiver cheia. Quando o Outbox existir
         // (Incremento 3), ele decide se tenta de novo depois — não aqui.
-        return channel.Writer.TryWrite(json);
+        return Task.FromResult(channel.Writer.TryWrite(serializedEnvelope));
     }
 
     private async Task SendLoopAsync(IWebSocketTransport transport, ChannelReader<string> reader, CancellationToken ct)
@@ -351,7 +359,10 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
 
         var handler = MessageReceived;
         if (handler is not null)
-            await handler(message);
+        {
+            foreach (Func<InboundPortalMessage, Task> subscriber in handler.GetInvocationList())
+                await subscriber(message);
+        }
     }
 
     /// <summary>

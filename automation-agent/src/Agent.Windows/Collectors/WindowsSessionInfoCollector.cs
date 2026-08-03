@@ -2,15 +2,25 @@ using System.Runtime.InteropServices;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Enums;
 using Biason.AutomationAgent.Domain.Models;
+using Biason.AutomationAgent.Domain.Models.Sessions;
 using Microsoft.Extensions.Logging;
 
 namespace Biason.AutomationAgent.Windows.Collectors;
 
 public sealed class WindowsSessionInfoCollector : ISessionInfoCollector
 {
+    private readonly IWindowsSessionDiscovery? _discovery;
     private readonly ILogger<WindowsSessionInfoCollector> _logger;
 
     public WindowsSessionInfoCollector(ILogger<WindowsSessionInfoCollector> logger) => _logger = logger;
+
+    public WindowsSessionInfoCollector(
+        IWindowsSessionDiscovery discovery,
+        ILogger<WindowsSessionInfoCollector> logger)
+    {
+        _discovery = discovery;
+        _logger = logger;
+    }
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int nIndex);
@@ -23,6 +33,18 @@ public sealed class WindowsSessionInfoCollector : ISessionInfoCollector
     {
         try
         {
+            if (_discovery is not null)
+            {
+                var sessions = _discovery.DiscoverAsync().GetAwaiter().GetResult();
+                var selected = sessions
+                    .OrderByDescending(s => s.State == WindowsSessionState.Active)
+                    .ThenByDescending(s => s.IsConsole)
+                    .FirstOrDefault();
+
+                if (selected is not null)
+                    return MapDiscovered(selected);
+            }
+
             var sessionId = System.Diagnostics.Process.GetCurrentProcess().SessionId;
             var user = Environment.UserName;
             var domain = Environment.UserDomainName;
@@ -89,6 +111,29 @@ public sealed class WindowsSessionInfoCollector : ISessionInfoCollector
                 Type = SessionType.Unknown
             };
         }
+    }
+
+    private static SessionInfo MapDiscovered(WindowsSession session)
+    {
+        var status = session.State switch
+        {
+            WindowsSessionState.Active or WindowsSessionState.Connected => SessionStatus.Available,
+            WindowsSessionState.Locked => SessionStatus.Locked,
+            WindowsSessionState.Disconnected or WindowsSessionState.Terminated => SessionStatus.NoSession,
+            _ => SessionStatus.Unknown
+        };
+
+        return new SessionInfo
+        {
+            Status = status,
+            IsLocked = session.Desktop.Locked ?? (session.State == WindowsSessionState.Locked ? true : null),
+            User = string.IsNullOrWhiteSpace(session.Domain) ? session.User : $"{session.Domain}\\{session.User}",
+            SessionId = session.SessionId,
+            Type = session.Type,
+            ScreenWidth = session.Desktop.Resolution?.Width,
+            ScreenHeight = session.Desktop.Resolution?.Height,
+            MonitorCount = session.Desktop.MonitorCount
+        };
     }
 
     [DllImport("user32.dll", SetLastError = true)]

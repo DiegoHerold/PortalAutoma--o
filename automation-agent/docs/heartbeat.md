@@ -35,9 +35,9 @@ brief proíbe recriar telemetria que já existe.
 
 ## Campos ainda não preenchidos (por design, não por esquecimento)
 
-- `outbox_pending` e `pending_artifacts` são enviados como `0` — o Outbox
-  (Incremento 3) e o upload de artefatos (Incremento 6) ainda não existem. Quando
-  existirem, `HeartbeatService` passa a consultá-los em vez do valor fixo.
+- `outbox_pending` agora vem do Outbox persistente (Incremento 3).
+- `pending_artifacts` ainda é enviado como `0` — upload de artefatos chega no
+  Incremento 6.
 - `interactive_session.available` é sempre `false` — sem Session Runner (Incremento 7+)
   o Agent não tem como saber se existe sessão interativa.
 

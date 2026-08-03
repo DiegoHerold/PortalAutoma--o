@@ -18,6 +18,7 @@ public static class RuntimeLauncher
             "powershellscript" or "powershell_script" => BuildPowerShell(config),
             "executable" => BuildExecutable(config),
             "browserplaywright" or "browser_playwright" => BuildBrowserPlaywright(config),
+            "pythondesktop" or "python_desktop" => BuildPythonDesktop(config),
             _ => throw new InvalidOperationException($"Unsupported entrypoint type: {config.Entrypoint.Type}")
         };
     }
@@ -146,6 +147,34 @@ public static class RuntimeLauncher
         return psi;
     }
 
+    private static ProcessStartInfo BuildPythonDesktop(ExecutionConfig config)
+    {
+        if (!string.Equals(config.Mode, "interactive", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("python_desktop entrypoint is allowed only for interactive execution mode");
+
+        var psi = config.Entrypoint.Module is null
+            ? BuildPythonModule(config)
+            : BuildPythonFunction(config);
+
+        psi.Environment["AUTOMATION_INTERACTIVE_MODE"] = "true";
+        psi.Environment["PYAUTOGUI_FAILSAFE"] = "true";
+        psi.Environment["PYAUTOGUI_PAUSE_SECONDS"] = "0.1";
+
+        if (config.InteractiveContext is not null)
+        {
+            psi.Environment["AUTOMATION_SESSION_ID"] = config.InteractiveContext.SessionId.ToString();
+            psi.Environment["AUTOMATION_DESKTOP_DPI_SCALE"] = config.InteractiveContext.DpiScale?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+            psi.Environment["AUTOMATION_MONITOR_COUNT"] = config.InteractiveContext.MonitorCount?.ToString() ?? "";
+            if (config.InteractiveContext.DesktopResolution is not null)
+            {
+                psi.Environment["AUTOMATION_DESKTOP_WIDTH"] = config.InteractiveContext.DesktopResolution.Width.ToString();
+                psi.Environment["AUTOMATION_DESKTOP_HEIGHT"] = config.InteractiveContext.DesktopResolution.Height.ToString();
+            }
+        }
+
+        return psi;
+    }
+
     private static ProcessStartInfo CreateBase(ExecutionConfig config, string fileName, string arguments)
     {
         var psi = new ProcessStartInfo
@@ -167,6 +196,7 @@ public static class RuntimeLauncher
         psi.Environment["AUTOMATION_ARTIFACTS_PATH"] = config.Paths.ArtifactsPath;
         psi.Environment["AUTOMATION_TEMP_PATH"] = config.Paths.TempPath;
         psi.Environment["AUTOMATION_LOGS_PATH"] = config.Paths.LogsPath;
+        psi.Environment["AUTOMATION_EXECUTION_MODE"] = config.Mode;
 
         // Apply custom environment (secrets via env vars, not command line)
         if (config.Environment is not null)
