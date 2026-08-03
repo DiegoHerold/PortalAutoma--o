@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Archive, ExternalLink, Pencil, Play, Plus } from "lucide-react";
+import { Archive, ExternalLink, Pencil, Play } from "lucide-react";
 
 import { PageTitle } from "@/components/shared/page-title";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
@@ -21,10 +21,9 @@ import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { flowStatusMeta, flowVersionStatusMeta, jobStatusMeta } from "@/lib/status";
 import { FlowEditor } from "@/components/flows/editor/flow-editor";
-import { VersionsPanel } from "@/components/flows/versions-panel";
 import { FlowForm, flowToForm, parseTags, type FlowFormState } from "@/components/flows/flow-form";
 import { RunFlowDialog } from "@/components/flows/run-flow-dialog";
-import { archiveFlow, createFlowVersion, updateFlow } from "@/lib/flow-api";
+import { archiveFlow, cloneFlowVersionInto, createFlowVersion, listFlowEdges, listFlowNodes, nextSemver, updateFlow } from "@/lib/flow-api";
 import type { Category } from "@/types/category";
 import type { Flow, FlowExecution, FlowVersion } from "@/types/flow";
 
@@ -40,13 +39,15 @@ export function FlowDetailShell({ flowId }: { flowId: string }) {
   const categories = useApi<Category[]>("/categories");
   const executions = useApi<FlowExecution[]>("/flow-executions?limit=300", { pollMs: 15000 });
 
-  const tab = searchParams.get("tab") ?? "editor";
+  const tab = searchParams.get("tab") === "executions" ? "executions" : "editor";
   const versionParam = searchParams.get("version");
 
   const [formOpen, setFormOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
-  const [creatingVersion, setCreatingVersion] = useState(false);
+  const [preparingEditor, setPreparingEditor] = useState(false);
+  const [editorPrepared, setEditorPrepared] = useState(false);
+  const [creatingEditableDraft, setCreatingEditableDraft] = useState(false);
 
   function setQuery(patch: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString());
@@ -75,20 +76,19 @@ export function FlowDetailShell({ flowId }: { flowId: string }) {
     return draftVersion ?? headlineVersion;
   }, [versionParam, sortedVersions, draftVersion, headlineVersion]);
 
-  async function handleCreateFirstVersion() {
-    if (!token) return;
-    setCreatingVersion(true);
-    try {
-      const created = await createFlowVersion(token, flowId, { version: "1.0.0" });
-      await versions.refetch();
-      setQuery({ version: created.id });
-      toast({ title: "Versão 1.0.0 criada", kind: "success" });
-    } catch (err) {
-      toast({ title: "Falha ao criar versão", description: err instanceof Error ? err.message : undefined, kind: "error" });
-    } finally {
-      setCreatingVersion(false);
-    }
-  }
+  useEffect(() => {
+    if (!token || !flow.data || versions.loading || versions.data?.length || editorPrepared) return;
+    setEditorPrepared(true);
+    setPreparingEditor(true);
+    createFlowVersion(token, flowId, { version: "0.1.0" })
+      .then(async (created) => {
+        await versions.refetch();
+        setQuery({ version: created.id });
+      })
+      .catch((err) => toast({ title: "Não foi possível preparar o editor", description: err instanceof Error ? err.message : undefined, kind: "error" }))
+      .finally(() => setPreparingEditor(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, flow.data?.id, versions.loading, versions.data?.length, editorPrepared]);
 
   async function handleEditSubmit(form: FlowFormState) {
     if (!token || !flow.data) return;
@@ -119,6 +119,22 @@ export function FlowDetailShell({ flowId }: { flowId: string }) {
       await flow.refetch();
     } catch (err) {
       toast({ title: "Falha ao arquivar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+    }
+  }
+
+  async function handleCreateEditableDraft() {
+    if (!token || !activeVersion) return;
+    setCreatingEditableDraft(true);
+    try {
+      const [nodes, edges] = await Promise.all([listFlowNodes(token, activeVersion.id), listFlowEdges(token, activeVersion.id)]);
+      const draft = await cloneFlowVersionInto(token, flowId, activeVersion, nodes, edges, nextSemver(sortedVersions));
+      await versions.refetch();
+      setQuery({ version: draft.id });
+      toast({ title: "Edição preparada", description: "Você está alterando um novo rascunho; a publicação anterior permanece preservada.", kind: "success" });
+    } catch (err) {
+      toast({ title: "Falha ao preparar edição", description: err instanceof Error ? err.message : undefined, kind: "error" });
+    } finally {
+      setCreatingEditableDraft(false);
     }
   }
 
@@ -183,22 +199,19 @@ export function FlowDetailShell({ flowId }: { flowId: string }) {
         onValueChange={setTab}
         items={[
           { value: "editor", label: "Editor" },
-          { value: "versions", label: "Versões", count: sortedVersions.length },
           { value: "executions", label: "Execuções", count: flowExecutionsForThisFlow.length },
         ]}
       />
 
       {tab === "editor" &&
         (sortedVersions.length === 0 ? (
-          <EmptyState
-            title="Sem versões"
-            description="Crie a primeira versão (rascunho) para começar a montar o Fluxo no editor visual."
-            action={
-              <Button onClick={handleCreateFirstVersion} disabled={creatingVersion}>
-                <Plus className="h-4 w-4" /> {creatingVersion ? "Criando..." : "Criar versão 1.0.0"}
-              </Button>
-            }
-          />
+          <div className="flex h-[420px] items-center justify-center rounded-lg border border-border bg-card">
+            <div className="text-center">
+              <p className="text-sm font-semibold">Preparando o editor</p>
+              <p className="mt-1 text-sm text-muted-foreground">O primeiro rascunho é criado automaticamente.</p>
+              {preparingEditor && <Skeleton className="mx-auto mt-4 h-2 w-32" />}
+            </div>
+          </div>
         ) : activeVersion ? (
           <div className="space-y-3">
             {sortedVersions.length > 1 && (
@@ -221,21 +234,14 @@ export function FlowDetailShell({ flowId }: { flowId: string }) {
             <FlowEditor
               key={activeVersion.id}
               flowVersion={activeVersion}
+              suggestedPublishVersion={nextSemver(sortedVersions.filter((version) => version.status === "published"))}
+              onCreateEditableDraft={creatingEditableDraft ? undefined : handleCreateEditableDraft}
               onVersionChange={(updated) => {
                 versions.mutate((prev) => (prev ?? []).map((v) => (v.id === updated.id ? updated : v)));
               }}
             />
           </div>
         ) : null)}
-
-      {tab === "versions" && (
-        <VersionsPanel
-          flow={flow.data}
-          versions={sortedVersions}
-          onOpenEditor={(versionId) => setQuery({ tab: null, version: versionId })}
-          onRefetch={versions.refetch}
-        />
-      )}
 
       {tab === "executions" && (
         <FlowExecutionsTab

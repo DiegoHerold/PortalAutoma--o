@@ -2,9 +2,23 @@
   <PropertyGroup>
     <RootNamespace>Biason.AutomationAgent.Windows</RootNamespace>
     <AssemblyName>Agent.Windows</AssemblyName>
+    <!--
+      Este projeto só roda no Windows por desenho: registro (Microsoft.Win32.Registry),
+      WMI (System.Management) e checagem de elevação (WindowsIdentity/WindowsPrincipal).
+      CA1416 (compatibilidade de plataforma) sinaliza cada uma dessas chamadas como
+      insegura em outros SOs — que é exatamente o cenário que nunca ocorre aqui, já que
+      este assembly nunca é carregado fora do Windows (é referenciado só por Agent.Service,
+      publicado como Windows Service, e usado via DI só nas implementações concretas).
+      Suprimir é preferível a mudar o TargetFramework para net8.0-windows: isso obrigaria
+      Agent.Application, Agent.Service e os projetos de teste (que também referenciam
+      este projeto) a virarem net8.0-windows em cascata, quebrando a portabilidade que
+      Agent.Domain/Agent.Protocol/Agent.Infrastructure mantêm hoje para CI.
+    -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>

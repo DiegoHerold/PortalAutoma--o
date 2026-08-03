@@ -6,14 +6,84 @@ import { Trash2, AlertTriangle } from "lucide-react";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
+import { Field, Input, Label, Select } from "@/components/ui/input";
 import { Tabs } from "@/components/ui/tabs";
 import { ConditionEditor } from "@/components/flows/editor/condition-editor";
 import { MappingEditor } from "@/components/flows/editor/mapping-editor";
+import { SwitchCaseEditor } from "@/components/flows/editor/switch-editor";
+import { ifElseRule, switchConfigOf, type SwitchConfig } from "@/components/flows/editor/branch-logic";
 import type { FlowCanvasNode } from "@/components/flows/editor/types";
-import type { Automation } from "@/types/automation";
-import type { AutomationVersionResponse as AutomationVersion } from "@/types/catalog";
-import type { FlowFailurePolicy } from "@/types/flow";
+import type { FlowFailurePolicy, FlowNodeType } from "@/types/flow";
+
+/** Rótulo curto para o subtítulo do painel — mais legível que o node_type cru. */
+function nodeTypeLabel(nodeType: FlowNodeType): string {
+  const labels: Record<FlowNodeType, string> = {
+    automation: "Automação",
+    condition: "Regra de continuidade",
+    join: "Join",
+    if_else: "If / Else",
+    switch: "Switch",
+    merge: "Merge Data",
+    set_variable: "Set Variable",
+    map_fields: "Map Fields",
+    transform_data: "Transform Data",
+  };
+  return labels[nodeType] ?? nodeType;
+}
+
+/** Texto de apoio da aba "Etapa" para tipos que não são automation — cada bloco aponta para
+ * a aba certa em vez de repetir o mesmo texto genérico para todos. */
+function stepHintFor(nodeType: FlowNodeType): string {
+  switch (nodeType) {
+    case "if_else":
+      return "Use a aba Verdadeiro / Falso para definir a regra. As duas saídas já ficam conectadas automaticamente às arestas certas.";
+    case "switch":
+      return "Use a aba Casos para definir o campo testado e os valores que geram cada saída.";
+    case "condition":
+      return "Use a aba Quando para definir o teste que decide se este passo continua.";
+    case "join":
+      return "Use a aba Execução para definir se este ponto espera todas as entradas ou só a primeira.";
+    case "merge":
+      return "Use a aba Dados para escolher os campos combinados e a aba Execução para o critério de espera.";
+    case "set_variable":
+      return "Use a aba Dados para definir as variáveis desta etapa.";
+    case "map_fields":
+      return "Use a aba Dados para escolher e renomear os campos.";
+    case "transform_data":
+      return "Use a aba Dados para escolher o campo e a transformação aplicada.";
+    default:
+      return "Use a aba Execução para definir como este ponto espera as etapas anteriores.";
+  }
+}
+
+type MappingCopy = { title: string; description: string; fieldLabel: string; allowTransform: boolean };
+
+/** Copy da aba "Dados" por tipo de bloco — cada um usa o mesmo mecanismo (input_mapping),
+ * mas com um propósito diferente, então o texto e os rótulos não podem ser genéricos. */
+function mappingCopyFor(nodeType: FlowNodeType): MappingCopy {
+  switch (nodeType) {
+    case "set_variable":
+      return { title: "Variáveis desta etapa", description: "Cada campo abaixo vira uma variável disponível para as próximas etapas.", fieldLabel: "nome da variável", allowTransform: false };
+    case "map_fields":
+      return { title: "Campos mapeados", description: "Selecione e renomeie campos vindos de etapas anteriores.", fieldLabel: "nome do campo de saída", allowTransform: false };
+    case "transform_data":
+      return { title: "Transformações", description: "Escolha o campo de origem e a transformação aplicada a cada um.", fieldLabel: "nome do campo de saída", allowTransform: true };
+    case "merge":
+      return { title: "Campos combinados", description: "Escolha quais campos de cada caminho paralelo entram no objeto final combinado.", fieldLabel: "campo do resultado combinado", allowTransform: false };
+    case "if_else":
+      return { title: "Dados para as próximas etapas", description: "Opcional — ajuste apenas se quiser renomear ou filtrar campos antes de seguir para Verdadeiro ou Falso.", fieldLabel: "campo que a próxima etapa espera", allowTransform: false };
+    case "switch":
+      return { title: "Dados para as próximas etapas", description: "Opcional — ajuste apenas se quiser renomear ou filtrar campos antes de seguir para o caso escolhido.", fieldLabel: "campo que a próxima etapa espera", allowTransform: false };
+    default:
+      return { title: "Inputs (entrada da automação)", description: "Por padrão, esta etapa recebe todos os dados de entrada do fluxo. Ajuste apenas os campos que precisarem mudar.", fieldLabel: "campo que a etapa espera", allowTransform: false };
+  }
+}
+
+/** Estes tipos são passo-a-passo puro (produzem a saída só a partir de input_mapping — ver
+ * _release_ready_nodes no backend); não faz sentido mostrar o segundo editor de
+ * "output_mapping" para eles porque o motor não lê esse campo (mesmo comportamento que
+ * condition/join já têm hoje — ver nota em node_type "automation"/"condition"/"join" abaixo). */
+const SINGLE_MAPPING_NODE_TYPES = new Set<FlowNodeType>(["if_else", "switch", "merge", "set_variable", "map_fields", "transform_data"]);
 
 export type NodeConfigPatch = {
   name?: string;
@@ -31,30 +101,24 @@ export type NodeConfigPatch = {
 export function NodePanel({
   node,
   upstreamNodes,
-  automations,
-  automationVersions,
-  onLoadAutomationVersions,
   readOnly,
   onClose,
+  onChangeAutomation,
   onSave,
   onDelete,
   onDuplicate,
 }: {
   node: FlowCanvasNode | null;
   upstreamNodes: { key: string; name: string }[];
-  automations: Automation[];
-  automationVersions: AutomationVersion[];
-  onLoadAutomationVersions: (automationId: number) => void;
   readOnly: boolean;
   onClose: () => void;
+  onChangeAutomation: () => void;
   onSave: (patch: NodeConfigPatch) => void;
   onDelete: () => void;
   onDuplicate: () => void;
 }) {
   const [tab, setTab] = useState("config");
   const [name, setName] = useState("");
-  const [automationId, setAutomationId] = useState<string>("");
-  const [automationVersionId, setAutomationVersionId] = useState<string>("");
   const [inputMapping, setInputMapping] = useState<Record<string, unknown>>({});
   const [outputMapping, setOutputMapping] = useState<Record<string, unknown>>({});
   const [condition, setCondition] = useState<Record<string, unknown> | null>(null);
@@ -64,72 +128,60 @@ export function NodePanel({
   const [timeoutSeconds, setTimeoutSeconds] = useState("");
   const [dependencyPolicy, setDependencyPolicy] = useState("all");
   const [failurePolicy, setFailurePolicy] = useState<FlowFailurePolicy>("fail_flow");
-  const [configJson, setConfigJson] = useState("{}");
+  const [rule, setRule] = useState<Record<string, unknown> | null>(null);
+  const [switchConfig, setSwitchConfig] = useState<SwitchConfig>({ subject: null, cases: [], hasDefault: true });
 
   useEffect(() => {
     if (!node) return;
     const fn = node.data.flowNode;
     setTab("config");
     setName(fn.name || "");
-    setAutomationVersionId(fn.automation_version_id ? String(fn.automation_version_id) : "");
     setInputMapping(fn.input_mapping || {});
     setOutputMapping(fn.output_mapping || {});
-    setConditionEnabled(Boolean(fn.condition));
+    setConditionEnabled(fn.node_type === "condition" || Boolean(fn.condition));
     setCondition(fn.condition ?? null);
+    setRule(ifElseRule(fn));
+    setSwitchConfig(switchConfigOf(fn));
     setMaxAttempts(String((fn.retry_policy as Record<string, unknown> | undefined)?.max_attempts ?? 1));
     setMaxRetries(String((fn.retry_policy as Record<string, unknown> | undefined)?.max_retries ?? 0));
     setTimeoutSeconds(String((fn.timeout_policy as Record<string, unknown> | undefined)?.execution_timeout_seconds ?? ""));
     setDependencyPolicy(String((fn.execution_policy as Record<string, unknown> | undefined)?.dependency_policy ?? "all"));
     setFailurePolicy(fn.failure_policy);
-    setConfigJson(JSON.stringify(fn.configuration || {}, null, 2));
   }, [node]);
-
-  useEffect(() => {
-    if (!node) return;
-    const fn = node.data.flowNode;
-    if (fn.node_type !== "automation" || !fn.automation_version_id) {
-      setAutomationId("");
-      return;
-    }
-    const match = automationVersions.find((v) => v.id === fn.automation_version_id);
-    if (match) setAutomationId(String(match.automation_id));
-  }, [node, automationVersions]);
 
   if (!node) return null;
   const fn = node.data.flowNode;
-  const allVersionsForAutomation = automationId ? automationVersions.filter((v) => v.automation_id === Number(automationId)) : [];
-  const versionsForAutomation = allVersionsForAutomation.filter((v) => v.status === "published");
-  const nonPublishedCount = allVersionsForAutomation.length - versionsForAutomation.length;
+  const isIfElse = fn.node_type === "if_else";
+  const isSwitch = fn.node_type === "switch";
 
   function save() {
-    let configuration: Record<string, unknown> = {};
-    try {
-      configuration = JSON.parse(configJson);
-    } catch {
-      // ignora config inválida, mantém {}
-    }
     onSave({
       name,
-      automation_version_id: automationVersionId ? Number(automationVersionId) : null,
       input_mapping: inputMapping,
       output_mapping: outputMapping,
-      condition: conditionEnabled ? condition : null,
+      // If/Else e Switch nunca usam node.condition — a ramificação real mora nas arestas
+      // que saem de cada handle (ver branch-logic.ts). Deixar isso null evita que o próprio
+      // nó fique "skipped" e quebre as saídas (ver nota em use_cases.ValidateFlowVersion).
+      condition: isIfElse || isSwitch ? null : conditionEnabled ? condition : null,
       retry_policy: { max_attempts: Number(maxAttempts) || 1, max_retries: Number(maxRetries) || 0 },
       timeout_policy: timeoutSeconds ? { execution_timeout_seconds: Number(timeoutSeconds) } : {},
       failure_policy: failurePolicy,
       execution_policy: { dependency_policy: dependencyPolicy },
-      configuration,
+      configuration: isIfElse ? { ...fn.configuration, rule } : isSwitch ? { ...fn.configuration, switch: switchConfig } : fn.configuration,
     });
   }
 
   const nodeIssues = node.data.issues;
+  const mappingCopy = mappingCopyFor(fn.node_type);
+  const showOutputMapping = !SINGLE_MAPPING_NODE_TYPES.has(fn.node_type);
+  const branchTabLabel = isIfElse ? "Verdadeiro / Falso" : isSwitch ? "Casos" : "Quando";
 
   return (
     <Sheet
       open={Boolean(node)}
       onClose={onClose}
       title={fn.name || fn.key}
-      description={`${fn.node_type} · ${fn.key}`}
+      description={`${nodeTypeLabel(fn.node_type)} · ${fn.key}`}
       widthClassName="w-full sm:max-w-2xl"
       footer={
         !readOnly && (
@@ -140,7 +192,7 @@ export function NodePanel({
             <Button variant="outline" onClick={onDuplicate}>
               Duplicar
             </Button>
-            <Button onClick={save}>Salvar</Button>
+            <Button onClick={save}>Salvar nó</Button>
           </>
         )
       }
@@ -160,11 +212,10 @@ export function NodePanel({
           value={tab}
           onValueChange={setTab}
           items={[
-            { value: "config", label: "Configuração" },
-            { value: "mappings", label: "Mapeamentos" },
-            { value: "condition", label: "Condição" },
-            { value: "retry", label: "Retry & Timeout" },
-            { value: "failure", label: "Falha" },
+            { value: "config", label: "Etapa" },
+            { value: "mappings", label: "Dados" },
+            { value: "condition", label: branchTabLabel },
+            { value: "behavior", label: "Execução" },
           ]}
         />
 
@@ -172,119 +223,120 @@ export function NodePanel({
           <div className="space-y-4">
             <Field>
               <Label htmlFor="node-name">Nome</Label>
-              <Input id="node-name" value={name} disabled={readOnly} onChange={(e) => setName(e.target.value)} />
+              <Input id="node-name" placeholder="Dê um nome que explique esta etapa" value={name} disabled={readOnly} onChange={(e) => setName(e.target.value)} />
             </Field>
 
             {fn.node_type === "automation" && (
-              <>
-                <Field>
-                  <Label htmlFor="node-automation">Automação</Label>
-                  <Select
-                    id="node-automation"
-                    value={automationId}
-                    disabled={readOnly}
-                    onChange={(e) => {
-                      setAutomationId(e.target.value);
-                      setAutomationVersionId("");
-                      if (e.target.value) onLoadAutomationVersions(Number(e.target.value));
-                    }}
-                  >
-                    <option value="">Selecione...</option>
-                    {automations.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </Select>
-                  {automations.length === 0 && (
-                    <p className="text-xs text-warning">
-                      Nenhuma automação encontrada. Cadastre e importe um pacote em Automações antes de montar o Fluxo.
-                    </p>
-                  )}
-                </Field>
-                <Field>
-                  <Label htmlFor="node-automation-version">Versão publicada</Label>
-                  <Select id="node-automation-version" value={automationVersionId} disabled={readOnly || !automationId} onChange={(e) => setAutomationVersionId(e.target.value)}>
-                    <option value="">Selecione...</option>
-                    {versionsForAutomation.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        v{v.version}
-                      </option>
-                    ))}
-                  </Select>
-                  {automationId && versionsForAutomation.length === 0 && (
-                    <p className="text-xs text-warning">
-                      {nonPublishedCount > 0
-                        ? `Esta automação tem ${nonPublishedCount} versão(ões), mas nenhuma publicada. Só é possível usar num Fluxo uma versão publicada — abra a automação em Automações e clique em "Publicar".`
-                        : "Esta automação ainda não tem nenhuma versão importada."}
-                    </p>
-                  )}
-                </Field>
-              </>
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <p className="text-xs font-medium text-muted-foreground">Automação desta etapa</p>
+                <p className="mt-1 text-sm font-semibold">{node.data.automationName ?? "Nenhuma automação vinculada"}</p>
+                {!readOnly && (
+                  <Button size="sm" variant="outline" className="mt-3" onClick={onChangeAutomation}>
+                    Trocar automação
+                  </Button>
+                )}
+              </div>
             )}
 
-            <Field>
-              <Label htmlFor="node-config">Configuração avançada (JSON)</Label>
-              <Textarea id="node-config" rows={6} className="font-mono text-xs" disabled={readOnly} value={configJson} onChange={(e) => setConfigJson(e.target.value)} />
-              <p className="text-xs text-muted-foreground">
-                Opcional. Só use se a automação precisar de parâmetros extras fixos que não vêm do mapeamento de entrada.
-              </p>
-            </Field>
+            {fn.node_type !== "automation" && (
+              <div className="rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">{stepHintFor(fn.node_type)}</div>
+            )}
           </div>
         )}
 
         {tab === "mappings" && (
           <div className="space-y-6">
             <MappingEditor
-              title="Inputs (entrada da automação)"
-              description="De onde vem cada campo que a automação deste nó vai receber."
+              title={mappingCopy.title}
+              description={mappingCopy.description}
+              fieldLabel={mappingCopy.fieldLabel}
+              allowTransform={mappingCopy.allowTransform}
               mapping={inputMapping}
               upstreamNodes={upstreamNodes}
               onChange={setInputMapping}
               readOnly={readOnly}
             />
-            <div className="border-t border-border pt-4">
-              <MappingEditor
-                title="Outputs (saída do nó)"
-                description="Como montar a saída deste nó a partir do resultado da automação — opcional."
-                mapping={outputMapping}
-                upstreamNodes={upstreamNodes}
-                onChange={setOutputMapping}
-                readOnly={readOnly}
-              />
-            </div>
+            {/* output_mapping não é lido pelo motor para estes tipos (nem para automation, hoje —
+                ver SINGLE_MAPPING_NODE_TYPES acima); evitamos mostrar um segundo editor que não
+                teria efeito nenhum na execução real do Flow. */}
+            {showOutputMapping && (
+              <div className="border-t border-border pt-4">
+                <MappingEditor
+                  title="Dados disponibilizados para as próximas etapas"
+                  description="Opcional. Use somente quando quiser renomear ou selecionar parte do resultado desta etapa."
+                  mapping={outputMapping}
+                  upstreamNodes={upstreamNodes}
+                  onChange={setOutputMapping}
+                  readOnly={readOnly}
+                />
+              </div>
+            )}
           </div>
         )}
 
         {tab === "condition" && (
           <div className="space-y-3">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={conditionEnabled} disabled={readOnly} onChange={(e) => setConditionEnabled(e.target.checked)} />
-              Só executar este nó se a condição abaixo for verdadeira
-            </label>
-            {conditionEnabled && (
-              <ConditionEditor
-                value={condition}
-                onChange={setCondition}
-                upstreamNodes={upstreamNodes}
-                readOnly={readOnly}
-                emptyHint="Adicione uma regra — sem nenhuma regra, este nó sempre executa."
-              />
+            {isIfElse ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Defina a regra que decide entre as duas saídas. Verdadeiro e Falso já ficam conectados automaticamente às arestas certas — não é preciso configurar as conexões manualmente.
+                </p>
+                <ConditionEditor
+                  value={rule}
+                  onChange={setRule}
+                  upstreamNodes={upstreamNodes}
+                  readOnly={readOnly}
+                  emptyHint="Sem regra definida: a saída Verdadeiro sempre segue."
+                />
+              </>
+            ) : isSwitch ? (
+              <>
+                <p className="text-sm text-muted-foreground">Defina o campo testado e os valores que geram cada saída. Cada caso e a saída Padrão já ficam conectados automaticamente às arestas certas.</p>
+                <SwitchCaseEditor value={switchConfig} onChange={setSwitchConfig} upstreamNodes={upstreamNodes} readOnly={readOnly} />
+              </>
+            ) : fn.node_type === "condition" ? (
+              <>
+                <p className="text-sm text-muted-foreground">Defina o que precisa acontecer para este bloco liberar o próximo caminho.</p>
+                <ConditionEditor
+                  value={condition}
+                  onChange={setCondition}
+                  upstreamNodes={upstreamNodes}
+                  readOnly={readOnly}
+                  emptyHint="Escolha uma regra para este bloco de condição."
+                />
+              </>
+            ) : (
+              <>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={conditionEnabled} disabled={readOnly} onChange={(e) => setConditionEnabled(e.target.checked)} />
+                  Executar esta etapa somente quando a condição for atendida
+                </label>
+                {conditionEnabled && (
+                  <ConditionEditor
+                    value={condition}
+                    onChange={setCondition}
+                    upstreamNodes={upstreamNodes}
+                    readOnly={readOnly}
+                    emptyHint="Adicione uma regra para controlar quando esta etapa roda."
+                  />
+                )}
+              </>
             )}
           </div>
         )}
 
-        {tab === "retry" && (
+        {tab === "behavior" && (
+          <div className="space-y-5">
           <div className="grid grid-cols-2 gap-3">
             <Field>
-              <Label htmlFor="node-attempts">Tentativas máximas</Label>
+              <Label htmlFor="node-attempts">Tentativas</Label>
               <Input id="node-attempts" type="number" min={1} disabled={readOnly} value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Quantas vezes tentar rodar, incluindo a 1ª tentativa.</p>
+              <p className="text-xs text-muted-foreground">Use 1 para executar uma única vez.</p>
             </Field>
             <Field>
-              <Label htmlFor="node-retries">Retries</Label>
+              <Label htmlFor="node-retries">Tentar novamente após falha</Label>
               <Input id="node-retries" type="number" min={0} disabled={readOnly} value={maxRetries} onChange={(e) => setMaxRetries(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Novas tentativas após uma falha (0 = não tenta de novo).</p>
+              <p className="text-xs text-muted-foreground">Use 0 para não tentar novamente.</p>
             </Field>
             <Field className="col-span-2">
               <Label htmlFor="node-timeout">Timeout (segundos)</Label>
@@ -292,29 +344,27 @@ export function NodePanel({
               <p className="text-xs text-muted-foreground">Deixe em branco para usar o timeout padrão configurado na automação.</p>
             </Field>
             <Field className="col-span-2">
-              <Label htmlFor="node-dependency-policy">Política de dependência</Label>
+              <Label htmlFor="node-dependency-policy">Quando esta etapa pode começar</Label>
               <Select id="node-dependency-policy" value={dependencyPolicy} disabled={readOnly} onChange={(e) => setDependencyPolicy(e.target.value)}>
                 <option value="all">Aguardar todas as entradas (all)</option>
                 <option value="any">Seguir com a primeira entrada pronta (any)</option>
               </Select>
-              <p className="text-xs text-muted-foreground">Só importa se este nó tiver mais de uma conexão chegando nele.</p>
+              <p className="text-xs text-muted-foreground">Só importa quando houver mais de uma conexão chegando nesta etapa.</p>
             </Field>
           </div>
-        )}
-
-        {tab === "failure" && (
-          <Field>
-            <Label htmlFor="node-failure-policy">O que fazer quando este nó falhar</Label>
-            <Select id="node-failure-policy" value={failurePolicy} disabled={readOnly} onChange={(e) => setFailurePolicy(e.target.value as FlowFailurePolicy)}>
-              <option value="fail_flow">Falhar o Fluxo inteiro</option>
-              <option value="continue">Continuar normalmente</option>
-              <option value="skip_dependents">Pular os nós dependentes</option>
-              <option value="continue_alternative_path">Seguir por caminho alternativo (aresta de falha)</option>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              &quot;Caminho alternativo&quot; só funciona se este nó tiver uma conexão do tipo &quot;Falha&quot; saindo dele.
-            </p>
-          </Field>
+          <div className="border-t border-border pt-5">
+            <Field>
+              <Label htmlFor="node-failure-policy">Quando esta etapa falhar</Label>
+              <Select id="node-failure-policy" value={failurePolicy} disabled={readOnly} onChange={(e) => setFailurePolicy(e.target.value as FlowFailurePolicy)}>
+                <option value="fail_flow">Parar todo o fluxo</option>
+                <option value="continue">Continuar as outras etapas</option>
+                <option value="skip_dependents">Pular as etapas que dependem dela</option>
+                <option value="continue_alternative_path">Seguir por uma conexão de falha</option>
+              </Select>
+              <p className="text-xs text-muted-foreground">Escolha como o processo deve reagir. O caminho de falha precisa estar conectado no diagrama.</p>
+            </Field>
+          </div>
+          </div>
         )}
 
         {node.data.issues.length > 0 && (

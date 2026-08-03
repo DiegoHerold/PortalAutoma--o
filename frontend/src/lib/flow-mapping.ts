@@ -31,11 +31,60 @@ export function resolveMapping(mapping: Record<string, MappingSpec> | null | und
 export function resolveValue(spec: MappingSpec, context: MappingContext): unknown {
   if (typeof spec !== "object" || spec === null) return spec;
   const record = spec as Record<string, unknown>;
-  if ("value" in record) return record.value;
-  const source = String(record.source ?? "");
-  const path = String(record.path ?? "$");
-  const sourceValue = sourceValueOf(source, context);
-  return pathOf(sourceValue, path);
+  let raw: unknown;
+  if ("value" in record) {
+    raw = record.value;
+  } else {
+    const source = String(record.source ?? "");
+    const path = String(record.path ?? "$");
+    const sourceValue = sourceValueOf(source, context);
+    raw = pathOf(sourceValue, path);
+  }
+  return applyTransforms(raw, record.transform);
+}
+
+// Espelha backend/modules/orchestration/flows/domain/mapping.py::TRANSFORMS — usado pelo
+// bloco "Transform Data" (e disponível a qualquer mapping) no editor.
+export const TRANSFORMS: Record<string, (value: unknown) => unknown> = {
+  uppercase: (value) => (typeof value === "string" ? value.toUpperCase() : value),
+  lowercase: (value) => (typeof value === "string" ? value.toLowerCase() : value),
+  trim: (value) => (typeof value === "string" ? value.trim() : value),
+  capitalize: (value) => (typeof value === "string" && value.length > 0 ? value[0].toUpperCase() + value.slice(1).toLowerCase() : value),
+  to_string: (value) => (value === null || value === undefined ? value : typeof value === "string" ? value : JSON.stringify(value)),
+  to_number: (value) => {
+    if (value === null || value === undefined || value === "") return null;
+    const asNumber = Number(value);
+    if (Number.isNaN(asNumber)) throw new MappingError("TRANSFORM_VALUE_INVALID", "Valor não pode ser convertido em número.", { value });
+    return asNumber;
+  },
+  round: (value) => {
+    if (value === null || value === undefined || value === "") return null;
+    const asNumber = Number(value);
+    if (Number.isNaN(asNumber)) throw new MappingError("TRANSFORM_VALUE_INVALID", "Valor não pode ser arredondado.", { value });
+    return Math.round(asNumber);
+  },
+};
+
+export const TRANSFORM_OPTIONS = [
+  { value: "uppercase", label: "Maiúsculas" },
+  { value: "lowercase", label: "minúsculas" },
+  { value: "trim", label: "Remover espaços nas pontas" },
+  { value: "capitalize", label: "Capitalizar" },
+  { value: "to_string", label: "Converter em texto" },
+  { value: "to_number", label: "Converter em número" },
+  { value: "round", label: "Arredondar" },
+] as const;
+
+function applyTransforms(value: unknown, transform: unknown): unknown {
+  if (!transform) return value;
+  const steps = Array.isArray(transform) ? transform : [transform];
+  let current = value;
+  for (const step of steps) {
+    const fn = TRANSFORMS[String(step)];
+    if (!fn) throw new MappingError("TRANSFORM_INVALID", `Transformação desconhecida: "${step}".`, { transform: step });
+    current = fn(current);
+  }
+  return current;
 }
 
 function sourceValueOf(source: string, context: MappingContext): unknown {

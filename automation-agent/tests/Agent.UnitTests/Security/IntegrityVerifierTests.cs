@@ -8,7 +8,10 @@ using Xunit;
 
 namespace Biason.AutomationAgent.UnitTests.Security;
 
-public class IntegrityVerifierTests
+// IDisposable estava ausente: Dispose() existia mas o xUnit nunca o chamaria,
+// e o analyzer (xUnit1013) sinaliza corretamente um método público "Dispose"
+// que não é nem [Fact] nem parte de um contrato reconhecido.
+public sealed class IntegrityVerifierTests : IDisposable
 {
     private readonly IntegrityVerifier _sut;
     private readonly string _tempDir;

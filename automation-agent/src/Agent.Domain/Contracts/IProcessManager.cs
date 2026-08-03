@@ -1,4 +1,6 @@
 using Biason.AutomationAgent.Domain.Models.Execution;
+// Ver ILauncher.cs: alias necessário por colisão com System.Threading.ExecutionContext.
+using ExecutionContext = Biason.AutomationAgent.Domain.Models.Execution.ExecutionContext;
 
 namespace Biason.AutomationAgent.Domain.Contracts;
 

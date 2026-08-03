@@ -13,8 +13,13 @@
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="System.Net.Http.Json" Version="8.0.1" />
+    <!-- DPAPI para proteção da credencial do Agent em repouso (Windows). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Agent.Domain\Agent.Domain.csproj" />
+    <ProjectReference Include="..\Agent.Protocol\Agent.Protocol.csproj" />
   </ItemGroup>
 </Project>

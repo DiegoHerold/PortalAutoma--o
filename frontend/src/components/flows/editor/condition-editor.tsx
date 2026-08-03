@@ -1,17 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, Code2, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select, Textarea } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 
 // Espelha backend/modules/orchestration/flows/domain/mapping.py::evaluate_condition.
-// O construtor visual cobre o caso comum (uma lista de regras combinadas por E/OU, cada
-// uma podendo ser negada). Condições mais complexas (grupos aninhados) continuam
-// editáveis via JSON avançado — o builder detecta esse caso e cai para o modo JSON sozinho.
+// O construtor visual cobre as condições operacionais suportadas pelo editor.
 
-type SourceKind = "flow.input" | "flow.metadata" | "node.output" | "node.status" | "constant";
+// Operand/OperandFields são exportados para reuso pelo editor de casos do bloco "Switch"
+// (switch-editor.tsx), que precisa do mesmo seletor de "campo a comparar" usado aqui.
+export type SourceKind = "flow.input" | "flow.metadata" | "node.output" | "node.status" | "constant";
 type Operator = "equals" | "not_equals" | "exists" | "greater_than" | "less_than";
 
 const OPERATOR_LABELS: Record<Operator, string> = {
@@ -22,7 +22,7 @@ const OPERATOR_LABELS: Record<Operator, string> = {
   less_than: "é menor que",
 };
 
-type Operand = {
+export type Operand = {
   kind: SourceKind;
   nodeKey: string;
   path: string;
@@ -38,7 +38,7 @@ type Rule = {
   right: Operand;
 };
 
-function emptyOperand(kind: SourceKind = "flow.input"): Operand {
+export function emptyOperand(kind: SourceKind = "flow.input"): Operand {
   return { kind, nodeKey: "", path: "$", constantValue: "" };
 }
 
@@ -48,8 +48,18 @@ function newRuleId() {
   return `rule-${ruleSeq}`;
 }
 
-function newRule(): Rule {
-  return { id: newRuleId(), negate: false, left: emptyOperand(), operator: "equals", rightMode: "constant", right: emptyOperand("constant") };
+function newRule(operator: Operator = "equals"): Rule {
+  return { id: newRuleId(), negate: false, left: emptyOperand(), operator, rightMode: "constant", right: emptyOperand("constant") };
+}
+
+function toMappingPath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed || trimmed === "$") return "$";
+  return trimmed.startsWith("$.") ? trimmed : `$.${trimmed.replace(/^\.+/, "")}`;
+}
+
+function displayPath(path: string): string {
+  return path === "$" ? "" : path.replace(/^\$\./, "");
 }
 
 function sourceStringFor(kind: SourceKind, nodeKey: string): string {
@@ -71,12 +81,12 @@ function stringifyConstant(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function operandToSpec(op: Operand): unknown {
+export function operandToSpec(op: Operand): Record<string, unknown> {
   if (op.kind === "constant") return { value: parseConstant(op.constantValue) };
-  return { source: sourceStringFor(op.kind, op.nodeKey), path: op.path || "$" };
+  return { source: sourceStringFor(op.kind, op.nodeKey), path: toMappingPath(op.path) };
 }
 
-function specToOperand(spec: unknown): Operand {
+export function specToOperand(spec: unknown): Operand {
   if (typeof spec !== "object" || spec === null) {
     return { kind: "constant", nodeKey: "", path: "", constantValue: stringifyConstant(spec) };
   }
@@ -85,7 +95,7 @@ function specToOperand(spec: unknown): Operand {
     return { kind: "constant", nodeKey: "", path: "", constantValue: stringifyConstant(record.value) };
   }
   const source = String(record.source ?? "flow.input");
-  const path = String(record.path ?? "$");
+  const path = displayPath(String(record.path ?? "$"));
   const match = /^node\.(.+)\.(output|status)$/.exec(source);
   if (match) {
     return { kind: match[2] === "output" ? "node.output" : "node.status", nodeKey: match[1], path, constantValue: "" };
@@ -152,7 +162,7 @@ function rulesToCondition(combinator: "and" | "or", rules: Rule[]): Record<strin
 export function describeCondition(condition: Record<string, unknown> | null): string {
   if (!condition) return "sem condição (sempre executa)";
   const parsed = conditionToRules(condition);
-  if (!parsed || parsed.rules.length === 0) return "condição avançada (JSON)";
+  if (!parsed || parsed.rules.length === 0) return "condição configurada";
   const parts = parsed.rules.map((r) => {
     const leftLabel = r.left.kind === "constant" ? stringifyConstant(parseConstant(r.left.constantValue)) : `${r.left.kind}${r.left.nodeKey ? `(${r.left.nodeKey})` : ""}`;
     if (r.operator === "exists") return `${r.negate ? "não " : ""}${leftLabel} existe`;
@@ -162,7 +172,7 @@ export function describeCondition(condition: Record<string, unknown> | null): st
   return parts.join(parsed.combinator === "and" ? " E " : " OU ");
 }
 
-function OperandFields({
+export function OperandFields({
   operand,
   onChange,
   upstreamNodes,
@@ -206,11 +216,11 @@ function OperandFields({
         />
       ) : (
         <Input
-          placeholder="$.campo (ou $ p/ valor inteiro)"
+          placeholder="campo (ex.: status)"
           value={operand.path}
           disabled={readOnly}
           onChange={(e) => onChange({ path: e.target.value })}
-          className="h-8 flex-1 min-w-[110px] text-xs font-mono"
+          className="h-8 flex-1 min-w-[110px] text-xs"
         />
       )}
     </div>
@@ -233,8 +243,6 @@ export function ConditionEditor({
   const parsedInitial = useMemo(() => conditionToRules(value), [value]);
   const [combinator, setCombinator] = useState<"and" | "or">(parsedInitial?.combinator ?? "and");
   const [rules, setRules] = useState<Rule[]>(parsedInitial?.rules ?? []);
-  const [advanced, setAdvanced] = useState(parsedInitial === null && Boolean(value));
-  const [rawJson, setRawJson] = useState(() => JSON.stringify(value ?? {}, null, 2));
 
   const tooComplex = parsedInitial === null && Boolean(value);
 
@@ -244,8 +252,8 @@ export function ConditionEditor({
     onChange(rulesToCondition(nextCombinator, nextRules));
   }
 
-  function addRule() {
-    commit(combinator, [...rules, newRule()]);
+  function addRule(operator: Operator = "equals") {
+    commit(combinator, [...rules, newRule(operator)]);
   }
 
   function updateRule(id: string, patch: Partial<Rule>) {
@@ -263,51 +271,32 @@ export function ConditionEditor({
     commit(combinator, rules.filter((r) => r.id !== id));
   }
 
-  function applyRawJson() {
-    try {
-      const parsed = rawJson.trim() ? JSON.parse(rawJson) : null;
-      onChange(parsed);
-      const reparsed = conditionToRules(parsed);
-      if (reparsed) {
-        setCombinator(reparsed.combinator);
-        setRules(reparsed.rules);
-        setAdvanced(false);
-      }
-    } catch {
-      // JSON inválido — mensagem já é implícita (não aplica, usuário continua editando).
-    }
-  }
-
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">Todas as regras abaixo precisam ser verdadeiras ou apenas uma, conforme o combinador escolhido.</p>
-        {!readOnly && !tooComplex && (
-          <button type="button" className="inline-flex shrink-0 items-center gap-1 text-xs text-primary underline underline-offset-2" onClick={() => setAdvanced((v) => !v)}>
-            <Code2 className="h-3.5 w-3.5" /> {advanced ? "Usar construtor visual" : "Editar como JSON"}
-          </button>
-        )}
-      </div>
-
       {tooComplex && (
-        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 p-2.5 text-xs text-warning">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Esta condição tem uma estrutura mais complexa (grupos aninhados) e só pode ser editada em JSON.
-        </div>
-      )}
-
-      {advanced || tooComplex ? (
-        <div className="space-y-2">
-          <Textarea rows={8} className="font-mono text-xs" value={rawJson} onChange={(e) => setRawJson(e.target.value)} disabled={readOnly} placeholder="null ou {...}" />
+        <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
+          <p>Esta condição foi criada com uma estrutura antiga e não pode ser exibida em blocos.</p>
           {!readOnly && (
-            <Button size="sm" variant="outline" onClick={applyRawJson}>
-              Aplicar JSON
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => commit("and", [])}>
+              Substituir por uma condição simples
             </Button>
           )}
         </div>
-      ) : (
+      )}
+
+      {!tooComplex && (
         <div className="space-y-2.5">
-          {rules.length === 0 && <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">{emptyHint}</p>}
+          {rules.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border p-4">
+              <p className="text-xs text-muted-foreground">{emptyHint}</p>
+              {!readOnly && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => addRule("exists")}>O campo existe</Button>
+                  <Button size="sm" variant="outline" onClick={() => addRule("equals")}>O campo tem um valor</Button>
+                </div>
+              )}
+            </div>
+          )}
 
           {rules.length > 1 && (
             <div className="flex items-center gap-2 text-xs">
@@ -320,9 +309,9 @@ export function ConditionEditor({
           )}
 
           {rules.map((rule, index) => (
-            <div key={rule.id} className="space-y-1.5 rounded-md border border-border p-2.5">
+            <div key={rule.id} className="space-y-3 rounded-lg border border-border bg-card p-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-muted-foreground">Regra {index + 1}</span>
+                <span className="text-xs font-semibold">Condição {index + 1}</span>
                 {!readOnly && (
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -337,11 +326,11 @@ export function ConditionEditor({
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-muted-foreground">Se</span>
+                <span className="text-xs text-muted-foreground">Quando</span>
                 <OperandFields operand={rule.left} onChange={(patch) => updateOperand(rule.id, "left", patch)} upstreamNodes={upstreamNodes} readOnly={readOnly} allowConstant={false} />
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
                 <Select
                   value={rule.operator}
                   disabled={readOnly}
@@ -386,7 +375,7 @@ export function ConditionEditor({
           ))}
 
           {!readOnly && (
-            <Button size="sm" variant="outline" onClick={addRule}>
+            <Button size="sm" variant="outline" onClick={() => addRule()}>
               <Plus className="h-3.5 w-3.5" /> Adicionar regra
             </Button>
           )}

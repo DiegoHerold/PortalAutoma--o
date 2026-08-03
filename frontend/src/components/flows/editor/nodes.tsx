@@ -2,36 +2,179 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type NodeTypes } from "@xyflow/react";
-import { AlertTriangle, GitMerge, GitFork, Loader2, Workflow, type LucideIcon } from "lucide-react";
+import { AlertTriangle, GitFork, Loader2, Workflow, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { jobStatusMeta } from "@/lib/status";
 import type { FlowCanvasNode } from "@/components/flows/editor/types";
+import type { FlowNode } from "@/types/flow";
+import { conditionBlockFor } from "@/components/flows/editor/block-catalog";
+import { describeCondition } from "@/components/flows/editor/condition-editor";
+import { ifElseRule, switchConfigOf } from "@/components/flows/editor/branch-logic";
 
-const NODE_STYLES: Record<string, { icon: LucideIcon; accent: string; ring: string; bg: string }> = {
+// Estilo dos tipos "históricos", mantidos como estavam para não mudar a aparência de Flows
+// já publicados. Os demais tipos (if_else, switch, join, merge, set_variable, map_fields,
+// transform_data) buscam ícone/cor em block-catalog.ts — a mesma fonte usada pelo catálogo
+// lateral — para que o nó no canvas seja reconhecível sem abrir a configuração.
+const LEGACY_NODE_STYLES: Record<string, { icon: LucideIcon; accent: string; ring: string; bg: string }> = {
   automation: { icon: Workflow, accent: "text-primary", ring: "border-primary/40", bg: "bg-primary/5" },
   condition: { icon: GitFork, accent: "text-warning", ring: "border-warning/40", bg: "bg-warning/5" },
-  join: { icon: GitMerge, accent: "text-info", ring: "border-info/40", bg: "bg-info/5" },
 };
+
+function styleFor(nodeType: string) {
+  const legacy = LEGACY_NODE_STYLES[nodeType];
+  if (legacy) return legacy;
+  const block = conditionBlockFor(nodeType);
+  if (block) return block.style;
+  return LEGACY_NODE_STYLES.automation;
+}
+
+function dependencyLabel(node: FlowNode): string {
+  return (node.execution_policy as Record<string, unknown> | undefined)?.dependency_policy === "any"
+    ? "Continua com a primeira entrada"
+    : "Espera todas as entradas";
+}
+
+function nodeSummary(node: FlowNode): string | null {
+  switch (node.node_type) {
+    case "condition":
+      return "Libera a próxima etapa quando a regra for atendida.";
+    case "join":
+      return dependencyLabel(node);
+    case "merge":
+      return `${dependencyLabel(node)} · combina os campos em um único objeto.`;
+    case "if_else": {
+      const rule = ifElseRule(node);
+      return rule ? describeCondition(rule) : "Sem regra definida — Verdadeiro sempre segue.";
+    }
+    case "switch": {
+      const { cases, hasDefault } = switchConfigOf(node);
+      if (cases.length === 0) return "Nenhum caso configurado ainda.";
+      const labels = cases.map((c) => c.label || String(c.value)).join(", ");
+      return hasDefault ? `${labels} + padrão` : labels;
+    }
+    case "set_variable": {
+      const keys = Object.keys(node.input_mapping || {});
+      return keys.length ? `define: ${keys.join(", ")}` : "Nenhuma variável definida ainda.";
+    }
+    case "map_fields": {
+      const count = Object.keys(node.input_mapping || {}).length;
+      return count ? `${count} campo(s) mapeado(s)` : "Nenhum campo mapeado ainda.";
+    }
+    case "transform_data": {
+      const transforms = new Set<string>();
+      for (const spec of Object.values(node.input_mapping || {})) {
+        const t = (spec as { transform?: string | string[] } | undefined)?.transform;
+        if (Array.isArray(t)) t.forEach((item) => transforms.add(item));
+        else if (t) transforms.add(t);
+      }
+      return transforms.size ? Array.from(transforms).join(" · ") : "Nenhuma transformação definida ainda.";
+    }
+    default:
+      return null;
+  }
+}
+
+function ConvergingInputMarks() {
+  return (
+    <div className="pointer-events-none absolute -top-2.5 left-1/2 flex -translate-x-1/2 gap-1.5">
+      <span className="h-1.5 w-1.5 rounded-full bg-border" />
+      <span className="h-1.5 w-1.5 rounded-full bg-border" />
+      <span className="h-1.5 w-1.5 rounded-full bg-border" />
+    </div>
+  );
+}
+
+function BranchOutputHandle({ id, leftPercent, label, dotClassName }: { id: string; leftPercent: number; label: string; dotClassName: string }) {
+  return (
+    <>
+      <span
+        className="pointer-events-none absolute -bottom-5 max-w-[90px] truncate whitespace-nowrap text-center text-[10px] font-medium text-muted-foreground"
+        style={{ left: `${leftPercent}%`, transform: "translateX(-50%)" }}
+        title={label}
+      >
+        {label}
+      </span>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id={id}
+        style={{ left: `${leftPercent}%` }}
+        className={cn("!h-2.5 !w-2.5 !border-border", dotClassName)}
+      />
+    </>
+  );
+}
+
+/** Handles de saída coerentes com a função do bloco: um If/Else tem Verdadeiro/Falso, um
+ * Switch tem um handle por caso + padrão, os demais têm uma única saída "Próxima etapa". */
+function OutputHandles({ node }: { node: FlowNode }) {
+  if (node.node_type === "if_else") {
+    return (
+      <>
+        <BranchOutputHandle id="true" leftPercent={30} label="Verdadeiro" dotClassName="!bg-success" />
+        <BranchOutputHandle id="false" leftPercent={70} label="Falso" dotClassName="!bg-destructive" />
+      </>
+    );
+  }
+
+  if (node.node_type === "switch") {
+    const { cases, hasDefault } = switchConfigOf(node);
+    const items: { id: string; label: string }[] = cases.map((c) => ({ id: c.id, label: c.label || String(c.value) }));
+    if (hasDefault || items.length === 0) items.push({ id: "default", label: "Padrão" });
+    const count = items.length;
+    return (
+      <>
+        {items.map((item, index) => (
+          <BranchOutputHandle
+            key={item.id}
+            id={item.id}
+            leftPercent={((index + 1) / (count + 1)) * 100}
+            label={item.label}
+            dotClassName={item.id === "default" ? "!bg-muted-foreground" : "!bg-violet-500"}
+          />
+        ))}
+      </>
+    );
+  }
+
+  const label = node.node_type === "join" || node.node_type === "merge" ? "Continuar" : "Próxima etapa";
+  return (
+    <>
+      <span className="pointer-events-none absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-muted-foreground">{label}</span>
+      <Handle type="source" position={Position.Bottom} className="!h-2.5 !w-2.5 !border-border !bg-muted-foreground" />
+    </>
+  );
+}
 
 function BaseFlowNode({ data, selected }: NodeProps<FlowCanvasNode>) {
   const { flowNode, automationName, automationVersionLabel, issues, readOnly, runtimeStatus, runtimeMeta } = data;
-  const style = NODE_STYLES[flowNode.node_type] ?? NODE_STYLES.automation;
+  const style = styleFor(flowNode.node_type);
   const Icon = style.icon;
   const hasIssues = issues.length > 0;
   const statusMeta = runtimeStatus ? jobStatusMeta(runtimeStatus) : null;
   const isRunning = runtimeStatus === "running";
+  const summary = nodeSummary(flowNode);
+  const isMultiInput = flowNode.node_type === "join" || flowNode.node_type === "merge";
+  const isSwitch = flowNode.node_type === "switch";
+  const switchCaseCount = isSwitch ? switchConfigOf(flowNode).cases.length + (switchConfigOf(flowNode).hasDefault ? 1 : 0) : 0;
+  const width = isSwitch ? Math.min(480, Math.max(240, 40 + Math.max(switchCaseCount, 1) * 90)) : 240;
 
   return (
     <div
+      style={{ width }}
       className={cn(
-        "w-[240px] rounded-lg border-2 bg-card shadow-sm transition-shadow",
+        "rounded-lg border-2 bg-card shadow-sm transition-shadow",
         hasIssues ? "border-destructive/60" : style.ring,
         selected && "shadow-lg ring-2 ring-primary/40",
         statusMeta && statusMeta.tone === "success" && "border-success/50",
         statusMeta && statusMeta.tone === "destructive" && "border-destructive/50",
       )}
     >
+      {isMultiInput && <ConvergingInputMarks />}
+      <span className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-muted-foreground">
+        {isMultiInput ? "Entradas" : "Entrada"}
+      </span>
       <Handle type="target" position={Position.Top} className="!h-2.5 !w-2.5 !border-border !bg-muted-foreground" />
 
       <div className={cn("flex items-center gap-2 rounded-t-[6px] border-b border-border px-3 py-2", style.bg)}>
@@ -50,6 +193,8 @@ function BaseFlowNode({ data, selected }: NodeProps<FlowCanvasNode>) {
             {automationVersionLabel && <span className="text-muted-foreground/70"> · {automationVersionLabel}</span>}
           </p>
         )}
+
+        {summary && <p className="leading-4 text-muted-foreground">{summary}</p>}
 
         {flowNode.failure_policy !== "fail_flow" && (
           <p className="truncate text-[11px] text-muted-foreground/80">on fail: {failurePolicyLabel(flowNode.failure_policy)}</p>
@@ -78,7 +223,7 @@ function BaseFlowNode({ data, selected }: NodeProps<FlowCanvasNode>) {
         {runtimeMeta?.agentLabel && <p className="truncate text-[11px]">{runtimeMeta.agentLabel}</p>}
       </div>
 
-      <Handle type="source" position={Position.Bottom} className="!h-2.5 !w-2.5 !border-border !bg-muted-foreground" />
+      <OutputHandles node={flowNode} />
       {readOnly && <div className="pointer-events-none absolute inset-0 rounded-lg bg-transparent" />}
     </div>
   );
@@ -106,4 +251,10 @@ export const flowNodeTypes = {
   automation: FlowNodeComponent,
   condition: FlowNodeComponent,
   join: FlowNodeComponent,
+  if_else: FlowNodeComponent,
+  switch: FlowNodeComponent,
+  merge: FlowNodeComponent,
+  set_variable: FlowNodeComponent,
+  map_fields: FlowNodeComponent,
+  transform_data: FlowNodeComponent,
 } as unknown as NodeTypes;

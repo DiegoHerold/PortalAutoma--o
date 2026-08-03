@@ -278,6 +278,338 @@ public static class Migrations
             );
 
             CREATE INDEX idx_execution_artifacts_exec ON execution_artifacts(execution_id);
+            """),
+
+        new(3, "portal_integration", """
+            -- =====================================================================
+            -- Fase 3 — Integração com o Portal, telemetria resiliente e sessões.
+            --
+            -- Estritamente aditiva: nenhuma tabela das Fases 1 e 2 é recriada ou
+            -- removida. outbox_events e inbox_commands ganham colunas via ALTER
+            -- TABLE, preservando as colunas originais para compatibilidade.
+            -- =====================================================================
+
+            -- --- Registro do Agent no Portal ---
+            CREATE TABLE agent_registration (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                agent_id TEXT NOT NULL,
+                installation_id TEXT NOT NULL,
+                registered_at_utc TEXT NOT NULL,
+                portal_api_base_url TEXT,
+                portal_websocket_url TEXT,
+                agent_version TEXT,
+                last_confirmed_at_utc TEXT,
+                revoked_at_utc TEXT,
+                revocation_reason TEXT
+            );
+
+            -- Metadados da credencial. O segredo em si NUNCA é gravado aqui:
+            -- fica no blob protegido (DPAPI) da tabela agent_credentials_protected.
+            CREATE TABLE agent_credentials_metadata (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                credential_type TEXT NOT NULL,
+                fingerprint TEXT,
+                protection_mechanism TEXT NOT NULL,
+                stored_at_utc TEXT NOT NULL,
+                expires_at_utc TEXT,
+                last_used_at_utc TEXT,
+                revoked_at_utc TEXT,
+                revocation_reason TEXT
+            );
+
+            -- Blob opaco produzido pelo ICredentialProtector.
+            CREATE TABLE agent_credentials_protected (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                protected_blob BLOB NOT NULL,
+                protection_mechanism TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            -- --- Conexão com o Portal ---
+            CREATE TABLE portal_connections (
+                connection_id TEXT PRIMARY KEY,
+                agent_instance_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                connected_at_utc TEXT,
+                disconnected_at_utc TEXT,
+                last_message_at_utc TEXT,
+                last_pong_at_utc TEXT,
+                disconnect_reason TEXT,
+                reconnect_attempt INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX idx_portal_connections_state ON portal_connections(state);
+
+            CREATE TABLE connection_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                connection_id TEXT,
+                from_state TEXT,
+                to_state TEXT NOT NULL,
+                reason TEXT,
+                detail TEXT,
+                occurred_at_utc TEXT NOT NULL
+            );
+
+            CREATE INDEX idx_connection_events_time ON connection_events(occurred_at_utc DESC);
+
+            -- --- Outbox: evolução aditiva ---
+            ALTER TABLE outbox_events ADD COLUMN message_id TEXT;
+            ALTER TABLE outbox_events ADD COLUMN message_type TEXT;
+            ALTER TABLE outbox_events ADD COLUMN agent_id TEXT;
+            ALTER TABLE outbox_events ADD COLUMN execution_id TEXT;
+            ALTER TABLE outbox_events ADD COLUMN execution_attempt_id TEXT;
+            ALTER TABLE outbox_events ADD COLUMN sequence INTEGER;
+            ALTER TABLE outbox_events ADD COLUMN available_at_utc TEXT;
+            ALTER TABLE outbox_events ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE outbox_events ADD COLUMN last_attempt_at_utc TEXT;
+            ALTER TABLE outbox_events ADD COLUMN acknowledged_at_utc TEXT;
+            ALTER TABLE outbox_events ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
+            ALTER TABLE outbox_events ADD COLUMN payload_size_bytes INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE outbox_events ADD COLUMN last_error TEXT;
+
+            -- Deduplicação por message_id. Índice parcial porque as linhas
+            -- legadas (se houver) têm message_id nulo.
+            CREATE UNIQUE INDEX idx_outbox_message_id
+                ON outbox_events(message_id) WHERE message_id IS NOT NULL;
+
+            -- Fila de envio: pendentes elegíveis, na ordem de criação.
+            CREATE INDEX idx_outbox_dispatch
+                ON outbox_events(status, available_at_utc, id)
+                WHERE status IN ('pending', 'failed');
+
+            CREATE INDEX idx_outbox_execution
+                ON outbox_events(execution_attempt_id, sequence)
+                WHERE execution_attempt_id IS NOT NULL;
+
+            CREATE INDEX idx_outbox_unacked
+                ON outbox_events(status) WHERE status = 'sent';
+
+            -- --- Inbox: evolução aditiva ---
+            ALTER TABLE inbox_commands ADD COLUMN message_id TEXT;
+            ALTER TABLE inbox_commands ADD COLUMN correlation_id TEXT;
+            ALTER TABLE inbox_commands ADD COLUMN execution_id TEXT;
+            ALTER TABLE inbox_commands ADD COLUMN execution_attempt_id TEXT;
+            ALTER TABLE inbox_commands ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE inbox_commands ADD COLUMN result TEXT;
+            ALTER TABLE inbox_commands ADD COLUMN error TEXT;
+
+            -- Chave da idempotência: um comando repetido não pode rodar duas vezes.
+            CREATE UNIQUE INDEX idx_inbox_message_id
+                ON inbox_commands(message_id) WHERE message_id IS NOT NULL;
+
+            CREATE INDEX idx_inbox_status_time ON inbox_commands(status, received_at_utc);
+
+            CREATE TABLE message_acknowledgements (
+                message_id TEXT PRIMARY KEY,
+                direction TEXT NOT NULL,
+                status TEXT NOT NULL,
+                acknowledged_at_utc TEXT NOT NULL,
+                detail TEXT
+            );
+
+            CREATE INDEX idx_message_ack_time ON message_acknowledgements(acknowledged_at_utc DESC);
+
+            -- --- Oferta, commit e lease ---
+            CREATE TABLE execution_offers (
+                offer_message_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                execution_attempt_id TEXT NOT NULL,
+                automation_id TEXT NOT NULL,
+                automation_version TEXT,
+                runtime_id TEXT,
+                runtime_version TEXT,
+                mode TEXT NOT NULL,
+                pool TEXT NOT NULL,
+                offer_payload_json TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                reason_code TEXT,
+                reason_message TEXT,
+                reservation_id TEXT,
+                received_at_utc TEXT NOT NULL,
+                decided_at_utc TEXT,
+                reservation_expires_at_utc TEXT
+            );
+
+            CREATE INDEX idx_execution_offers_exec ON execution_offers(execution_id);
+            CREATE INDEX idx_execution_offers_decision ON execution_offers(decision);
+            CREATE INDEX idx_execution_offers_expiry
+                ON execution_offers(reservation_expires_at_utc)
+                WHERE decision = 'accepted';
+
+            CREATE TABLE execution_commits (
+                commit_message_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                execution_attempt_id TEXT NOT NULL,
+                reservation_id TEXT,
+                accepted INTEGER NOT NULL,
+                rejection_reason TEXT,
+                received_at_utc TEXT NOT NULL,
+                processed_at_utc TEXT
+            );
+
+            -- Um commit por tentativa: barra duplicação de execução.
+            CREATE UNIQUE INDEX idx_execution_commits_attempt
+                ON execution_commits(execution_attempt_id) WHERE accepted = 1;
+
+            CREATE INDEX idx_execution_commits_exec ON execution_commits(execution_id);
+
+            CREATE TABLE execution_leases (
+                lease_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                execution_attempt_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                granted_at_utc TEXT NOT NULL,
+                expires_at_utc TEXT NOT NULL,
+                last_renewed_at_utc TEXT,
+                renew_attempt_count INTEGER NOT NULL DEFAULT 0,
+                lost_at_utc TEXT,
+                lost_reason TEXT
+            );
+
+            CREATE INDEX idx_execution_leases_attempt ON execution_leases(execution_attempt_id);
+            CREATE INDEX idx_execution_leases_active
+                ON execution_leases(expires_at_utc) WHERE state = 'active';
+
+            -- --- Sessões e Session Runner ---
+            CREATE TABLE session_runners (
+                session_runner_instance_id TEXT PRIMARY KEY,
+                session_id INTEGER NOT NULL,
+                user_name TEXT,
+                session_type TEXT,
+                process_id INTEGER,
+                version TEXT,
+                desktop_state TEXT,
+                capabilities_json TEXT,
+                state TEXT NOT NULL,
+                registered_at_utc TEXT NOT NULL,
+                last_heartbeat_at_utc TEXT,
+                disconnected_at_utc TEXT,
+                session_token_fingerprint TEXT,
+                session_token_expires_at_utc TEXT
+            );
+
+            CREATE INDEX idx_session_runners_session ON session_runners(session_id);
+            CREATE INDEX idx_session_runners_state ON session_runners(state);
+
+            CREATE TABLE interactive_sessions (
+                session_id INTEGER PRIMARY KEY,
+                user_name TEXT,
+                domain_name TEXT,
+                station_name TEXT,
+                session_type TEXT,
+                status TEXT NOT NULL,
+                is_locked INTEGER,
+                screen_width INTEGER,
+                screen_height INTEGER,
+                monitor_count INTEGER,
+                dpi_scale REAL,
+                session_runner_instance_id TEXT,
+                observed_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE session_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER,
+                session_runner_instance_id TEXT,
+                event_type TEXT NOT NULL,
+                detail_json TEXT,
+                occurred_at_utc TEXT NOT NULL
+            );
+
+            CREATE INDEX idx_session_events_time ON session_events(occurred_at_utc DESC);
+            CREATE INDEX idx_session_events_session ON session_events(session_id, occurred_at_utc DESC);
+
+            -- --- Locks de recurso exclusivo do desktop ---
+            -- Persistidos pelo Agent Service: não podem depender da memória
+            -- do Session Runner (seção 28).
+            CREATE TABLE resource_locks (
+                resource_key TEXT PRIMARY KEY,
+                owner_execution_id TEXT NOT NULL,
+                owner_execution_attempt_id TEXT NOT NULL,
+                session_id INTEGER,
+                acquired_at_utc TEXT NOT NULL,
+                lease_expires_at_utc TEXT NOT NULL,
+                last_renewed_at_utc TEXT,
+                released_at_utc TEXT
+            );
+
+            CREATE INDEX idx_resource_locks_owner ON resource_locks(owner_execution_attempt_id);
+            CREATE INDEX idx_resource_locks_expiry ON resource_locks(lease_expires_at_utc);
+
+            -- --- Artefatos pendentes de upload ---
+            CREATE TABLE pending_artifacts (
+                artifact_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                execution_attempt_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                local_path TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                kind TEXT,
+                created_at_utc TEXT NOT NULL,
+                available_at_utc TEXT,
+                uploaded_at_utc TEXT,
+                confirmed_at_utc TEXT,
+                remote_object_id TEXT,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            );
+
+            CREATE INDEX idx_pending_artifacts_status ON pending_artifacts(status, available_at_utc);
+            CREATE INDEX idx_pending_artifacts_exec ON pending_artifacts(execution_id);
+
+            CREATE TABLE artifact_upload_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                artifact_id TEXT NOT NULL,
+                attempt_number INTEGER NOT NULL,
+                started_at_utc TEXT NOT NULL,
+                completed_at_utc TEXT,
+                bytes_sent INTEGER NOT NULL DEFAULT 0,
+                success INTEGER NOT NULL DEFAULT 0,
+                http_status INTEGER,
+                error_message TEXT,
+                FOREIGN KEY (artifact_id) REFERENCES pending_artifacts(artifact_id)
+            );
+
+            CREATE INDEX idx_artifact_attempts_artifact ON artifact_upload_attempts(artifact_id);
+
+            -- --- Erros de protocolo e sincronização ---
+            CREATE TABLE protocol_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id TEXT,
+                message_type TEXT,
+                error_code TEXT NOT NULL,
+                error_message TEXT,
+                direction TEXT NOT NULL,
+                occurred_at_utc TEXT NOT NULL
+            );
+
+            CREATE INDEX idx_protocol_errors_time ON protocol_errors(occurred_at_utc DESC);
+
+            CREATE TABLE sync_runs (
+                sync_id TEXT PRIMARY KEY,
+                connection_id TEXT,
+                started_at_utc TEXT NOT NULL,
+                completed_at_utc TEXT,
+                running_executions_reported INTEGER NOT NULL DEFAULT 0,
+                leases_reported INTEGER NOT NULL DEFAULT 0,
+                outbox_pending_reported INTEGER NOT NULL DEFAULT 0,
+                reconciled_count INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                error_message TEXT
+            );
+
+            CREATE INDEX idx_sync_runs_time ON sync_runs(started_at_utc DESC);
+
+            -- --- Execuções: vínculo com o Portal ---
+            ALTER TABLE executions ADD COLUMN mode TEXT;
+            ALTER TABLE executions ADD COLUMN session_id INTEGER;
+            ALTER TABLE executions ADD COLUMN lease_id TEXT;
+            ALTER TABLE executions ADD COLUMN origin TEXT NOT NULL DEFAULT 'local';
+            ALTER TABLE executions ADD COLUMN offer_message_id TEXT;
             """)
     };
 }

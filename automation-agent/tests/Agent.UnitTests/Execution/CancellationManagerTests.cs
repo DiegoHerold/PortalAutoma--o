@@ -48,16 +48,18 @@ public class CancellationManagerTests
     }
 
     [Fact]
-    public void Remove_DisposesSource()
+    public async Task Remove_DisposesSource()
     {
         using var parentCts = new CancellationTokenSource();
         var cts = _sut.CreateLinked("exec_4", 300, parentCts.Token);
 
         _sut.Remove("exec_4");
 
-        // After removal, requesting cancellation should not throw (but source is disposed)
+        // After removal, requesting cancellation should not throw (but source is disposed).
+        // RequestCancellationAsync retorna Task: precisa de NotThrowAsync, não NotThrow
+        // (que só existe para Action síncrona).
         var act = () => _sut.RequestCancellationAsync("exec_4");
-        act.Should().NotThrow();
+        await act.Should().NotThrowAsync();
     }
 
     [Fact]

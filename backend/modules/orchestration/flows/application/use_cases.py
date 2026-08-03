@@ -147,9 +147,15 @@ class UpdateDraftFlowVersion:
     def execute(self, flow_version_id: str, payload: dict[str, Any]) -> FlowVersionDTO:
         version = _require_version(self.versions, flow_version_id)
         _ensure_version_mutable(version)
+        next_version = str(payload.get("version") or version.version)
+        if not SEMVER_RE.match(next_version):
+            raise ValueError("FlowVersion must use SemVer.")
+        if any(item.id != version.id and item.version == next_version for item in self.versions.list_for_flow(version.flow_id)):
+            raise ValueError("FlowVersion already exists for this Flow.")
         updated = self.versions.save(
             replace(
                 version,
+                version=next_version,
                 definition=payload.get("definition", version.definition) or {},
                 input_schema=payload.get("input_schema", version.input_schema),
                 output_schema=payload.get("output_schema", version.output_schema),
@@ -288,7 +294,16 @@ class ValidateFlowVersion:
         issues = list(result.issues)
         if not nodes:
             issues.append(FlowValidationIssueDTO("FLOW_NODE_MISSING", "FlowVersion precisa possuir ao menos um no."))
-        valid_node_types = {"automation", "condition", "join"}
+        # "condition" e "join" sao os tipos historicos (compatibilidade com Flows existentes).
+        # Os demais foram adicionados para o catalogo de blocos do editor; todos reaproveitam o
+        # mesmo mecanismo de execucao (ver _release_ready_nodes: qualquer node_type != "automation"
+        # e um passo sincrono que resolve input_mapping/condition e segue em frente), entao nao
+        # precisam de um ramo de execucao proprio:
+        #   - if_else / switch: nao usam node.condition (ficam sempre "succeeded"); a ramificacao
+        #     real acontece nas arestas "conditional" que saem de cada handle (ver flow-editor.tsx).
+        #   - merge / set_variable / map_fields / transform_data: usam input_mapping (resolve_mapping)
+        #     para produzir a saida do passo, igual "condition"/"join" ja fazem hoje.
+        valid_node_types = {"automation", "condition", "join", "if_else", "switch", "merge", "set_variable", "map_fields", "transform_data"}
         valid_edge_types = {"success", "failure", "always", "conditional"}
         for node in nodes:
             if node.node_type not in valid_node_types:

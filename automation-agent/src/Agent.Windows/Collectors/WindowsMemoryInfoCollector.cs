@@ -45,7 +45,11 @@ public sealed class WindowsMemoryInfoCollector : IMemoryInfoCollector
                 long agentMemoryMb = 0;
                 try
                 {
-                    using var proc = Process.GetCurrentProcess();
+                    // Totalmente qualificado: nesta árvore de namespaces
+                    // (Biason.AutomationAgent.Windows.*), "Process" sem qualificação
+                    // resolve para o namespace irmão .Windows.Process (ProcessTreeManager),
+                    // não para System.Diagnostics.Process — CS0234.
+                    using var proc = System.Diagnostics.Process.GetCurrentProcess();
                     agentMemoryMb = proc.WorkingSet64 / (1024 * 1024);
                 }
                 catch { /* ignore */ }

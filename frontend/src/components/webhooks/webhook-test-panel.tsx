@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FlaskConical } from "lucide-react";
+import { CheckCircle2, FlaskConical, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Field, Label, Textarea } from "@/components/ui/input";
@@ -65,8 +65,8 @@ export function WebhookTestPanel({ trigger, open, onClose }: { trigger: Trigger 
       open={open && !!trigger}
       onClose={onClose}
       title="Teste de mapeamento"
-      description="Este teste valida apenas o mapeamento. Nenhuma automacao sera executada."
-      widthClassName="w-full sm:max-w-2xl"
+      description={trigger ? `${trigger.method || "POST"} /${trigger.route_path}` : "Valide payload, headers e query params."}
+      widthClassName="w-full sm:max-w-5xl"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -80,37 +80,50 @@ export function WebhookTestPanel({ trigger, open, onClose }: { trigger: Trigger 
     >
       <div className="space-y-5">
         <div className="rounded-md border border-info/30 bg-info/5 p-3 text-sm text-info">
-          <FlaskConical className="mr-2 inline h-4 w-4" /> Nenhuma Execution e criada neste dry-run.
+          <FlaskConical className="mr-2 inline h-4 w-4" /> Nenhuma execução é criada neste dry-run. O backend só aplica o mapping e retorna os parâmetros que seriam enviados.
         </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Field>
-            <Label>Payload</Label>
-            <Textarea rows={10} className="tabular min-h-[220px] font-mono text-xs" value={payload} onChange={(event) => setPayload(event.target.value)} />
-          </Field>
-          <Field>
-            <Label>Headers</Label>
-            <Textarea rows={10} className="tabular min-h-[220px] font-mono text-xs" value={headers} onChange={(event) => setHeaders(event.target.value)} />
-          </Field>
-          <Field>
-            <Label>Query parameters</Label>
-            <Textarea rows={10} className="tabular min-h-[220px] font-mono text-xs" value={query} onChange={(event) => setQuery(event.target.value)} />
-          </Field>
-        </div>
-        {result && (
-          <div className={result.valid ? "rounded-md border border-success/30 bg-success/5 p-3" : "rounded-md border border-destructive/30 bg-destructive/5 p-3"}>
-            <p className="text-sm font-medium">{result.valid ? "Mapping valido" : "Mapping com pendencias"}</p>
-            {result.errors.length > 0 && (
-              <ul className="mt-2 space-y-1 text-xs text-destructive">
-                {result.errors.map((error) => (
-                  <li key={error}>{error}</li>
-                ))}
-              </ul>
-            )}
-            <pre className="tabular mt-3 max-h-72 overflow-auto rounded-md border border-border bg-background p-3 text-xs">
-              {JSON.stringify(result.parameters, null, 2)}
-            </pre>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+          <div className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Field>
+                <Label>Payload</Label>
+                <Textarea rows={10} className="tabular min-h-[220px] font-mono text-xs" value={payload} onChange={(event) => setPayload(event.target.value)} />
+              </Field>
+              <Field>
+                <Label>Headers</Label>
+                <Textarea rows={10} className="tabular min-h-[220px] font-mono text-xs" value={headers} onChange={(event) => setHeaders(event.target.value)} />
+              </Field>
+              <Field>
+                <Label>Query params</Label>
+                <Textarea rows={10} className="tabular min-h-[220px] font-mono text-xs" value={query} onChange={(event) => setQuery(event.target.value)} />
+              </Field>
+            </div>
           </div>
-        )}
+          <div className="rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center gap-2">
+              {result?.valid ? <CheckCircle2 className="h-4 w-4 text-success" /> : result ? <XCircle className="h-4 w-4 text-destructive" /> : <FlaskConical className="h-4 w-4 text-muted-foreground" />}
+              <h3 className="font-display text-sm font-semibold tracking-tight">
+                {result ? (result.valid ? "Mapping válido" : "Mapping com pendências") : "Resultado do dry-run"}
+              </h3>
+            </div>
+            {!result ? (
+              <p className="mt-3 text-sm text-muted-foreground">Execute o teste para ver os parâmetros normalizados que a automação receberia.</p>
+            ) : (
+              <>
+                {result.errors.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-xs text-destructive">
+                    {result.errors.map((error) => (
+                      <li key={error}>{error}</li>
+                    ))}
+                  </ul>
+                )}
+                <pre className="tabular mt-3 max-h-[420px] overflow-auto rounded-md border border-border bg-background p-3 text-xs">
+                  {JSON.stringify(result.parameters, null, 2)}
+                </pre>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </Sheet>
   );

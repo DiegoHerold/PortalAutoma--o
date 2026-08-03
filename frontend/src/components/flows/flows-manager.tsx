@@ -24,6 +24,7 @@ import {
   archiveFlow,
   cloneFlowVersionInto,
   createFlow,
+  createFlowVersion,
   listFlowEdges,
   listFlowNodes,
   listFlowVersions,
@@ -229,9 +230,19 @@ export function FlowsManager() {
         await flows.refetch();
       } else {
         const created = await createFlow(token, { key: form.key, ...body });
-        toast({ title: "Fluxo criado", kind: "success" });
+        let draft: FlowVersion | null = null;
+        try {
+          draft = await createFlowVersion(token, created.id, { version: "0.1.0" });
+        } catch (versionError) {
+          toast({
+            title: "Fluxo criado, mas o rascunho não pôde ser preparado",
+            description: versionError instanceof Error ? versionError.message : "Abra o fluxo e crie a primeira versão.",
+            kind: "warning",
+          });
+        }
+        if (draft) toast({ title: "Fluxo e rascunho criados", description: "Escolha a primeira automação para começar a montar.", kind: "success" });
         setFormOpen(false);
-        router.push(`/flows/${created.id}`);
+        router.push(draft ? `/flows/${created.id}?version=${draft.id}` : `/flows/${created.id}`);
       }
     } catch (err) {
       toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
@@ -469,7 +480,7 @@ export function FlowsManager() {
         </div>
       )}
 
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editing ? "Editar fluxo" : "Novo fluxo"} className="max-w-lg">
+      <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editing ? "Editar fluxo" : "Novo fluxo"} className="max-w-2xl">
         <FlowForm
           key={editing?.id ?? "new"}
           categories={categories.data ?? []}

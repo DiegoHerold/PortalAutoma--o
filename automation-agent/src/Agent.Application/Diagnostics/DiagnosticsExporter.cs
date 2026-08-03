@@ -13,6 +13,8 @@ public sealed class DiagnosticsExporter
     private readonly HealthCheckRunner _healthRunner;
     private readonly IDirectoryResolver _dirs;
     private readonly IClock _clock;
+    private readonly IAgentCredentialStore? _credentialStore;
+    private readonly ICredentialProtector? _credentialProtector;
     private readonly ILogger<DiagnosticsExporter> _logger;
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -27,7 +29,9 @@ public sealed class DiagnosticsExporter
         HealthCheckRunner healthRunner,
         IDirectoryResolver dirs,
         IClock clock,
-        ILogger<DiagnosticsExporter> logger)
+        ILogger<DiagnosticsExporter> logger,
+        IAgentCredentialStore? credentialStore = null,
+        ICredentialProtector? credentialProtector = null)
     {
         _identity = identity;
         _stateManager = stateManager;
@@ -35,6 +39,8 @@ public sealed class DiagnosticsExporter
         _healthRunner = healthRunner;
         _dirs = dirs;
         _clock = clock;
+        _credentialStore = credentialStore;
+        _credentialProtector = credentialProtector;
         _logger = logger;
     }
 
@@ -71,6 +77,44 @@ public sealed class DiagnosticsExporter
         // health.json
         var health = await _healthRunner.RunAllAsync(ct);
         await File.WriteAllTextAsync(Path.Combine(exportDir, "health.json"), JsonSerializer.Serialize(health, JsonOpts), ct);
+
+        // registration-status.json
+        // Deliberadamente sem tokens, credenciais ou qualquer material sensível:
+        // apenas fingerprint irreversível, datas e mecanismo de proteção.
+        var credentialMetadata = _credentialStore is null
+            ? null
+            : await _credentialStore.GetMetadataAsync(ct);
+
+        var registrationStatus = new
+        {
+            registered = identity?.IsRegistered ?? false,
+            agent_id = identity?.AgentId,
+            installation_id = identity?.InstallationId,
+            registered_at_utc = identity?.RegisteredAtUtc,
+            credential = credentialMetadata is null
+                ? null
+                : new
+                {
+                    type = credentialMetadata.Type,
+                    fingerprint = credentialMetadata.Fingerprint,
+                    stored_at_utc = credentialMetadata.StoredAtUtc,
+                    expires_at_utc = credentialMetadata.ExpiresAtUtc,
+                    last_used_at_utc = credentialMetadata.LastUsedAtUtc,
+                    revoked = credentialMetadata.IsRevoked,
+                    revoked_at_utc = credentialMetadata.RevokedAtUtc
+                },
+            protection = _credentialProtector is null
+                ? null
+                : new
+                {
+                    mechanism = _credentialProtector.MechanismName,
+                    hardened = _credentialProtector.IsHardened
+                },
+            exported_at_utc = _clock.UtcNow
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(exportDir, "registration-status.json"),
+            JsonSerializer.Serialize(registrationStatus, JsonOpts), ct);
 
         // database-summary.json
         var dbSummary = new

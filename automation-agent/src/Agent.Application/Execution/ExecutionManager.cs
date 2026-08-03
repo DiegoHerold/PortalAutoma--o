@@ -6,6 +6,8 @@ using Biason.AutomationAgent.Domain.Models.Execution;
 using Biason.AutomationAgent.Domain.StateMachines;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+// Ver ILauncher.cs: alias necessário por colisão com System.Threading.ExecutionContext.
+using ExecutionContext = Biason.AutomationAgent.Domain.Models.Execution.ExecutionContext;
 
 namespace Biason.AutomationAgent.Application.Execution;
 

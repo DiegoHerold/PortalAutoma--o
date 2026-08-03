@@ -9,7 +9,10 @@ public sealed class ExecutionAttempt
     public int AttemptNumber { get; init; }
     public ExecutionState CurrentState { get; set; }
     public PoolType Pool { get; init; }
-    public string? WorkspacePath { get; init; }
+    // "set", não "init": ExecutionManager cria o registro da tentativa antes de
+    // conhecer o workspace (que só existe após a criação, seção "Create workspace"),
+    // e precisa atribuir depois — mesmo padrão de ProcessId logo abaixo.
+    public string? WorkspacePath { get; set; }
     public int? ProcessId { get; set; }
     public string? RuntimeId { get; init; }
     public string? PackageId { get; init; }

@@ -49,7 +49,9 @@ try
             ?? throw new InvalidOperationException("Missing AUTOMATION_RUNTIME_PATH");
         var timeout = int.TryParse(Environment.GetEnvironmentVariable("AUTOMATION_TIMEOUT_SECONDS"), out var t) ? t : 3600;
 
-        pipeName ??= throw new InvalidOperationException("Missing pipe name");
+        // "??=" não aceita throw expression como lado direito (CS8115); if explícito.
+        if (pipeName is null)
+            throw new InvalidOperationException("Missing pipe name");
 
         config = new ExecutionConfig
         {

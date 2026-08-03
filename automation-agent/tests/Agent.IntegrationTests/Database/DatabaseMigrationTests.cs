@@ -39,17 +39,9 @@ public class DatabaseMigrationTests : IDisposable
     {
         await _helper.InitializeDatabaseAsync();
 
-        // Running again should not throw
-        _helper.DbManager.Dispose();
-        var helper2 = new TestHelper();
-        // Reuse same dir
-        var act = async () =>
-        {
-            var h = new TestHelper();
-            // Recreate pointing to same temp
-            await h.InitializeDatabaseAsync();
-            h.Dispose();
-        };
+        // Reinicializar o mesmo banco não deve lançar nem reaplicar migrations.
+        var act = async () => await _helper.DbManager.InitializeAsync();
+
         await act.Should().NotThrowAsync();
     }
 

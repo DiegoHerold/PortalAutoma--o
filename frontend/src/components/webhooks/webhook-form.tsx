@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CheckCircle2, Globe2, KeyRound, Route } from "lucide-react";
 
 import { WebhookMappingEditor } from "@/components/webhooks/webhook-mapping-editor";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ export function WebhookForm({
   editing,
   onSubmit,
   submitting,
+  invokeBaseUrl,
 }: {
   open: boolean;
   onClose: () => void;
@@ -58,6 +60,7 @@ export function WebhookForm({
   editing: Trigger | null;
   onSubmit: (payload: WebhookPayload, editing: Trigger | null) => Promise<void>;
   submitting: boolean;
+  invokeBaseUrl?: string | null;
 }) {
   const [state, setState] = useState<FormState>(() => (editing ? triggerToPayload(editing) : emptyState(automations)));
 
@@ -67,6 +70,8 @@ export function WebhookForm({
   }, [automations, editing, open]);
 
   const error = validationError(state, existing, editing?.id);
+  const normalizedRoute = state.route_path.trim().replace(/^\/+|\/+$/g, "");
+  const previewUrl = invokeBaseUrl && normalizedRoute ? `${invokeBaseUrl.replace(/\/$/, "")}/${normalizedRoute}` : "";
 
   async function save() {
     if (error) return;
@@ -79,7 +84,7 @@ export function WebhookForm({
       onClose={onClose}
       title={editing ? "Editar Webhook" : "Novo Webhook"}
       description="Webhook HTTP de entrada para disparar uma automacao publicada."
-      widthClassName="w-full sm:max-w-2xl"
+      widthClassName="w-full sm:max-w-3xl"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -92,58 +97,96 @@ export function WebhookForm({
       }
     >
       <div className="space-y-5">
-        <Field>
-          <Label htmlFor="webhook-name">Nome</Label>
-          <Input
-            id="webhook-name"
-            placeholder="N8N - cadastro de cliente"
-            value={state.name ?? ""}
-            onChange={(event) => setState((value) => ({ ...value, name: event.target.value }))}
+        <section className="space-y-3 rounded-lg border border-border p-4">
+          <div className="flex items-start gap-2">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
+            <div>
+              <h3 className="font-display text-sm font-semibold tracking-tight">1. Destino da execução</h3>
+              <p className="text-xs text-muted-foreground">Escolha a automação publicada que será iniciada quando o endpoint receber uma chamada válida.</p>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field>
+              <Label htmlFor="webhook-name">Nome</Label>
+              <Input
+                id="webhook-name"
+                placeholder="CRM - novo cliente"
+                value={state.name ?? ""}
+                onChange={(event) => setState((value) => ({ ...value, name: event.target.value }))}
+              />
+            </Field>
+            <Field>
+              <Label htmlFor="webhook-automation">Automação de destino</Label>
+              <Select
+                id="webhook-automation"
+                value={state.automation_id || ""}
+                onChange={(event) => setState((value) => ({ ...value, automation_id: Number(event.target.value) }))}
+              >
+                <option value="">Selecione...</option>
+                {automations.map((automation) => (
+                  <option key={automation.id} value={automation.id}>
+                    {automation.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        </section>
+
+        <section className="space-y-3 rounded-lg border border-border p-4">
+          <div className="flex items-start gap-2">
+            <Route className="mt-0.5 h-4 w-4 text-primary" />
+            <div>
+              <h3 className="font-display text-sm font-semibold tracking-tight">2. Endpoint externo</h3>
+              <p className="text-xs text-muted-foreground">Defina um caminho estável para o sistema externo chamar via POST.</p>
+            </div>
+          </div>
+          <Field>
+            <Label htmlFor="webhook-route">Route path</Label>
+            <Input
+              id="webhook-route"
+              className="tabular"
+              placeholder="clientes/novo"
+              value={state.route_path}
+              onChange={(event) => setState((value) => ({ ...value, route_path: event.target.value }))}
+            />
+            <p className="text-xs text-muted-foreground">Sem espaços. Pode usar letras, números, ponto, traço, underscore e barras simples.</p>
+          </Field>
+          <div className="rounded-md border border-border bg-muted/35 px-3 py-2">
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Globe2 className="h-3.5 w-3.5" /> URL pública
+            </div>
+            <code className="tabular block break-all text-xs">{previewUrl || "A URL aparece depois de informar o route path."}</code>
+          </div>
+          <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
+            <span>
+              <span className="block font-medium">Receber novas chamadas</span>
+              <span className="text-xs text-muted-foreground">Quando desativado, o backend responde conflito para invocações públicas.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={state.is_active}
+              onChange={(event) => setState((value) => ({ ...value, is_active: event.target.checked }))}
+              className="h-4 w-4 accent-primary"
+            />
+          </label>
+        </section>
+
+        <section className="space-y-3 rounded-lg border border-border p-4">
+          <div className="flex items-start gap-2">
+            <KeyRound className="mt-0.5 h-4 w-4 text-primary" />
+            <div>
+              <h3 className="font-display text-sm font-semibold tracking-tight">3. Payload e autenticação</h3>
+              <p className="text-xs text-muted-foreground">O secret é gerado pelo backend e exibido apenas uma vez. O mapping abaixo transforma payload, headers e query em parâmetros.</p>
+            </div>
+          </div>
+          <WebhookMappingEditor
+            key={editing?.id ?? "new"}
+            value={state.parameter_mapping_json}
+            onChange={(mapping) => setState((value) => ({ ...value, parameter_mapping_json: mapping }))}
           />
-        </Field>
-        <Field>
-          <Label htmlFor="webhook-automation">Automacao de destino</Label>
-          <Select
-            id="webhook-automation"
-            value={state.automation_id || ""}
-            onChange={(event) => setState((value) => ({ ...value, automation_id: Number(event.target.value) }))}
-          >
-            <option value="">Selecione...</option>
-            {automations.map((automation) => (
-              <option key={automation.id} value={automation.id}>
-                {automation.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field>
-          <Label htmlFor="webhook-route">Route path</Label>
-          <Input
-            id="webhook-route"
-            className="tabular"
-            placeholder="clientes/novo"
-            value={state.route_path}
-            onChange={(event) => setState((value) => ({ ...value, route_path: event.target.value }))}
-          />
-          <p className="text-xs text-muted-foreground">Sem espacos. Pode usar letras, numeros, ponto, traco, underscore e barras simples.</p>
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={state.is_active}
-            onChange={(event) => setState((value) => ({ ...value, is_active: event.target.checked }))}
-            className="h-4 w-4 accent-primary"
-          />
-          Ativo para novas invocacoes
-        </label>
-        <WebhookMappingEditor
-          key={editing?.id ?? "new"}
-          value={state.parameter_mapping_json}
-          onChange={(mapping) => setState((value) => ({ ...value, parameter_mapping_json: mapping }))}
-        />
-        <div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-          O backend gera o secret na criacao. Edicoes comuns nao reenviam secret antigo; use rotacao para trocar credenciais.
-        </div>
+        </section>
+
         {error && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
       </div>
     </Sheet>

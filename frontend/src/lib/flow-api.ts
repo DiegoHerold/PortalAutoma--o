@@ -68,7 +68,7 @@ export function createFlowVersion(
 export function updateFlowVersionDraft(
   token: string,
   flowVersionId: string,
-  body: Partial<{ definition: Record<string, unknown>; input_schema: Record<string, unknown> | null; output_schema: Record<string, unknown> | null; release_notes: string | null }>,
+  body: Partial<{ version: string; definition: Record<string, unknown>; input_schema: Record<string, unknown> | null; output_schema: Record<string, unknown> | null; release_notes: string | null }>,
 ) {
   return apiRequest<FlowVersion>(`/flow-versions/${flowVersionId}`, { method: "PATCH", token, body: JSON.stringify(body) });
 }

@@ -30,6 +30,7 @@ class FlowVersionCreateRequest(BaseModel):
 
 
 class FlowVersionUpdateRequest(BaseModel):
+    version: str | None = None
     definition: dict[str, Any] | None = None
     input_schema: dict[str, Any] | None = None
     output_schema: dict[str, Any] | None = None

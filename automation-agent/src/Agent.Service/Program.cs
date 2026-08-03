@@ -72,6 +72,12 @@ builder.Services.AddOptions<DownloadOptions>()
 builder.Services.AddOptions<SecurityOptions>()
     .Bind(builder.Configuration.GetSection(SecurityOptions.Section));
 
+// === Fase 3 — Portal ===
+builder.Services.AddOptions<PortalOptions>()
+    .Bind(builder.Configuration.GetSection(PortalOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 // === Serilog ===
 builder.Services.AddSerilog((services, loggerConfig) =>
 {
@@ -185,6 +191,45 @@ builder.Services.AddSingleton<ISessionInfoCollector, WindowsSessionInfoCollector
 builder.Services.AddSingleton<ISoftwareDetector, WindowsSoftwareDetector>();
 builder.Services.AddSingleton<ICapabilityDetector, WindowsCapabilityDetector>();
 builder.Services.AddSingleton<ICpuUsageProvider, WindowsCpuUsageCollector>();
+
+// === Fase 3 — Registro e credenciais ===
+// A proteção da credencial é escolhida por plataforma: DPAPI no Windows,
+// AES-GCM com chave em arquivo nos demais (apenas dev/CI).
+builder.Services.AddSingleton<ICredentialProtector>(sp =>
+    Biason.AutomationAgent.Infrastructure.Credentials.CredentialProtectorFactory.Create(
+        sp.GetRequiredService<IDirectoryResolver>(),
+        sp.GetRequiredService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<IAgentCredentialStore,
+    Biason.AutomationAgent.Infrastructure.Credentials.AgentCredentialStore>();
+
+builder.Services.AddHttpClient<IPortalApiClient,
+    Biason.AutomationAgent.Infrastructure.Http.PortalApiClient>((sp, http) =>
+{
+    var portal = sp.GetRequiredService<IOptions<PortalOptions>>().Value;
+    http.Timeout = TimeSpan.FromSeconds(portal.ConnectionTimeoutSeconds);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd(
+        $"BiasonAutomationAgent/{sp.GetRequiredService<IOptions<AgentOptions>>().Value.Version}");
+});
+
+builder.Services.AddSingleton<IAgentRegistrationService,
+    Biason.AutomationAgent.Application.Registration.AgentRegistrationService>();
+
+// === Fase 3 — Conexão WebSocket persistente e heartbeat ===
+builder.Services.AddSingleton<IWebSocketTransportFactory,
+    Biason.AutomationAgent.Infrastructure.WebSockets.ClientWebSocketTransportFactory>();
+
+builder.Services.AddSingleton<IConnectionStateRepository, PortalConnectionRepository>();
+
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Connection.PortalConnectionManager>();
+builder.Services.AddSingleton<IPortalConnectionManager>(sp =>
+    sp.GetRequiredService<Biason.AutomationAgent.Application.Connection.PortalConnectionManager>());
+builder.Services.AddHostedService<Biason.AutomationAgent.Application.Connection.PortalConnectionHostedService>();
+
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Heartbeat.HeartbeatSnapshotBuilder>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Heartbeat.HeartbeatService>();
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Biason.AutomationAgent.Application.Heartbeat.HeartbeatService>());
 
 // Application services
 builder.Services.AddSingleton<IMachineProfiler, MachineProfilerService>();

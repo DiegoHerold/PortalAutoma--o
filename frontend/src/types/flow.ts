@@ -34,14 +34,33 @@ export type FlowVersion = {
   blocked_at: string | null;
 };
 
-export type FlowNodeType = "automation" | "condition" | "join";
+// "condition" e "join" sao os tipos historicos (mantidos por compatibilidade com Flows
+// existentes). Os demais alimentam o catalogo lateral de blocos do editor — ver
+// frontend/src/components/flows/editor/block-catalog.ts para a identidade visual de cada um
+// e backend/modules/orchestration/flows/application/use_cases.py::ValidateFlowVersion para
+// a lista espelhada que o motor de fato aceita.
+export type FlowNodeType =
+  | "automation"
+  | "condition"
+  | "join"
+  | "if_else"
+  | "switch"
+  | "merge"
+  | "set_variable"
+  | "map_fields"
+  | "transform_data";
 
 export type FlowFailurePolicy = "fail_flow" | "continue" | "skip_dependents" | "continue_alternative_path";
 
+// Nomes de transformação aplicados depois do valor ser resolvido — espelha
+// backend/modules/orchestration/flows/domain/mapping.py::TRANSFORMS. Usado pelo bloco
+// "Transform Data" (e disponível a qualquer mapping) para converter o valor resolvido.
+export type MappingTransform = "uppercase" | "lowercase" | "trim" | "capitalize" | "to_string" | "to_number" | "round";
+
 export type MappingEntry =
-  | { source: "flow.input"; path: string }
-  | { source: `node.${string}.output`; path: string }
-  | { value: unknown };
+  | { source: "flow.input"; path: string; transform?: MappingTransform | MappingTransform[] }
+  | { source: `node.${string}.output`; path: string; transform?: MappingTransform | MappingTransform[] }
+  | { value: unknown; transform?: MappingTransform | MappingTransform[] };
 
 export type FlowNode = {
   id: string;

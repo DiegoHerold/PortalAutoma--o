@@ -27,6 +27,11 @@ public sealed class AgentWorker : BackgroundService
     private readonly IExecutionManager _executionManager;
     private readonly IResourceReservationManager _reservationManager;
     private readonly ICacheManager _cacheManager;
+    private readonly IAgentRegistrationService _registration;
+    private readonly IAgentCredentialStore _credentialStore;
+    private readonly ICredentialProtector _credentialProtector;
+    private readonly IPortalConnectionManager _connectionManager;
+    private readonly IConnectionStateRepository _connectionStateRepo;
     private readonly ILogger<AgentWorker> _logger;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -51,6 +56,11 @@ public sealed class AgentWorker : BackgroundService
         IExecutionManager executionManager,
         IResourceReservationManager reservationManager,
         ICacheManager cacheManager,
+        IAgentRegistrationService registration,
+        IAgentCredentialStore credentialStore,
+        ICredentialProtector credentialProtector,
+        IPortalConnectionManager connectionManager,
+        IConnectionStateRepository connectionStateRepo,
         ILogger<AgentWorker> logger)
     {
         _lifetime = lifetime;
@@ -68,6 +78,11 @@ public sealed class AgentWorker : BackgroundService
         _executionManager = executionManager;
         _reservationManager = reservationManager;
         _cacheManager = cacheManager;
+        _registration = registration;
+        _credentialStore = credentialStore;
+        _credentialProtector = credentialProtector;
+        _connectionManager = connectionManager;
+        _connectionStateRepo = connectionStateRepo;
         _logger = logger;
     }
 
@@ -119,6 +134,24 @@ public sealed class AgentWorker : BackgroundService
             _logger.LogInformation("Detecting capabilities...");
             var capabilities = await _capabilityDetector.DetectAllAsync(stoppingToken);
             await _capabilityRepo.SaveAllAsync(capabilities, stoppingToken);
+
+            // Registro no Portal — idempotente: não gera novo registro se já houver
+            // agent_id com credencial válida. Falha aqui NÃO impede o Agent de subir;
+            // ele segue funcional localmente e o health check reporta 'degraded'.
+            try
+            {
+                var registrationResult = await _registration.EnsureRegisteredAsync(stoppingToken);
+                _logger.LogInformation("Registro no Portal: {Outcome} (agent_id={AgentId})",
+                    registrationResult.Outcome, registrationResult.AgentId ?? "-");
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Registro no Portal falhou; o Agent seguirá em modo local.");
+            }
 
             // Recover orphaned executions and stale reservations
             _logger.LogInformation("Recovering orphaned executions...");
@@ -193,6 +226,78 @@ public sealed class AgentWorker : BackgroundService
             {
                 var freed = await _cacheManager.CleanupAsync(ct: stoppingToken);
                 Console.WriteLine($"Cache cleanup freed {freed} MB");
+                _lifetime.StopApplication();
+                return;
+            }
+
+            // portal status — estado do registro, sem expor segredos
+            if (cliArgs.Contains("portal", StringComparer.OrdinalIgnoreCase) &&
+                cliArgs.Contains("status", StringComparer.OrdinalIgnoreCase))
+            {
+                var currentIdentity = await _identityService.GetIdentityAsync(stoppingToken);
+                var metadata = await _credentialStore.GetMetadataAsync(stoppingToken);
+
+                var portalStatus = new
+                {
+                    registered = currentIdentity?.IsRegistered ?? false,
+                    agent_id = currentIdentity?.AgentId,
+                    installation_id = currentIdentity?.InstallationId,
+                    registered_at_utc = currentIdentity?.RegisteredAtUtc,
+                    credential = metadata is null
+                        ? null
+                        : new
+                        {
+                            type = metadata.Type,
+                            fingerprint = metadata.Fingerprint,
+                            stored_at_utc = metadata.StoredAtUtc,
+                            expires_at_utc = metadata.ExpiresAtUtc,
+                            last_used_at_utc = metadata.LastUsedAtUtc,
+                            revoked = metadata.IsRevoked
+                        },
+                    protection = new
+                    {
+                        mechanism = _credentialProtector.MechanismName,
+                        hardened = _credentialProtector.IsHardened
+                    },
+                    // Snapshot em memória do processo atual — como todos os hosted
+                    // services do Agent iniciam junto com o host, este comando reflete
+                    // o estado real de conexão do momento em que rodou, não um valor
+                    // congelado. Não existe canal para controlar remotamente um Agent
+                    // já em execução como serviço Windows a partir de uma segunda
+                    // invocação de CLI; esse comando é para diagnóstico local.
+                    connection = _connectionManager.GetStatus()
+                };
+
+                Console.WriteLine(JsonSerializer.Serialize(portalStatus, JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
+            // portal connection-events — histórico recente de transições da conexão
+            // WebSocket, persistido em connection_events (sobrevive a reinícios).
+            if (cliArgs.Contains("portal", StringComparer.OrdinalIgnoreCase) &&
+                cliArgs.Contains("connection-events", StringComparer.OrdinalIgnoreCase))
+            {
+                var events = await _connectionStateRepo.GetRecentEventsAsync(50, stoppingToken);
+                Console.WriteLine(JsonSerializer.Serialize(events, JsonOpts));
+                _lifetime.StopApplication();
+                return;
+            }
+
+            // portal register — força novo registro (uso administrativo)
+            if (cliArgs.Contains("portal", StringComparer.OrdinalIgnoreCase) &&
+                cliArgs.Contains("register", StringComparer.OrdinalIgnoreCase))
+            {
+                var forced = await _registration.ForceRegisterAsync(stoppingToken);
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    outcome = forced.Outcome.ToString(),
+                    agent_id = forced.AgentId,
+                    reason_code = forced.ReasonCode,
+                    message = forced.Message,
+                    retryable = forced.Retryable
+                }, JsonOpts));
+
                 _lifetime.StopApplication();
                 return;
             }

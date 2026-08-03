@@ -1,3 +1,4 @@
+using Biason.AutomationAgent.Domain.Agents;
 using Biason.AutomationAgent.Domain.Configuration;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Infrastructure.Clock;
@@ -53,6 +54,54 @@ public sealed class TestHelper : IDisposable
     public CapabilityRepository CreateCapabilityRepository()
     {
         return new CapabilityRepository(DbManager);
+    }
+
+    public PortalConnectionRepository CreateConnectionRepository(IAgentIdentityService identity)
+    {
+        return new PortalConnectionRepository(DbManager, identity);
+    }
+
+    /// <summary>
+    /// Atalho para testes que precisam de um Agent já registrado (agent_id + credencial
+    /// salvos), sem passar pelo fluxo completo de <c>AgentRegistrationService</c>.
+    /// </summary>
+    public async Task<(AgentIdentityRepository Identity, Biason.AutomationAgent.Infrastructure.Credentials.AgentCredentialStore Store)>
+        SeedRegisteredAgentAsync(string agentId = "agt_teste", string credentialValue = "segredo-teste")
+    {
+        var identity = CreateIdentityRepository();
+        await identity.GetOrCreateIdentityAsync();
+        await identity.UpdateAgentIdAsync(agentId);
+
+        var store = CreateCredentialStore();
+        await store.SaveAsync(new AgentCredential
+        {
+            Type = "client_token",
+            Value = credentialValue,
+            ExpiresAtUtc = Clock.UtcNow.AddDays(90),
+            StoredAtUtc = Clock.UtcNow
+        });
+
+        return (identity, store);
+    }
+
+    /// <summary>
+    /// Protetor de credenciais isolado por teste. Usa o fallback AES para que
+    /// a suíte rode igual em Windows e em CI Linux.
+    /// </summary>
+    public ICredentialProtector CreateCredentialProtector()
+    {
+        return new Biason.AutomationAgent.Infrastructure.Credentials.AesFileKeyCredentialProtector(
+            Path.Combine(TempDir, "credential.key"));
+    }
+
+    public Biason.AutomationAgent.Infrastructure.Credentials.AgentCredentialStore CreateCredentialStore(
+        ICredentialProtector? protector = null)
+    {
+        return new Biason.AutomationAgent.Infrastructure.Credentials.AgentCredentialStore(
+            DbManager,
+            protector ?? CreateCredentialProtector(),
+            Clock,
+            NullLogger<Biason.AutomationAgent.Infrastructure.Credentials.AgentCredentialStore>.Instance);
     }
 
     public void Dispose()

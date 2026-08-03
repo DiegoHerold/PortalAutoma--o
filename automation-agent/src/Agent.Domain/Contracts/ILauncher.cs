@@ -1,5 +1,9 @@
 using Biason.AutomationAgent.Domain.Enums;
 using Biason.AutomationAgent.Domain.Models.Execution;
+// Alias necessário: "ExecutionContext" colide com System.Threading.ExecutionContext,
+// trazido implicitamente por ImplicitUsings. O alias tem prioridade na resolução
+// e desambigua sem precisar renomear o tipo de domínio em todo o codebase.
+using ExecutionContext = Biason.AutomationAgent.Domain.Models.Execution.ExecutionContext;
 
 namespace Biason.AutomationAgent.Domain.Contracts;
 
