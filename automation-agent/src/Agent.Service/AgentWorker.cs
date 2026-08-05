@@ -26,6 +26,8 @@ public sealed class AgentWorker : BackgroundService
     private readonly DiagnosticsExporter _diagnosticsExporter;
     private readonly IExecutionManager _executionManager;
     private readonly IResourceReservationManager _reservationManager;
+    private readonly ICapacityManager _capacityManager;
+    private readonly IExecutionLeaseManager _leaseManager;
     private readonly ICacheManager _cacheManager;
     private readonly IAgentRegistrationService _registration;
     private readonly IAgentCredentialStore _credentialStore;
@@ -64,6 +66,8 @@ public sealed class AgentWorker : BackgroundService
         DiagnosticsExporter diagnosticsExporter,
         IExecutionManager executionManager,
         IResourceReservationManager reservationManager,
+        ICapacityManager capacityManager,
+        IExecutionLeaseManager leaseManager,
         ICacheManager cacheManager,
         IAgentRegistrationService registration,
         IAgentCredentialStore credentialStore,
@@ -95,6 +99,8 @@ public sealed class AgentWorker : BackgroundService
         _diagnosticsExporter = diagnosticsExporter;
         _executionManager = executionManager;
         _reservationManager = reservationManager;
+        _capacityManager = capacityManager;
+        _leaseManager = leaseManager;
         _cacheManager = cacheManager;
         _registration = registration;
         _credentialStore = credentialStore;
@@ -188,6 +194,21 @@ public sealed class AgentWorker : BackgroundService
             _logger.LogInformation("Recovering orphaned executions...");
             await _executionManager.RecoverOrphanedAsync(stoppingToken);
             await _reservationManager.ExpireStaleAsync(stoppingToken);
+
+            // Reconstrói a capacidade em memória (Reserved) a partir das
+            // reservas persistidas que sobreviveram à limpeza acima. Sem isso,
+            // o CapacityManager reinicia zerado enquanto o SQLite ainda tem
+            // reservas Temporary/Committed válidas — permitindo over-admission
+            // logo após o restart (Bloco 5.5, seção 12).
+            _logger.LogInformation("Rehydrating capacity manager from persisted reservations...");
+            await _capacityManager.RehydrateReservationsAsync(stoppingToken);
+
+            // Leases não-finais cujo prazo (+ tolerância) já passou enquanto
+            // o Agent estava fora do ar entram direto em Lost, em vez de
+            // esperar o primeiro ciclo do LeaseRenewalService (Bloco 5.5,
+            // seção 19).
+            _logger.LogInformation("Reconciling execution leases...");
+            await _leaseManager.ReconcileOnBootAsync(stoppingToken);
 
             // Health checks
             var healthResults = await _healthRunner.RunAllAsync(stoppingToken);

@@ -376,7 +376,8 @@ class SelectBestAgent:
 
 def _task_requirements(task: TaskExecutionDTO, automation_versions: AutomationVersionReader) -> dict[str, Any]:
     if task.requirements_snapshot:
-        return {**task.requirements_snapshot, "task_execution_id": task.id, "execution_id": task.execution_id}
+        version = automation_versions.get_published_snapshot(task.automation_version_id)
+        return _enrich_requirements({**task.requirements_snapshot, "task_execution_id": task.id, "execution_id": task.execution_id}, version)
     version = automation_versions.get_published_snapshot(task.automation_version_id)
     if version is None:
         raise ValueError("AutomationVersion snapshot is unavailable for scheduling.")
@@ -384,22 +385,39 @@ def _task_requirements(task: TaskExecutionDTO, automation_versions: AutomationVe
 
 
 def _requirements_from_version(version: AutomationVersionSnapshotDTO, task: TaskExecutionDTO) -> dict[str, Any]:
+    return _enrich_requirements(
+        {
+            "automation_version_id": version.automation_version_id,
+            "runtime_version_id": version.runtime_version_id,
+            "package_id": version.package_id,
+            "execution_id": task.execution_id,
+            "task_execution_id": task.id,
+            "execution_mode": version.execution_mode,
+            "required_capabilities": version.required_capabilities,
+            "resource_requirements": version.resources,
+            "exclusive_resources": version.exclusive_resources,
+            "timeout_policy": version.timeout_policy,
+            "retry_policy": version.retry_policy,
+            "priority": task.priority,
+            "runtime": {"id": version.runtime_id, "version": version.runtime_version},
+            "package": {"id": version.package_id, "sha256": version.package_sha256, "size_bytes": version.package_size_bytes},
+            "required_pools": version.required_pools,
+        },
+        version,
+    )
+
+
+def _enrich_requirements(requirements: dict[str, Any], version: AutomationVersionSnapshotDTO | None) -> dict[str, Any]:
+    if version is None:
+        return requirements
     return {
-        "automation_version_id": version.automation_version_id,
-        "runtime_version_id": version.runtime_version_id,
-        "package_id": version.package_id,
-        "execution_id": task.execution_id,
-        "task_execution_id": task.id,
-        "execution_mode": version.execution_mode,
-        "required_capabilities": version.required_capabilities,
-        "resource_requirements": version.resources,
-        "exclusive_resources": version.exclusive_resources,
-        "timeout_policy": version.timeout_policy,
-        "retry_policy": version.retry_policy,
-        "priority": task.priority,
-        "runtime": {"id": version.runtime_id, "version": version.runtime_version},
-        "package": {"id": version.package_id, "sha256": version.package_sha256, "size_bytes": version.package_size_bytes},
-        "required_pools": version.required_pools,
+        **requirements,
+        "automation_id": version.automation_id,
+        "automation_key": version.automation_key,
+        "automation_name": version.automation_name,
+        "automation_version": version.version,
+        "resources": requirements.get("resources") or requirements.get("resource_requirements") or version.resources,
+        "capabilities": requirements.get("capabilities") or requirements.get("required_capabilities") or version.required_capabilities,
     }
 
 
@@ -452,17 +470,29 @@ def _scheduling_backoff(attempts: int) -> timedelta:
 
 
 def _execution_offer_payload(offer, task: TaskExecutionDTO, requirements: dict[str, Any]) -> dict[str, Any]:
+    offer_ttl_seconds = max(int((_naive(offer.expires_at) - _naive(offer.offered_at)).total_seconds()), 0)
     return {
         "execution_offer_id": offer.id,
+        "execution_id": task.execution_id,
         "execution_attempt_id": offer.execution_attempt_id,
         "task_execution_id": task.id,
+        "agent_id": offer.agent_id,
+        "agent_instance_id": offer.agent_instance_id,
+        "automation_id": requirements.get("automation_id"),
+        "automation_key": requirements.get("automation_key"),
+        "automation_name": requirements.get("automation_name"),
+        "automation_version": requirements.get("automation_version"),
         "automation_version_id": str(task.automation_version_id),
+        "execution_mode": requirements.get("execution_mode"),
         "runtime": requirements.get("runtime") or {},
         "package": requirements.get("package") or {},
         "input": {"parameters": task.parameters},
+        "resources": _resource_requirements(requirements),
+        "capabilities": _required_capabilities(requirements),
         "required_capabilities": _required_capabilities(requirements),
         "required_pools": _required_pools(requirements),
         "resource_locks": _exclusive_resources(requirements),
+        "reservation_ttl_seconds": offer_ttl_seconds,
         "expires_at": offer.expires_at.isoformat(),
     }
 

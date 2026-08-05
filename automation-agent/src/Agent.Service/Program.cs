@@ -185,6 +185,13 @@ builder.Services.AddSingleton<IExecutionAttemptRepository, ExecutionAttemptRepos
 builder.Services.AddSingleton<IExecutionEventRepository, ExecutionEventRepository>();
 builder.Services.AddSingleton<IReservationRepository, ReservationRepository>();
 
+// Repositories — Bloco 5.5 (oferta/commit/lease do Portal)
+builder.Services.AddSingleton<IExecutionOfferRepository, ExecutionOfferRepository>();
+builder.Services.AddSingleton<IExecutionCommitRepository, ExecutionCommitRepository>();
+builder.Services.AddSingleton<IExecutionLeaseRepository, ExecutionLeaseRepository>();
+builder.Services.AddSingleton<IPendingArtifactRepository, PendingArtifactRepository>();
+builder.Services.AddSingleton<ISyncRunRepository, SyncRunRepository>();
+
 // Repositories — Phase 3 durable messaging
 builder.Services.AddSingleton<IOutboxRepository, OutboxRepository>();
 builder.Services.AddSingleton<IInboxRepository, InboxRepository>();
@@ -216,6 +223,7 @@ builder.Services.AddSingleton<IPackageStore, Biason.AutomationAgent.Infrastructu
 builder.Services.AddSingleton<ICapacityManager, Biason.AutomationAgent.Application.Capacity.CapacityManager>();
 builder.Services.AddSingleton<IResourceReservationManager, Biason.AutomationAgent.Application.Capacity.ResourceReservationManager>();
 builder.Services.AddSingleton<IAdmissionController, Biason.AutomationAgent.Application.Capacity.AdmissionController>();
+builder.Services.AddHostedService<Biason.AutomationAgent.Application.Capacity.ReservationExpirationService>();
 
 // Execution infrastructure
 builder.Services.AddSingleton<IWorkspaceManager, Biason.AutomationAgent.Application.Execution.WorkspaceManager>();
@@ -235,6 +243,21 @@ builder.Services.AddSingleton<IResultCollector, Biason.AutomationAgent.Applicati
 builder.Services.AddSingleton<IExecutionManager, Biason.AutomationAgent.Application.Execution.ExecutionManager>();
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.ExecutionMetricsCollector>();
 builder.Services.AddSingleton<ICacheManager, Biason.AutomationAgent.Application.Execution.CacheManager>();
+
+// Leases de execução (Bloco 5.5, seção 9/19)
+builder.Services.AddSingleton<Biason.AutomationAgent.Domain.Contracts.IExecutionLeaseManager,
+    Biason.AutomationAgent.Application.Execution.ExecutionLeaseManager>();
+builder.Services.AddHostedService<Biason.AutomationAgent.Application.Execution.LeaseRenewalService>();
+builder.Services.AddHostedService<Biason.AutomationAgent.Application.Execution.LeaseMessageListenerService>();
+
+// Sync e artifacts remotos (Bloco 5.5)
+builder.Services.AddSingleton<IArtifactManager, Biason.AutomationAgent.Application.Artifacts.ArtifactManager>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Artifacts.IArtifactAcknowledgementHandler,
+    Biason.AutomationAgent.Application.Artifacts.ArtifactAcknowledgementHandler>();
+builder.Services.AddSingleton<IArtifactUploadManager, Biason.AutomationAgent.Application.Artifacts.ArtifactUploadManager>();
+builder.Services.AddHostedService<Biason.AutomationAgent.Application.Artifacts.ArtifactUploadService>();
+builder.Services.AddSingleton<IAgentSyncService, Biason.AutomationAgent.Application.Sync.AgentSyncService>();
+builder.Services.AddHostedService<Biason.AutomationAgent.Application.Sync.AgentSyncOnReconnectService>();
 
 // Local interactive sessions and Session Runner
 builder.Services.AddSingleton<ISessionRunnerRegistry, SessionRunnerRegistry>();
@@ -284,6 +307,15 @@ builder.Services.AddHttpClient<IPortalApiClient,
         $"BiasonAutomationAgent/{sp.GetRequiredService<IOptions<AgentOptions>>().Value.Version}");
 });
 
+builder.Services.AddHttpClient<IArtifactContentUploader,
+    Biason.AutomationAgent.Infrastructure.Http.ArtifactContentUploader>((sp, http) =>
+{
+    var execution = sp.GetRequiredService<IOptions<ExecutionOptions>>().Value;
+    http.Timeout = TimeSpan.FromSeconds(execution.ArtifactUploadTimeoutSeconds);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd(
+        $"BiasonAutomationAgent/{sp.GetRequiredService<IOptions<AgentOptions>>().Value.Version}");
+});
+
 builder.Services.AddSingleton<IAgentRegistrationService,
     Biason.AutomationAgent.Application.Registration.AgentRegistrationService>();
 
@@ -304,6 +336,8 @@ builder.Services.AddHostedService(sp =>
     sp.GetRequiredService<Biason.AutomationAgent.Application.Heartbeat.HeartbeatService>());
 
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.OutboxMessagePublisher>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.IExecutionLifecyclePublisher,
+    Biason.AutomationAgent.Application.Messaging.OutboxExecutionLifecyclePublisher>();
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.PortalInboxService>();
 builder.Services.AddHostedService(sp =>
     sp.GetRequiredService<Biason.AutomationAgent.Application.Messaging.PortalInboxService>());
@@ -312,6 +346,20 @@ builder.Services.AddHostedService(sp =>
     sp.GetRequiredService<Biason.AutomationAgent.Application.Messaging.PortalMessageAcknowledgementService>());
 builder.Services.AddHostedService<Biason.AutomationAgent.Application.Messaging.OutboxBatchSender>();
 builder.Services.AddHostedService<Biason.AutomationAgent.Application.Messaging.InboxCommandProcessor>();
+
+// === Bloco 5.5 — handlers de comando do Portal ===
+// Sem isso, InboxCommandProcessor não tinha nenhum IInboxCommandHandler
+// registrado e todo comando do Portal ficava pending indefinidamente.
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.IInboxCommandHandler,
+    Biason.AutomationAgent.Application.Messaging.Handlers.ExecutionOfferHandler>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.IInboxCommandHandler,
+    Biason.AutomationAgent.Application.Messaging.Handlers.ExecutionCommitHandler>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.IInboxCommandHandler,
+    Biason.AutomationAgent.Application.Messaging.Handlers.ExecutionCancelRequestedHandler>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.IInboxCommandHandler,
+    Biason.AutomationAgent.Application.Messaging.Handlers.AgentSyncRequestHandler>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.IInboxCommandHandler,
+    Biason.AutomationAgent.Application.Messaging.Handlers.ArtifactConfirmedHandler>();
 
 // Application services
 builder.Services.AddSingleton<IMachineProfiler, MachineProfilerService>();

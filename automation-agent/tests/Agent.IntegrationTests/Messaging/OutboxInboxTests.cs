@@ -279,6 +279,50 @@ public sealed class OutboxInboxTests : IAsyncLifetime
         ack.PayloadJson.Should().Contain(InboxCommandStatus.DeadLetter);
     }
 
+    // === Bloco 5.5, seção 41/48 — unknown-command-rejected ===
+    // Antes da correção, um comando sem handler ficava `pending` para sempre
+    // (InboxCommandProcessor apenas dava `continue`). Agora deve virar
+    // dead-letter com UNSUPPORTED_COMMAND e gerar ACK, sem exigir handler.
+    [Fact]
+    public async Task Inbox_CommandWithoutRegisteredHandler_IsDeadLetteredAsUnsupported()
+    {
+        var inbox = _helper.CreateInboxRepository();
+        var outbox = _helper.CreateOutboxRepository();
+        var publisher = CreatePublisher(outbox);
+        var connection = new RecordingPortalConnectionManager();
+        var portalInbox = CreatePortalInbox(inbox, publisher, connection);
+
+        await portalInbox.HandleMessageAsync(new InboundPortalMessage(
+            MessageId: "msg_no_handler",
+            MessageType: PortalMessageTypes.ExecutionOffer,
+            CorrelationId: null,
+            ExecutionId: "exec_nh",
+            ExecutionAttemptId: null,
+            Sequence: 1,
+            Payload: new { automation_id = "automation_x" },
+            ReceivedAtUtc: _helper.Clock.UtcNow));
+
+        // Processor sem nenhum IInboxCommandHandler registrado para execution.offer.
+        var processor = new InboxCommandProcessor(
+            inbox,
+            Array.Empty<IInboxCommandHandler>(),
+            portalInbox,
+            _helper.Clock,
+            Options.Create(DefaultMessagingOptions()),
+            NullLogger<InboxCommandProcessor>.Instance);
+
+        (await processor.ProcessOnceAsync()).Should().Be(1);
+
+        var command = await inbox.GetByMessageIdAsync("msg_no_handler");
+        command!.Status.Should().Be(InboxCommandStatus.DeadLetter);
+        command.Error.Should().Be("UNSUPPORTED_COMMAND");
+
+        var ack = (await outbox.GetReadyBatchAsync(10, _helper.Clock.UtcNow)).Single();
+        ack.MessageType.Should().Be(PortalMessageTypes.CommandAck);
+        ack.PayloadJson.Should().Contain("UNSUPPORTED_COMMAND");
+        ack.PayloadJson.Should().Contain(InboxCommandStatus.DeadLetter);
+    }
+
     private OutboxMessagePublisher CreatePublisher(IOutboxRepository outbox)
     {
         return new OutboxMessagePublisher(outbox, _helper.CreateIdentityRepository(), _helper.Clock);

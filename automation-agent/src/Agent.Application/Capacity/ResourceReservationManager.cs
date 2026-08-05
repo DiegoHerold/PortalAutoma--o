@@ -48,7 +48,7 @@ public sealed class ResourceReservationManager : IResourceReservationManager
             ExecutionId = executionId,
             Pool = pool,
             Slots = slots,
-            Status = ReservationStatus.Active,
+            Status = ReservationStatus.Temporary,
             CreatedAtUtc = _clock.UtcNow,
             ExpiresAtUtc = _clock.UtcNow.AddSeconds(_execOpts.ReservationTimeoutSeconds)
         };
@@ -63,7 +63,11 @@ public sealed class ResourceReservationManager : IResourceReservationManager
     public async Task ReleaseAsync(string reservationId, CancellationToken ct = default)
     {
         var reservation = await _repo.GetAsync(reservationId, ct);
-        if (reservation is null || reservation.Status != ReservationStatus.Active) return;
+        if (reservation is null ||
+            (reservation.Status != ReservationStatus.Temporary && reservation.Status != ReservationStatus.Committed))
+        {
+            return;
+        }
 
         await _repo.UpdateStatusAsync(reservationId, ReservationStatus.Released, _clock.UtcNow, ct);
 
@@ -78,10 +82,17 @@ public sealed class ResourceReservationManager : IResourceReservationManager
 
     public async Task ExpireStaleAsync(CancellationToken ct = default)
     {
-        var expired = await _repo.GetExpiredAsync(_clock.UtcNow, ct);
+        var now = _clock.UtcNow;
+        var expired = await _repo.GetExpiredAsync(now, ct);
         foreach (var reservation in expired)
         {
-            await _repo.UpdateStatusAsync(reservation.ReservationId, ReservationStatus.Expired, _clock.UtcNow, ct);
+            // Compare-and-set: só decrementa a capacidade em memória se a
+            // transição realmente aconteceu agora (protege contra a mesma
+            // reserva já ter sido commitada/expirada por outro caminho
+            // concorrente — Bloco 5.5, seção 15).
+            var expiredNow = await _repo.TryExpireAsync(reservation.ReservationId, now, ct);
+            if (!expiredNow) continue;
+
             lock (_lock)
             {
                 var poolCap = _capacity.GetPoolCapacity(reservation.Pool);
@@ -89,6 +100,40 @@ public sealed class ResourceReservationManager : IResourceReservationManager
             }
             _logger.LogWarning("Expired reservation {ReservationId} for execution {ExecutionId}", reservation.ReservationId, reservation.ExecutionId);
         }
+    }
+
+    public async Task<ResourceReservation?> TryCommitAsync(string reservationId, CancellationToken ct = default)
+    {
+        var now = _clock.UtcNow;
+        var committed = await _repo.TryCommitAsync(reservationId, now, ct);
+        if (committed)
+        {
+            _logger.LogInformation("Committed reservation {ReservationId}", reservationId);
+            return await _repo.GetAsync(reservationId, ct);
+        }
+
+        // Não commitou: pode já estar Committed/Released/Cancelled/Expired, ou
+        // ainda Temporary porém com TTL vencido (o serviço periódico de
+        // expiração ainda não passou por ela). Neste último caso, força a
+        // expiração agora mesmo pela mesma via compare-and-set, para que o
+        // commit tardio veja um estado terminal e não uma reserva ambígua.
+        var reservation = await _repo.GetAsync(reservationId, ct);
+        if (reservation is not null && reservation.Status == ReservationStatus.Temporary && reservation.ExpiresAtUtc <= now)
+        {
+            var expiredNow = await _repo.TryExpireAsync(reservationId, now, ct);
+            if (expiredNow)
+            {
+                lock (_lock)
+                {
+                    var poolCap = _capacity.GetPoolCapacity(reservation.Pool);
+                    poolCap.Reserved = Math.Max(0, poolCap.Reserved - reservation.Slots);
+                }
+                _logger.LogWarning("Reservation {ReservationId} expired at commit time (race with expiration).", reservationId);
+                return await _repo.GetAsync(reservationId, ct);
+            }
+        }
+
+        return reservation;
     }
 
     public Task<ResourceReservation?> GetAsync(string reservationId, CancellationToken ct = default)

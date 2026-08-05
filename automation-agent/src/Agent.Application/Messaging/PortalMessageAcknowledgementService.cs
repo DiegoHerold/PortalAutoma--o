@@ -1,3 +1,4 @@
+using Biason.AutomationAgent.Application.Artifacts;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Models.Messaging;
 using Biason.AutomationAgent.Protocol.Messages;
@@ -12,6 +13,7 @@ public sealed class PortalMessageAcknowledgementService : IHostedService
     private readonly IPortalConnectionManager _connection;
     private readonly IOutboxRepository _outbox;
     private readonly IMessageAcknowledgementRepository _acknowledgements;
+    private readonly IArtifactAcknowledgementHandler? _artifactAcknowledgements;
     private readonly IClock _clock;
     private readonly ILogger<PortalMessageAcknowledgementService> _logger;
 
@@ -20,11 +22,13 @@ public sealed class PortalMessageAcknowledgementService : IHostedService
         IOutboxRepository outbox,
         IMessageAcknowledgementRepository acknowledgements,
         IClock clock,
-        ILogger<PortalMessageAcknowledgementService> logger)
+        ILogger<PortalMessageAcknowledgementService> logger,
+        IArtifactAcknowledgementHandler? artifactAcknowledgements = null)
     {
         _connection = connection;
         _outbox = outbox;
         _acknowledgements = acknowledgements;
+        _artifactAcknowledgements = artifactAcknowledgements;
         _clock = clock;
         _logger = logger;
     }
@@ -43,7 +47,7 @@ public sealed class PortalMessageAcknowledgementService : IHostedService
 
     public async Task HandleMessageAsync(InboundPortalMessage message)
     {
-        if (message.MessageType != PortalMessageTypes.MessageAck)
+        if (message.MessageType is not (PortalMessageTypes.MessageAck or PortalMessageTypes.PortalAck))
             return;
 
         var payload = ProtocolJson.ReadPayload<MessageAcknowledgementPayload>(message.Payload);
@@ -53,7 +57,7 @@ public sealed class PortalMessageAcknowledgementService : IHostedService
             {
                 await AcknowledgeMessageAsync(
                     message.CorrelationId,
-                    status: "acknowledged",
+                    new MessageAcknowledgementPayload { MessageId = message.CorrelationId, Status = "acknowledged" },
                     detail: "acknowledged by correlation_id",
                     nowUtc: _clock.UtcNow);
                 return;
@@ -67,12 +71,12 @@ public sealed class PortalMessageAcknowledgementService : IHostedService
         var detail = payload.Detail ?? payload.Status;
 
         if (!string.IsNullOrWhiteSpace(payload.MessageId))
-            await AcknowledgeMessageAsync(payload.MessageId, payload.Status, detail, now);
+            await AcknowledgeMessageAsync(payload.MessageId, payload, detail, now);
 
         if (payload.MessageIds is not null)
         {
             foreach (var messageId in payload.MessageIds.Where(id => !string.IsNullOrWhiteSpace(id)))
-                await AcknowledgeMessageAsync(messageId, payload.Status, detail, now);
+                await AcknowledgeMessageAsync(messageId, payload, detail, now);
         }
 
         if (!string.IsNullOrWhiteSpace(payload.ExecutionAttemptId) &&
@@ -95,14 +99,34 @@ public sealed class PortalMessageAcknowledgementService : IHostedService
         }
     }
 
-    private async Task AcknowledgeMessageAsync(string messageId, string status, string? detail, DateTime nowUtc)
+    private async Task AcknowledgeMessageAsync(
+        string messageId,
+        MessageAcknowledgementPayload payload,
+        string? detail,
+        DateTime nowUtc)
     {
+        var original = await _outbox.GetByMessageIdAsync(messageId);
+        if (original is not null &&
+            _artifactAcknowledgements is not null &&
+            original.MessageType is PortalMessageTypes.ExecutionArtifactCreated or PortalMessageTypes.ArtifactUploaded)
+        {
+            try
+            {
+                await _artifactAcknowledgements.HandleAsync(original, payload, nowUtc);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Artifact ACK for message {MessageId} could not be applied locally.", messageId);
+                return;
+            }
+        }
+
         await _outbox.MarkAcknowledgedAsync(messageId, nowUtc, detail);
         await _acknowledgements.SaveAsync(new MessageAcknowledgement
         {
             MessageId = messageId,
             Direction = "inbound",
-            Status = status,
+            Status = payload.Status,
             AcknowledgedAtUtc = nowUtc,
             Detail = detail
         });

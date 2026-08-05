@@ -132,6 +132,37 @@ class ReconciliationRecordDTO:
 
 
 @dataclass(frozen=True)
+class AgentSyncExecutionDTO:
+    execution_id: str | None
+    execution_attempt_id: str | None
+    state: str | None
+    reservation_id: str | None = None
+    workspace_path: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AgentSyncStateCommand:
+    agent_id: str
+    agent_instance_id: str
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class AgentSyncStateResultDTO:
+    agent_id: str
+    agent_instance_id: str
+    reason: str | None
+    summary: dict[str, int]
+    decisions: list[dict[str, Any]]
+    actions: list[dict[str, Any]]
+    reservations: dict[str, Any]
+    leases: dict[str, Any]
+    artifacts: dict[str, Any]
+    recorded_at: datetime
+
+
+@dataclass(frozen=True)
 class AgentDispatchSnapshotDTO:
     agent_id: str
     agent_instance_id: str | None

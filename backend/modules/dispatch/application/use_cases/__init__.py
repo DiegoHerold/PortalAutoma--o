@@ -8,6 +8,7 @@ from modules.dispatch.application.use_cases.offers import (
     ReleaseAttemptDispatchResources,
     RenewExecutionLease,
 )
+from modules.dispatch.application.use_cases.reconciliation import ReconcileAgentSyncState
 from modules.dispatch.application.use_cases.scheduler import (
     FindEligibleAgents,
     RankDispatchCandidates,
@@ -23,6 +24,7 @@ __all__ = [
     "ExpireExecutionOffer",
     "FindEligibleAgents",
     "RankDispatchCandidates",
+    "ReconcileAgentSyncState",
     "ReconcileExpiredLeases",
     "RejectExecutionOffer",
     "ReleaseAttemptDispatchResources",

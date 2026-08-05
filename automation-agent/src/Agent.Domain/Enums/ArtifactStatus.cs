@@ -2,9 +2,12 @@ namespace Biason.AutomationAgent.Domain.Enums;
 
 public enum ArtifactStatus
 {
-    Created,
+    Pending,
+    Announced,
+    UploadUrlReceived,
     Uploading,
-    Available,
-    Failed,
-    Expired
+    Uploaded,
+    Confirmed,
+    RetryWait,
+    Failed
 }

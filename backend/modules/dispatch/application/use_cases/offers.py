@@ -159,12 +159,17 @@ class CommitExecutionOffer:
         saved_offer = self.offers.save(_offer_to_dto(offer), commit_token_hash=hashlib.sha256(lease.id.encode("utf-8")).hexdigest())
         self.attempts.save(_attempt_to_dto(attempt))
         saved_lease = self.leases.add(_lease_to_dto(lease))
+        requirements = offer_dto.requirements_snapshot if isinstance(offer_dto.requirements_snapshot, dict) else {}
         command = self.commands.create(
             agent_id,
             "execution.commit",
             {
                 "execution_offer_id": saved_offer.id,
+                "execution_id": requirements.get("execution_id"),
                 "execution_attempt_id": attempt.id,
+                "task_execution_id": attempt.task_execution_id,
+                "agent_id": agent_id,
+                "agent_instance_id": agent_instance_id,
                 "lease_id": saved_lease.id,
                 "lease_expires_at": saved_lease.expires_at.isoformat(),
             },

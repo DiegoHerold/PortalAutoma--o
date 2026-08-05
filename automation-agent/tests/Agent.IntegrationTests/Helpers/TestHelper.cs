@@ -71,6 +71,11 @@ public sealed class TestHelper : IDisposable
         return new InboxRepository(DbManager);
     }
 
+    public ReservationRepository CreateReservationRepository()
+    {
+        return new ReservationRepository(DbManager);
+    }
+
     public MessageAcknowledgementRepository CreateAcknowledgementRepository()
     {
         return new MessageAcknowledgementRepository(DbManager);

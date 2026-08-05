@@ -197,6 +197,24 @@ public sealed class MigrationTests : IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task Migration6_AddsAckDrivenArtifactColumns()
+    {
+        var columns = await GetColumnsAsync("pending_artifacts");
+
+        columns.Should().Contain(new[]
+        {
+            "announcement_message_id",
+            "uploaded_message_id",
+            "failed_message_id",
+            "upload_session_id",
+            "upload_url",
+            "upload_method",
+            "upload_headers_json",
+            "upload_expires_at_utc"
+        });
+    }
+
     // inbox-deduplication (nível de esquema): o índice único é a garantia final
     // de que um message_id repetido não vira duas linhas.
     [Fact]
@@ -280,7 +298,7 @@ public sealed class MigrationTests : IAsyncLifetime
         while (await reader.ReadAsync())
             versions.Add(reader.GetInt32(0));
 
-        versions.Should().Equal(1, 2, 3, 4, 5);
+        versions.Should().Equal(1, 2, 3, 4, 5, 6);
     }
 
     [Fact]
@@ -294,6 +312,6 @@ public sealed class MigrationTests : IAsyncLifetime
         using var conn = _helper.DbManager.CreateConnection();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-        Convert.ToInt64(await cmd.ExecuteScalarAsync()).Should().Be(5);
+        Convert.ToInt64(await cmd.ExecuteScalarAsync()).Should().Be(6);
     }
 }

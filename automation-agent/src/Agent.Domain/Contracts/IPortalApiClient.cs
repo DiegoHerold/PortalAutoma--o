@@ -19,6 +19,20 @@ public interface IPortalApiClient
     /// para o chamador distinguir rejeição definitiva de falha transitória.
     /// </summary>
     Task<PortalRegistrationOutcome> RegisterAsync(AgentRegistrationRequest request, CancellationToken ct = default);
+
+    Task<PortalArtifactUploadTargetOutcome> RequestArtifactUploadAsync(
+        PortalArtifactUploadRequest request,
+        CancellationToken ct = default);
+
+    Task<PortalArtifactUploadOutcome> UploadArtifactContentAsync(
+        PortalArtifactUploadTarget target,
+        string localPath,
+        string contentType,
+        CancellationToken ct = default);
+
+    Task<PortalArtifactUploadOutcome> ConfirmArtifactUploadAsync(
+        PortalArtifactUploadConfirmation confirmation,
+        CancellationToken ct = default);
 }
 
 /// <summary>Dados mínimos de identificação enviados no registro (seção 10).</summary>
@@ -54,4 +68,53 @@ public sealed record PortalRegistrationOutcome(
     /// <summary>Falha transitória: rede, timeout, 5xx. Pode ser repetida com backoff.</summary>
     public static PortalRegistrationOutcome Transient(string reasonCode, string? message) =>
         new(false, ReasonCode: reasonCode, Message: message, Retryable: true);
+}
+
+public sealed record PortalArtifactUploadRequest(
+    string ArtifactId,
+    string ExecutionId,
+    string ExecutionAttemptId,
+    string Name,
+    string ContentType,
+    long SizeBytes,
+    string Sha256);
+
+public sealed record PortalArtifactUploadTarget(
+    string UploadUrl,
+    string Method = "PUT",
+    string? RemoteObjectId = null,
+    IReadOnlyDictionary<string, string>? Headers = null);
+
+public sealed record PortalArtifactUploadConfirmation(
+    string ArtifactId,
+    string ExecutionId,
+    string ExecutionAttemptId,
+    string Sha256,
+    long SizeBytes,
+    string? RemoteObjectId);
+
+public sealed record PortalArtifactUploadTargetOutcome(
+    bool Success,
+    PortalArtifactUploadTarget? Target = null,
+    string? ReasonCode = null,
+    string? Message = null,
+    bool Retryable = true)
+{
+    public static PortalArtifactUploadTargetOutcome Ok(PortalArtifactUploadTarget target) =>
+        new(true, target);
+
+    public static PortalArtifactUploadTargetOutcome Failed(string reasonCode, string? message, bool retryable = true) =>
+        new(false, null, reasonCode, message, retryable);
+}
+
+public sealed record PortalArtifactUploadOutcome(
+    bool Success,
+    string? ReasonCode = null,
+    string? Message = null,
+    bool Retryable = true)
+{
+    public static PortalArtifactUploadOutcome Ok() => new(true);
+
+    public static PortalArtifactUploadOutcome Failed(string reasonCode, string? message, bool retryable = true) =>
+        new(false, reasonCode, message, retryable);
 }

@@ -1,9 +1,11 @@
 using Biason.AutomationAgent.Application.Heartbeat;
+using Biason.AutomationAgent.Application.Messaging;
 using Biason.AutomationAgent.Application.Sessions;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Enums;
 using Biason.AutomationAgent.Domain.Models;
 using Biason.AutomationAgent.Domain.StateMachines;
+using Biason.AutomationAgent.Protocol.Messages;
 using Microsoft.Extensions.Logging;
 
 namespace Biason.AutomationAgent.Application.HealthChecks;
@@ -29,6 +31,13 @@ public sealed class HealthCheckRunner
     private readonly IInteractivePoolService? _interactivePool;
     private readonly IDesktopLockManager? _desktopLocks;
     private readonly IInteractiveExecutionAssignmentRepository? _interactiveAssignments;
+    private readonly IEnumerable<IInboxCommandHandler>? _commandHandlers;
+    private readonly IExecutionLeaseManager? _leaseManager;
+    private readonly IArtifactManager? _artifactManager;
+    private readonly IArtifactUploadManager? _artifactUploadManager;
+    private readonly IPendingArtifactRepository? _pendingArtifacts;
+    private readonly IAgentSyncService? _syncService;
+    private readonly ISyncRunRepository? _syncRuns;
     private readonly Domain.Configuration.SessionRunnerOptions? _sessionRunnerOptions;
     private readonly ILogger<HealthCheckRunner> _logger;
 
@@ -53,7 +62,14 @@ public sealed class HealthCheckRunner
         Microsoft.Extensions.Options.IOptions<Domain.Configuration.SessionRunnerOptions>? sessionRunnerOptions = null,
         IInteractivePoolService? interactivePool = null,
         IDesktopLockManager? desktopLocks = null,
-        IInteractiveExecutionAssignmentRepository? interactiveAssignments = null)
+        IInteractiveExecutionAssignmentRepository? interactiveAssignments = null,
+        IEnumerable<IInboxCommandHandler>? commandHandlers = null,
+        IExecutionLeaseManager? leaseManager = null,
+        IArtifactManager? artifactManager = null,
+        IArtifactUploadManager? artifactUploadManager = null,
+        IPendingArtifactRepository? pendingArtifacts = null,
+        IAgentSyncService? syncService = null,
+        ISyncRunRepository? syncRuns = null)
     {
         _dbManager = dbManager;
         _dirs = dirs;
@@ -74,6 +90,13 @@ public sealed class HealthCheckRunner
         _interactivePool = interactivePool;
         _desktopLocks = desktopLocks;
         _interactiveAssignments = interactiveAssignments;
+        _commandHandlers = commandHandlers;
+        _leaseManager = leaseManager;
+        _artifactManager = artifactManager;
+        _artifactUploadManager = artifactUploadManager;
+        _pendingArtifacts = pendingArtifacts;
+        _syncService = syncService;
+        _syncRuns = syncRuns;
         _sessionRunnerOptions = sessionRunnerOptions?.Value;
         _logger = logger;
     }
@@ -94,6 +117,11 @@ public sealed class HealthCheckRunner
             CheckWebSocketConnection(),
             CheckHeartbeat(),
             await CheckDurableMessagingAsync(ct),
+            CheckPortalCommandHandlers(),
+            CheckReservationRehydration(),
+            CheckLeaseManager(),
+            await CheckArtifactManagerAsync(ct),
+            await CheckSyncManagerAsync(ct),
             await CheckWindowsSessionDiscoveryAsync(ct),
             await CheckSessionRunnerRegistryAsync(ct),
             CheckSessionRunnerPipe(),
@@ -873,6 +901,105 @@ public sealed class HealthCheckRunner
         Message = $"{component} is not configured",
         CheckedAtUtc = _clock.UtcNow
     };
+
+    private HealthCheckResult CheckPortalCommandHandlers()
+    {
+        const string component = "portal_command_handlers";
+
+        if (_commandHandlers is null)
+            return NotConfigured(component);
+
+        var registered = _commandHandlers.Select(h => h.MessageType).ToHashSet(StringComparer.Ordinal);
+        var missing = PortalMessageTypes.Commands.Where(c => !registered.Contains(c)).ToArray();
+
+        return new HealthCheckResult
+        {
+            Component = component,
+            Status = missing.Length == 0 ? HealthStatus.Healthy : HealthStatus.Unhealthy,
+            Message = missing.Length == 0
+                ? $"{registered.Count} portal command handler(s) registered"
+                : $"Missing handler(s): {string.Join(", ", missing)}",
+            CheckedAtUtc = _clock.UtcNow
+        };
+    }
+
+    private HealthCheckResult CheckReservationRehydration()
+    {
+        return new HealthCheckResult
+        {
+            Component = "reservation_rehydration",
+            Status = _capacityManager is null ? HealthStatus.Unhealthy : HealthStatus.Healthy,
+            Message = _capacityManager is null
+                ? "Capacity manager unavailable; persisted reservations cannot be rehydrated"
+                : "Capacity manager exposes reservation rehydration",
+            CheckedAtUtc = _clock.UtcNow
+        };
+    }
+
+    private HealthCheckResult CheckLeaseManager()
+    {
+        return new HealthCheckResult
+        {
+            Component = "lease_manager",
+            Status = _leaseManager is null ? HealthStatus.Unhealthy : HealthStatus.Healthy,
+            Message = _leaseManager is null ? "Execution lease manager unavailable" : "Execution lease manager configured",
+            CheckedAtUtc = _clock.UtcNow
+        };
+    }
+
+    private async Task<HealthCheckResult> CheckArtifactManagerAsync(CancellationToken ct)
+    {
+        const string component = "artifact_manager";
+
+        if (_artifactManager is null || _artifactUploadManager is null || _pendingArtifacts is null)
+        {
+            return new HealthCheckResult
+            {
+                Component = component,
+                Status = HealthStatus.Unhealthy,
+                Message = "Artifact manager, upload manager, or repository is unavailable",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+
+        var diagnostics = await _pendingArtifacts.GetDiagnosticsAsync(ct);
+        return new HealthCheckResult
+        {
+            Component = component,
+            Status = diagnostics.Failed > 0 ? HealthStatus.Degraded : HealthStatus.Healthy,
+            Message = $"pending={diagnostics.Pending}, announced={diagnostics.Announced}, upload_url_received={diagnostics.UploadUrlReceived}, " +
+                      $"uploading={diagnostics.Uploading}, uploaded={diagnostics.Uploaded}, " +
+                      $"confirmed={diagnostics.Confirmed}, retry_wait={diagnostics.RetryWait}, failed={diagnostics.Failed}",
+            CheckedAtUtc = _clock.UtcNow
+        };
+    }
+
+    private async Task<HealthCheckResult> CheckSyncManagerAsync(CancellationToken ct)
+    {
+        const string component = "sync_manager";
+
+        if (_syncService is null || _syncRuns is null)
+        {
+            return new HealthCheckResult
+            {
+                Component = component,
+                Status = HealthStatus.Unhealthy,
+                Message = "Agent sync service or sync run repository is unavailable",
+                CheckedAtUtc = _clock.UtcNow
+            };
+        }
+
+        var latest = await _syncRuns.GetLatestAsync(ct);
+        return new HealthCheckResult
+        {
+            Component = component,
+            Status = latest?.Status == "failed" ? HealthStatus.Degraded : HealthStatus.Healthy,
+            Message = latest is null
+                ? "Sync manager configured; no sync run recorded yet"
+                : $"Last sync {latest.SyncId} status={latest.Status}, completed_at={latest.CompletedAtUtc:o}",
+            CheckedAtUtc = _clock.UtcNow
+        };
+    }
 
     private async Task<HealthCheckResult> CheckDurableMessagingAsync(CancellationToken ct)
     {

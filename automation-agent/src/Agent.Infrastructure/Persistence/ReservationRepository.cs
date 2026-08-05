@@ -40,19 +40,24 @@ public sealed class ReservationRepository : IReservationRepository
         return Map(r);
     }
 
+    // "Ativa" = ainda consome capacidade: Temporary (aguardando commit) ou
+    // Committed (execução em preparo/andamento). Só Released/Expired/Cancelled
+    // saem da contagem.
     public async Task<IReadOnlyList<ResourceReservation>> GetActiveAsync(CancellationToken ct = default)
     {
         using var conn = _db.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT * FROM resource_reservations WHERE status = 'Active' ORDER BY created_at_utc;";
+        cmd.CommandText = "SELECT * FROM resource_reservations WHERE status IN ('Temporary','Committed') ORDER BY created_at_utc;";
         return await ReadListAsync(cmd, ct);
     }
 
+    // Só reservas Temporary expiram por TTL — Committed não tem expiração
+    // (seção 8: "Committed não tem expiração automática por tempo").
     public async Task<IReadOnlyList<ResourceReservation>> GetExpiredAsync(DateTime now, CancellationToken ct = default)
     {
         using var conn = _db.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT * FROM resource_reservations WHERE status = 'Active' AND expires_at_utc < $now;";
+        cmd.CommandText = "SELECT * FROM resource_reservations WHERE status = 'Temporary' AND expires_at_utc < $now;";
         cmd.Parameters.AddWithValue("$now", now.ToString("o"));
         return await ReadListAsync(cmd, ct);
     }
@@ -72,10 +77,45 @@ public sealed class ReservationRepository : IReservationRepository
     {
         using var conn = _db.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COALESCE(SUM(slots),0) FROM resource_reservations WHERE pool = $p AND status = 'Active';";
+        cmd.CommandText = "SELECT COALESCE(SUM(slots),0) FROM resource_reservations WHERE pool = $p AND status IN ('Temporary','Committed');";
         cmd.Parameters.AddWithValue("$p", pool.ToString());
         var result = await cmd.ExecuteScalarAsync(ct);
         return Convert.ToInt32(result);
+    }
+
+    // Compare-and-set: só transiciona se ainda estiver Temporary e não vencida.
+    // Uma única instrução UPDATE — o SQLite serializa escritores no nível do
+    // arquivo/conexão, então o resultado de ExecuteNonQueryAsync (linhas
+    // afetadas) é uma checagem atômica confiável contra a race com expiração
+    // (Bloco 5.5, seção 15).
+    public async Task<bool> TryCommitAsync(string reservationId, DateTime nowUtc, CancellationToken ct = default)
+    {
+        using var conn = _db.CreateConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE resource_reservations
+            SET status = 'Committed'
+            WHERE reservation_id = $rid AND status = 'Temporary' AND expires_at_utc > $now;
+            """;
+        cmd.Parameters.AddWithValue("$rid", reservationId);
+        cmd.Parameters.AddWithValue("$now", nowUtc.ToString("o"));
+        var affected = await cmd.ExecuteNonQueryAsync(ct);
+        return affected > 0;
+    }
+
+    public async Task<bool> TryExpireAsync(string reservationId, DateTime nowUtc, CancellationToken ct = default)
+    {
+        using var conn = _db.CreateConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE resource_reservations
+            SET status = 'Expired', released_at_utc = $now
+            WHERE reservation_id = $rid AND status = 'Temporary' AND expires_at_utc <= $now;
+            """;
+        cmd.Parameters.AddWithValue("$rid", reservationId);
+        cmd.Parameters.AddWithValue("$now", nowUtc.ToString("o"));
+        var affected = await cmd.ExecuteNonQueryAsync(ct);
+        return affected > 0;
     }
 
     private static async Task<IReadOnlyList<ResourceReservation>> ReadListAsync(Microsoft.Data.Sqlite.SqliteCommand cmd, CancellationToken ct)

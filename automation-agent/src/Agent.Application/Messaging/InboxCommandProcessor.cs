@@ -66,7 +66,20 @@ public sealed class InboxCommandProcessor : BackgroundService
         foreach (var command in pending)
         {
             if (!_handlers.TryGetValue(command.CommandType, out var handler))
+            {
+                // Comando persistido sem handler correspondente não pode ficar
+                // `pending` indefinidamente (seção 41 do Bloco 5.5). Dead-letter
+                // explícito + ACK, para que o Portal saiba que o comando não será
+                // processado em vez de aguardar silenciosamente para sempre.
+                _logger.LogWarning(
+                    "No handler registered for command type {CommandType} (message {MessageId}); dead-lettering as UNSUPPORTED_COMMAND.",
+                    command.CommandType, command.MessageId);
+
+                await _inbox.MarkDeadLetterAsync(command.Id, _clock.UtcNow, "UNSUPPORTED_COMMAND", ct);
+                await _inboxService.EnqueueCommandAckAsync(command, InboxCommandStatus.DeadLetter, duplicate: false, "UNSUPPORTED_COMMAND");
+                processed++;
                 continue;
+            }
 
             var nextAttempt = command.AttemptCount + 1;
             await _inbox.MarkProcessingAsync(command.Id, ct);

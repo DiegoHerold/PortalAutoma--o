@@ -1,10 +1,13 @@
 using System.Threading.Channels;
+using System.Text.Json;
 using Biason.AutomationAgent.Domain.Configuration;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Enums;
 using Biason.AutomationAgent.Domain.Models.Connections;
 using Biason.AutomationAgent.Domain.StateMachines;
 using Biason.AutomationAgent.Protocol.Envelope;
+using Biason.AutomationAgent.Protocol.Messages;
+using Biason.AutomationAgent.Protocol.Serialization;
 using Biason.AutomationAgent.Protocol.Validation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,6 +33,7 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
     private readonly IConnectionStateRepository _stateRepo;
     private readonly IClock _clock;
     private readonly PortalOptions _options;
+    private readonly AgentOptions _agentOptions;
     private readonly ILogger<PortalConnectionManager> _logger;
 
     private readonly string _connectionId = $"conn_{Guid.NewGuid():N}";
@@ -55,6 +59,7 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
         IConnectionStateRepository stateRepo,
         IClock clock,
         IOptions<PortalOptions> options,
+        IOptions<AgentOptions> agentOptions,
         ILogger<PortalConnectionManager> logger)
     {
         _transportFactory = transportFactory;
@@ -63,11 +68,32 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
         _stateRepo = stateRepo;
         _clock = clock;
         _options = options.Value;
+        _agentOptions = agentOptions.Value;
         _logger = logger;
 
         _backoff = new ConnectionBackoffCalculator(
             TimeSpan.FromSeconds(_options.ReconnectInitialSeconds),
             TimeSpan.FromSeconds(_options.ReconnectMaximumSeconds));
+    }
+
+    public PortalConnectionManager(
+        IWebSocketTransportFactory transportFactory,
+        IAgentIdentityService identity,
+        IAgentCredentialStore credentials,
+        IConnectionStateRepository stateRepo,
+        IClock clock,
+        IOptions<PortalOptions> options,
+        ILogger<PortalConnectionManager> logger)
+        : this(
+            transportFactory,
+            identity,
+            credentials,
+            stateRepo,
+            clock,
+            options,
+            Options.Create(new AgentOptions()),
+            logger)
+    {
     }
 
     public ConnectionState CurrentState => _state;
@@ -159,8 +185,6 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
     {
         // Transiciona para Connecting sempre primeiro — de Disconnected, Reconnecting ou
         // Disabled->Disconnected->Connecting, é sempre uma transição válida na tabela.
-        await TransitionAsync(ConnectionState.Connecting, "starting_connect", null, ct);
-
         var identity = await _identity.GetIdentityAsync(ct);
         var credential = await _credentials.GetAsync(ct);
 
@@ -171,6 +195,10 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
             return false;
         }
 
+        // Only enter Connecting once the Agent has enough local identity
+        // material to open a real socket.
+        await TransitionAsync(ConnectionState.Connecting, "starting_connect", null, ct);
+
         await using var transport = _transportFactory.Create();
         var uri = BuildConnectUri(identity.AgentId!, identity.InstallationId);
         var headers = new Dictionary<string, string> { ["Authorization"] = $"Bearer {credential.Value}" };
@@ -180,6 +208,11 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
         try
         {
             await transport.ConnectAsync(uri, headers, TimeSpan.FromSeconds(_options.ConnectionTimeoutSeconds), ct);
+            if (!await CompleteGatewayHandshakeAsync(transport, identity.AgentId!, identity.InstanceId, ct))
+            {
+                await TransitionAsync(ConnectionState.Disconnected, "handshake_failed", "Portal did not complete agent.connect.", CancellationToken.None);
+                return false;
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -233,6 +266,69 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
 
         // Sucesso = chegamos a ficar Connected, mesmo que tenha caído depois.
         return true;
+    }
+
+    private async Task<bool> CompleteGatewayHandshakeAsync(
+        IWebSocketTransport transport,
+        string agentId,
+        string agentInstanceId,
+        CancellationToken ct)
+    {
+        using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        handshakeCts.CancelAfter(TimeSpan.FromSeconds(_options.ConnectionTimeoutSeconds));
+
+        var handshake = new
+        {
+            message_type = "agent.connect",
+            payload = new
+            {
+                agent_id = agentId,
+                agent_instance_id = agentInstanceId,
+                agent_version = _agentOptions.Version,
+                supported_protocol_versions = new[] { ProtocolConstants.CurrentVersion }
+            }
+        };
+
+        await transport.SendTextAsync(ProtocolJson.Serialize(handshake), handshakeCts.Token);
+
+        while (!handshakeCts.Token.IsCancellationRequested)
+        {
+            var received = await transport.ReceiveAsync(handshakeCts.Token);
+            if (received.Kind == TransportMessageKind.Closed)
+            {
+                _logger.LogWarning("Portal closed the socket during handshake: {Reason}", received.CloseReason);
+                return false;
+            }
+
+            if (received.Kind == TransportMessageKind.Error)
+            {
+                _logger.LogWarning(received.Error, "Portal socket failed during handshake.");
+                return false;
+            }
+
+            var raw = received.Text;
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            _lastMessageAtUtc = _clock.UtcNow;
+            _lastPongAtUtc = _clock.UtcNow;
+
+            var (result, envelope) = EnvelopeValidator.ParseInbound(raw, _clock.UtcNow, agentId);
+            if (result.IsValid && envelope?.MessageType == PortalMessageTypes.Connected)
+                return true;
+
+            if (TryReadMessageType(raw, out var messageType) &&
+                string.Equals(messageType, PortalMessageTypes.PortalError, StringComparison.Ordinal))
+            {
+                _logger.LogWarning("Portal rejected agent.connect during handshake: {Payload}", raw);
+                return false;
+            }
+
+            _logger.LogWarning("Unexpected Portal handshake response: {Code} - {Message}", result.ErrorCode, result.Message);
+            return false;
+        }
+
+        return false;
     }
 
     private async Task HandleDisconnectAsync(IWebSocketTransport transport, string reason, CancellationToken ct)
@@ -476,6 +572,25 @@ public sealed class PortalConnectionManager : IPortalConnectionManager
         var baseUrl = _options.WebSocketUrl.TrimEnd('/');
         var separator = baseUrl.Contains('?') ? '&' : '?';
         return new Uri($"{baseUrl}{separator}agent_id={Uri.EscapeDataString(agentId)}&installation_id={Uri.EscapeDataString(installationId)}");
+    }
+
+    private static bool TryReadMessageType(string rawJson, out string? messageType)
+    {
+        messageType = null;
+        try
+        {
+            using var document = JsonDocument.Parse(rawJson);
+            if (!document.RootElement.TryGetProperty("message_type", out var value) ||
+                value.ValueKind != JsonValueKind.String)
+                return false;
+
+            messageType = value.GetString();
+            return !string.IsNullOrWhiteSpace(messageType);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static async Task SafeAwaitAsync(Task task)

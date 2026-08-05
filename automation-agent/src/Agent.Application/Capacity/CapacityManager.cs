@@ -12,6 +12,7 @@ public sealed class CapacityManager : ICapacityManager
     private readonly CapacityOptions _options;
     private readonly IAgentIdentityService _identity;
     private readonly IClock _clock;
+    private readonly IReservationRepository _reservations;
     private readonly ILogger<CapacityManager> _logger;
     private readonly object _lock = new();
     private readonly Dictionary<PoolType, PoolCapacity> _pools;
@@ -21,11 +22,13 @@ public sealed class CapacityManager : ICapacityManager
         IOptions<CapacityOptions> options,
         IAgentIdentityService identity,
         IClock clock,
+        IReservationRepository reservations,
         ILogger<CapacityManager> logger)
     {
         _options = options.Value;
         _identity = identity;
         _clock = clock;
+        _reservations = reservations;
         _logger = logger;
 
         _pools = new Dictionary<PoolType, PoolCapacity>
@@ -95,5 +98,31 @@ public sealed class CapacityManager : ICapacityManager
         {
             _pools[pool].Used = Math.Max(0, _pools[pool].Used - slots);
         }
+    }
+
+    public async Task RehydrateReservationsAsync(CancellationToken ct = default)
+    {
+        // Temporary + Committed: as duas consomem capacidade persistida.
+        // "Used" não é rehidratado aqui de propósito — reflete processo
+        // realmente vivo NESTA instância, e depois de um restart não há
+        // nenhum (ExecutionManager.RecoverOrphanedAsync já marca as execuções
+        // anteriores como Interrupted/Orphaned antes deste passo rodar).
+        var active = await _reservations.GetActiveAsync(ct);
+
+        lock (_lock)
+        {
+            foreach (var pool in _pools.Values)
+                pool.Reserved = 0;
+
+            foreach (var reservation in active)
+            {
+                if (_pools.TryGetValue(reservation.Pool, out var poolCap))
+                    poolCap.Reserved += reservation.Slots;
+            }
+        }
+
+        _logger.LogInformation(
+            "Rehydrated capacity from {Count} persisted reservation(s) across {PoolCount} pool(s).",
+            active.Count, _pools.Count);
     }
 }

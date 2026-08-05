@@ -122,10 +122,15 @@ public sealed class HeartbeatServiceTests : IAsyncLifetime
         await heartbeat.StartAsync(cts.Token);
 
         var transport = factory.Created[0];
-        await WaitUntilAsync(() => transport.SentMessages.Count > 0, TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(
+            () => transport.SentMessages
+                .Select(raw => ProtocolJson.Deserialize<ProtocolEnvelope>(raw))
+                .Any(envelope => envelope?.MessageType == PortalMessageTypes.Heartbeat),
+            TimeSpan.FromSeconds(5));
 
-        var raw = transport.SentMessages.First();
-        var envelope = ProtocolJson.Deserialize<ProtocolEnvelope>(raw);
+        var envelope = transport.SentMessages
+            .Select(raw => ProtocolJson.Deserialize<ProtocolEnvelope>(raw))
+            .First(item => item?.MessageType == PortalMessageTypes.Heartbeat);
 
         envelope!.MessageType.Should().Be(PortalMessageTypes.Heartbeat);
         envelope.AgentId.Should().Be("agt_hb");

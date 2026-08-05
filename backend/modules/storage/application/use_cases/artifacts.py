@@ -66,6 +66,50 @@ class InitiateArtifactUpload:
                     if existing.execution_attempt_id != command.execution_attempt_id:
                         raise ArtifactSecurityError("Artifact belongs to another ExecutionAttempt.")
                     upload_session = _require_upload_session(self.upload_sessions, existing.upload_session_id)
+                    if (
+                        existing.status != ArtifactStatus.AVAILABLE.value
+                        and upload_session.expires_at
+                        and _naive(upload_session.expires_at) < utcnow()
+                    ):
+                        now = utcnow()
+                        stored_object = _require_stored_object(self.stored_objects, existing.stored_object_id)
+                        refreshed_session = UploadSession(
+                            id=str(uuid4()),
+                            stored_object_id=stored_object.id,
+                            upload_url=None,
+                            status=UploadSessionStatus.INITIATED,
+                            expected_size_bytes=command.size_bytes if command.size_bytes is not None else existing.size_bytes,
+                            expected_sha256=command.sha256 or existing.sha256,
+                            created_by=command.created_by or command.agent_id,
+                            created_at=now,
+                            expires_at=now + timedelta(minutes=15),
+                        )
+                        upload_url = self.temporary_urls.create_upload_url(refreshed_session)
+                        refreshed_session = self.upload_sessions.add(replace(refreshed_session, upload_url=upload_url))
+                        refreshed_artifact = self.artifacts.update(
+                            replace(
+                                existing,
+                                status=ArtifactStatus.CREATED.value,
+                                upload_session_id=refreshed_session.id,
+                                failed_at=None,
+                                failure_reason=None,
+                            )
+                        )
+                        self.artifact_uploads.add(
+                            ArtifactUploadSessionLinkDTO(
+                                id=new_id("aus"),
+                                artifact_id=refreshed_artifact.id,
+                                upload_session_id=refreshed_session.id,
+                                created_at=now,
+                            )
+                        )
+                        self.transaction.commit()
+                        return ArtifactUploadInstructionsDTO(
+                            artifact=refreshed_artifact,
+                            upload_url=upload_url,
+                            upload_session_id=refreshed_session.id,
+                            expires_at=refreshed_session.expires_at,
+                        )
                     self.transaction.commit()
                     return ArtifactUploadInstructionsDTO(
                         artifact=existing,

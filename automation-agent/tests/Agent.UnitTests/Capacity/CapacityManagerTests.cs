@@ -2,6 +2,7 @@ using Biason.AutomationAgent.Application.Capacity;
 using Biason.AutomationAgent.Domain.Configuration;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Enums;
+using Biason.AutomationAgent.Domain.Models.Capacity;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,6 +14,7 @@ namespace Biason.AutomationAgent.UnitTests.Capacity;
 public class CapacityManagerTests
 {
     private readonly CapacityManager _sut;
+    private readonly IReservationRepository _reservations;
 
     public CapacityManagerTests()
     {
@@ -26,9 +28,12 @@ public class CapacityManagerTests
         var identity = Substitute.For<IAgentIdentityService>();
         var clock = Substitute.For<IClock>();
         clock.UtcNow.Returns(DateTime.UtcNow);
+        _reservations = Substitute.For<IReservationRepository>();
+        _reservations.GetActiveAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<ResourceReservation>>(Array.Empty<ResourceReservation>()));
         var logger = Substitute.For<ILogger<CapacityManager>>();
 
-        _sut = new CapacityManager(options, identity, clock, logger);
+        _sut = new CapacityManager(options, identity, clock, _reservations, logger);
     }
 
     [Fact]

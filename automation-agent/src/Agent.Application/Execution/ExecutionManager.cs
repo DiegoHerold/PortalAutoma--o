@@ -29,8 +29,10 @@ public sealed class ExecutionManager : IExecutionManager
     private readonly ExecutionOptions _options;
     private readonly ILogger<ExecutionManager> _logger;
     private readonly IInteractiveExecutionCoordinator? _interactiveCoordinator;
+    private readonly IExecutionLifecyclePublisher? _lifecyclePublisher;
 
     private readonly Dictionary<string, ProcessHandle> _activeProcesses = new();
+    private readonly HashSet<string> _cancelRequested = new();
     private readonly object _lock = new();
 
     public ExecutionManager(
@@ -49,7 +51,8 @@ public sealed class ExecutionManager : IExecutionManager
         IClock clock,
         IOptions<ExecutionOptions> options,
         ILogger<ExecutionManager> logger,
-        IInteractiveExecutionCoordinator? interactiveCoordinator = null)
+        IInteractiveExecutionCoordinator? interactiveCoordinator = null,
+        IExecutionLifecyclePublisher? lifecyclePublisher = null)
     {
         _execRepo = execRepo;
         _attemptRepo = attemptRepo;
@@ -67,6 +70,7 @@ public sealed class ExecutionManager : IExecutionManager
         _options = options.Value;
         _logger = logger;
         _interactiveCoordinator = interactiveCoordinator;
+        _lifecyclePublisher = lifecyclePublisher;
     }
 
     public async Task<ExecutionResult> ExecuteAsync(ExecutionRecord execution, AutomationManifest manifest, string? inputJson, CancellationToken ct = default)
@@ -160,6 +164,17 @@ public sealed class ExecutionManager : IExecutionManager
             // Create cancellation with timeout
             using var cts = _cancellation.CreateLinked(execution.ExecutionId, timeoutSeconds, ct);
 
+            // Um cancelamento remoto pode ter chegado enquanto ainda estávamos
+            // em Preparing (antes de existir uma fonte de cancelamento para
+            // este executionId — RequestCancellationAsync teria sido um no-op
+            // silencioso). Se o pedido ficou registrado em _cancelRequested,
+            // aplica agora no cts recém-criado em vez de perder o sinal.
+            lock (_lock)
+            {
+                if (_cancelRequested.Contains(execution.ExecutionId))
+                    cts.Cancel();
+            }
+
             // Launch process
             var processHandle = await _processManager.LaunchAsync(execContext, cts.Token);
             execution.ProcessId = processHandle.ProcessId;
@@ -167,6 +182,19 @@ public sealed class ExecutionManager : IExecutionManager
             attempt.StartedAtUtc = _clock.UtcNow;
 
             lock (_lock) { _activeProcesses[execution.ExecutionId] = processHandle; }
+
+            if (_lifecyclePublisher is not null)
+            {
+                try
+                {
+                    await _lifecyclePublisher.PublishStartedAsync(execution.ExecutionId, attempt.AttemptId, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to enqueue execution.started after process launch for {ExecutionId}/{AttemptId}.",
+                        execution.ExecutionId, attempt.AttemptId);
+                }
+            }
 
             // Move used slot from reserved to used
             _capacity.IncrementUsed(pool);
@@ -202,10 +230,16 @@ public sealed class ExecutionManager : IExecutionManager
             await _attemptRepo.UpdateAsync(attempt, ct);
             return result;
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested || WasCancelRequested(execution.ExecutionId))
         {
-            await TransitionAsync(execution, ExecutionState.Cancelled, "Cancelled by agent");
-            if (attempt is not null) { attempt.CurrentState = ExecutionState.Cancelled; await _attemptRepo.UpdateAsync(attempt, ct); }
+            // cts (linked token) é cancelado tanto por CancelAsync quanto
+            // pelo timeout interno (CancelAfter) — ct.IsCancellationRequested
+            // sozinho não distingue os dois casos quando o chamador passa
+            // CancellationToken.None (caso do dispatch fire-and-forget do
+            // ExecutionCommitHandler). _cancelRequested é o sinal confiável de
+            // que um cancelamento remoto foi pedido explicitamente.
+            await TransitionToCancelledAsync(execution);
+            if (attempt is not null) { attempt.CurrentState = ExecutionState.Cancelled; await _attemptRepo.UpdateAsync(attempt, CancellationToken.None); }
             throw;
         }
         catch (OperationCanceledException)
@@ -225,7 +259,7 @@ public sealed class ExecutionManager : IExecutionManager
         finally
         {
             // Cleanup
-            lock (_lock) { _activeProcesses.Remove(execution.ExecutionId); }
+            lock (_lock) { _activeProcesses.Remove(execution.ExecutionId); _cancelRequested.Remove(execution.ExecutionId); }
             _cancellation.Remove(execution.ExecutionId);
             _capacity.DecrementUsed(pool);
 
@@ -240,6 +274,15 @@ public sealed class ExecutionManager : IExecutionManager
 
     public async Task CancelAsync(string executionId, CancellationToken ct = default)
     {
+        // Marca a intenção de cancelamento explícito ANTES de sinalizar o
+        // token, para que o catch de OperationCanceledException em
+        // ExecuteAsync consiga distinguir "cancelamento remoto" de "timeout
+        // interno" mesmo quando o chamador (dispatch fire-and-forget) usa
+        // CancellationToken.None — nesse caso ct.IsCancellationRequested
+        // nunca fica true, e RequestCancellationAsync cancela o
+        // CancellationTokenSource vinculado diretamente, não o ct original.
+        lock (_lock) { _cancelRequested.Add(executionId); }
+
         await _cancellation.RequestCancellationAsync(executionId, ct);
         if (_interactiveCoordinator is not null)
             await _interactiveCoordinator.CancelAsync(executionId, ct);
@@ -291,5 +334,39 @@ public sealed class ExecutionManager : IExecutionManager
         exec.CurrentState = to;
         exec.LastTransitionUtc = _clock.UtcNow;
         await _execRepo.UpdateStateAsync(exec.ExecutionId, exec, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Leva a execução até Cancelled respeitando a máquina de estados
+    /// (Bloco 5.5, seção 20). A partir de Running, só existe o caminho
+    /// Running-&gt;CancelRequested-&gt;Cancelling-&gt;Cancelled — pular direto
+    /// para Cancelled (como o código fazia antes) viola
+    /// ExecutionStateMachine e derruba a transição com
+    /// InvalidStateTransitionException. A partir de Preparing/Starting o
+    /// salto direto para Cancelled já é permitido, então os dois primeiros
+    /// passos viram no-op (CanTransition retorna false e são pulados).
+    /// </summary>
+    private async Task TransitionToCancelledAsync(ExecutionRecord exec)
+    {
+        if (ExecutionStateMachine.CanTransition(exec.CurrentState, ExecutionState.CancelRequested))
+            await TransitionAsync(exec, ExecutionState.CancelRequested, "Cancellation observed");
+
+        if (ExecutionStateMachine.CanTransition(exec.CurrentState, ExecutionState.Cancelling))
+            await TransitionAsync(exec, ExecutionState.Cancelling, "Cancelling");
+
+        if (exec.CurrentState != ExecutionState.Cancelled)
+            await TransitionAsync(exec, ExecutionState.Cancelled, "Cancelled by agent");
+    }
+
+    /// <summary>
+    /// Consome (remove) o sinal de cancelamento explícito registrado por
+    /// <see cref="CancelAsync"/> para executionId, se houver. Usado pelo
+    /// catch de cancelamento em <see cref="ExecuteAsync"/> para distinguir
+    /// um cancelamento remoto real de um timeout interno — ambos cancelam o
+    /// mesmo CancellationTokenSource vinculado (ver CreateLinked).
+    /// </summary>
+    private bool WasCancelRequested(string executionId)
+    {
+        lock (_lock) { return _cancelRequested.Remove(executionId); }
     }
 }

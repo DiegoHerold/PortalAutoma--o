@@ -15,6 +15,7 @@ from gateway.bootstrap import router as agent_gateway_router
 from infrastructure.config import get_settings
 from infrastructure.database import SessionLocal
 from infrastructure.logging import configure_logging
+from infrastructure.orm_metadata import initialize_orm_metadata
 from modules.access.api.routes import router as access_module_router
 from modules.catalog.api.github_integrations import router as github_integrations_router
 from modules.catalog.api.imports import router as automation_imports_router
@@ -40,6 +41,7 @@ from bootstrap.defaults import BootstrapService
 def create_api_application() -> FastAPI:
     settings = get_settings()
     configure_logging()
+    initialize_orm_metadata()
 
     app = FastAPI(title=settings.app_name)
     install_error_handlers(app)

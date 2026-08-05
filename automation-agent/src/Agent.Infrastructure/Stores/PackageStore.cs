@@ -34,6 +34,9 @@ public sealed class PackageStore : IPackageStore
         return Directory.Exists(path) ? path : null;
     }
 
+    public Task<PackageArtifact?> GetArtifactAsync(string packageId, CancellationToken ct = default)
+        => _repo.GetAsync(packageId, ct);
+
     public async Task<PackageArtifact> ImportAsync(string packageId, string automationId, string automationVersionId, string version, string archivePath, string sha256, CancellationToken ct = default)
     {
         var valid = await _verifier.VerifySha256Async(archivePath, sha256, ct);

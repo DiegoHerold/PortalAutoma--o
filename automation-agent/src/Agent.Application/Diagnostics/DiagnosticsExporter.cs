@@ -1,7 +1,9 @@
 using Biason.AutomationAgent.Application.HealthChecks;
+using Biason.AutomationAgent.Application.Messaging;
 using Biason.AutomationAgent.Application.Sessions;
 using Biason.AutomationAgent.Domain.Contracts;
 using System.Text.Json;
+using Biason.AutomationAgent.Protocol.Messages;
 using Microsoft.Extensions.Logging;
 
 namespace Biason.AutomationAgent.Application.Diagnostics;
@@ -28,6 +30,12 @@ public sealed class DiagnosticsExporter
     private readonly IInteractiveExecutionAssignmentRepository? _interactiveAssignments;
     private readonly IInteractiveExecutionProcessRepository? _interactiveProcesses;
     private readonly IApplicationProcessOwnershipRepository? _applicationProcesses;
+    private readonly IEnumerable<IInboxCommandHandler>? _commandHandlers;
+    private readonly IExecutionOfferRepository? _executionOffers;
+    private readonly IReservationRepository? _reservations;
+    private readonly IExecutionLeaseRepository? _leases;
+    private readonly ISyncRunRepository? _syncRuns;
+    private readonly IPendingArtifactRepository? _pendingArtifacts;
     private readonly ILogger<DiagnosticsExporter> _logger;
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -56,7 +64,13 @@ public sealed class DiagnosticsExporter
         IDesktopLockManager? desktopLocks = null,
         IInteractiveExecutionAssignmentRepository? interactiveAssignments = null,
         IInteractiveExecutionProcessRepository? interactiveProcesses = null,
-        IApplicationProcessOwnershipRepository? applicationProcesses = null)
+        IApplicationProcessOwnershipRepository? applicationProcesses = null,
+        IEnumerable<IInboxCommandHandler>? commandHandlers = null,
+        IExecutionOfferRepository? executionOffers = null,
+        IReservationRepository? reservations = null,
+        IExecutionLeaseRepository? leases = null,
+        ISyncRunRepository? syncRuns = null,
+        IPendingArtifactRepository? pendingArtifacts = null)
     {
         _identity = identity;
         _stateManager = stateManager;
@@ -78,6 +92,12 @@ public sealed class DiagnosticsExporter
         _interactiveAssignments = interactiveAssignments;
         _interactiveProcesses = interactiveProcesses;
         _applicationProcesses = applicationProcesses;
+        _commandHandlers = commandHandlers;
+        _executionOffers = executionOffers;
+        _reservations = reservations;
+        _leases = leases;
+        _syncRuns = syncRuns;
+        _pendingArtifacts = pendingArtifacts;
         _logger = logger;
     }
 
@@ -177,6 +197,67 @@ public sealed class DiagnosticsExporter
         }
 
         // configuration-summary.json (sanitized — no secrets)
+        if (_commandHandlers is not null)
+        {
+            var registered = _commandHandlers.Select(h => h.MessageType).Order(StringComparer.Ordinal).ToArray();
+            var required = PortalMessageTypes.Commands.Order(StringComparer.Ordinal).ToArray();
+            await File.WriteAllTextAsync(
+                Path.Combine(exportDir, "command-handlers.json"),
+                JsonSerializer.Serialize(new
+                {
+                    registered,
+                    required,
+                    missing = required.Where(r => !registered.Contains(r, StringComparer.Ordinal)).ToArray(),
+                    exported_at_utc = _clock.UtcNow
+                }, JsonOpts),
+                ct);
+        }
+
+        if (_executionOffers is not null)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(exportDir, "execution-offers.json"),
+                JsonSerializer.Serialize(await _executionOffers.GetRecentAsync(100, ct), JsonOpts),
+                ct);
+        }
+
+        if (_reservations is not null)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(exportDir, "reservations.json"),
+                JsonSerializer.Serialize(await _reservations.GetActiveAsync(ct), JsonOpts),
+                ct);
+        }
+
+        if (_leases is not null)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(exportDir, "leases.json"),
+                JsonSerializer.Serialize(await _leases.GetNonFinalAsync(ct), JsonOpts),
+                ct);
+        }
+
+        if (_syncRuns is not null)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(exportDir, "sync-status.json"),
+                JsonSerializer.Serialize(await _syncRuns.GetLatestAsync(ct), JsonOpts),
+                ct);
+        }
+
+        if (_pendingArtifacts is not null)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(exportDir, "pending-artifacts.json"),
+                JsonSerializer.Serialize(new
+                {
+                    diagnostics = await _pendingArtifacts.GetDiagnosticsAsync(ct),
+                    items = await _pendingArtifacts.GetNonFinalAsync(100, ct),
+                    exported_at_utc = _clock.UtcNow
+                }, JsonOpts),
+                ct);
+        }
+
         if (_interactiveSessions is not null)
         {
             await File.WriteAllTextAsync(

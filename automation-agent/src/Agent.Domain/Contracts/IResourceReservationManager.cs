@@ -10,4 +10,13 @@ public interface IResourceReservationManager
     Task ExpireStaleAsync(CancellationToken ct = default);
     Task<ResourceReservation?> GetAsync(string reservationId, CancellationToken ct = default);
     Task<IReadOnlyList<ResourceReservation>> GetActiveAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Tenta transicionar TEMPORARY -&gt; COMMITTED (Bloco 5.5, seção 8/14).
+    /// Retorna a reserva no seu estado atual após a tentativa — se o commit
+    /// não venceu a corrida com a expiração, o status retornado já será
+    /// Expired (a expiração é forçada nesse caminho para não deixar a reserva
+    /// ambígua). Retorna null apenas se a reserva não existir.
+    /// </summary>
+    Task<ResourceReservation?> TryCommitAsync(string reservationId, CancellationToken ct = default);
 }

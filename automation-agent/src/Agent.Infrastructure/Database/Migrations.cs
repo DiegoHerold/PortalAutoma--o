@@ -730,6 +730,29 @@ public static class Migrations
 
             CREATE INDEX idx_app_process_ownership_app
                 ON application_process_ownership(application_key, session_id, status);
+            """),
+
+        new(6, "artifact_ack_lifecycle", """
+            ALTER TABLE pending_artifacts ADD COLUMN announcement_message_id TEXT;
+            ALTER TABLE pending_artifacts ADD COLUMN uploaded_message_id TEXT;
+            ALTER TABLE pending_artifacts ADD COLUMN failed_message_id TEXT;
+            ALTER TABLE pending_artifacts ADD COLUMN upload_session_id TEXT;
+            ALTER TABLE pending_artifacts ADD COLUMN upload_url TEXT;
+            ALTER TABLE pending_artifacts ADD COLUMN upload_method TEXT NOT NULL DEFAULT 'PUT';
+            ALTER TABLE pending_artifacts ADD COLUMN upload_headers_json TEXT;
+            ALTER TABLE pending_artifacts ADD COLUMN upload_expires_at_utc TEXT;
+
+            CREATE INDEX idx_pending_artifacts_announcement
+                ON pending_artifacts(announcement_message_id)
+                WHERE announcement_message_id IS NOT NULL;
+
+            CREATE INDEX idx_pending_artifacts_uploaded_message
+                ON pending_artifacts(uploaded_message_id)
+                WHERE uploaded_message_id IS NOT NULL;
+
+            CREATE INDEX idx_pending_artifacts_upload_session
+                ON pending_artifacts(upload_session_id)
+                WHERE upload_session_id IS NOT NULL;
             """)
     };
 }

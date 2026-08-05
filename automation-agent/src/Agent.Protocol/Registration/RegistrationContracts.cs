@@ -8,8 +8,11 @@ public sealed class RegistrationRequest
     [JsonPropertyName("installation_id")]
     public string InstallationId { get; init; } = default!;
 
-    [JsonPropertyName("machine_id")]
-    public string MachineId { get; init; } = default!;
+    [JsonPropertyName("local_identity")]
+    public string LocalIdentity { get; init; } = default!;
+
+    [JsonPropertyName("machine_fingerprint")]
+    public string? MachineFingerprint { get; init; }
 
     [JsonPropertyName("hostname")]
     public string Hostname { get; init; } = default!;
@@ -18,7 +21,10 @@ public sealed class RegistrationRequest
     public string AgentVersion { get; init; } = default!;
 
     [JsonPropertyName("operating_system")]
-    public RegistrationOsInfo OperatingSystem { get; init; } = default!;
+    public string? OperatingSystem { get; init; }
+
+    [JsonPropertyName("architecture")]
+    public string? Architecture { get; init; }
 
     /// <summary>
     /// Token de uso limitado, configurado na instalação. Nunca é persistido junto
@@ -40,13 +46,22 @@ public sealed class RegistrationOsInfo
 public sealed class RegistrationResponse
 {
     [JsonPropertyName("agent_id")]
-    public string AgentId { get; init; } = default!;
+    public string? AgentId { get; init; }
+
+    [JsonPropertyName("agent")]
+    public RegistrationAgent? Agent { get; init; }
 
     [JsonPropertyName("credential")]
     public RegistrationCredential Credential { get; init; } = default!;
 
     [JsonPropertyName("portal")]
     public RegistrationPortalEndpoints? Portal { get; init; }
+}
+
+public sealed class RegistrationAgent
+{
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = default!;
 }
 
 public sealed class RegistrationCredential
@@ -56,7 +71,16 @@ public sealed class RegistrationCredential
 
     /// <summary>Segredo. Nunca logar, nunca exportar em diagnóstico.</summary>
     [JsonPropertyName("value")]
-    public string Value { get; init; } = default!;
+    public string? Value { get; init; }
+
+    [JsonPropertyName("public_identifier")]
+    public string? PublicIdentifier { get; init; }
+
+    [JsonPropertyName("secret")]
+    public string? Secret { get; init; }
+
+    [JsonPropertyName("bearer_token")]
+    public string? BearerToken { get; init; }
 
     [JsonPropertyName("expires_at")]
     public DateTime? ExpiresAt { get; init; }

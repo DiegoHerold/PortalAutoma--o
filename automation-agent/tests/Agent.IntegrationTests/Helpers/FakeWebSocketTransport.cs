@@ -1,6 +1,10 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using System.Threading.Channels;
 using Biason.AutomationAgent.Domain.Contracts;
+using Biason.AutomationAgent.Protocol.Envelope;
+using Biason.AutomationAgent.Protocol.Messages;
+using Biason.AutomationAgent.Protocol.Serialization;
 
 namespace Biason.AutomationAgent.IntegrationTests.Helpers;
 
@@ -23,6 +27,7 @@ public sealed class FakeWebSocketTransport : IWebSocketTransport
     public Uri? ConnectedUri { get; private set; }
     public IReadOnlyDictionary<string, string>? ConnectedHeaders { get; private set; }
     public IReadOnlyCollection<string> SentMessages => _sent;
+    public bool AutoRespondToHandshake { get; set; } = true;
     public bool IsOpen { get; private set; }
     public bool Disposed { get; private set; }
     public string? CloseReason { get; private set; }
@@ -41,6 +46,17 @@ public sealed class FakeWebSocketTransport : IWebSocketTransport
     public Task SendTextAsync(string message, CancellationToken ct = default)
     {
         _sent.Enqueue(message);
+        if (AutoRespondToHandshake && TryReadHandshake(message, out var agentId, out var agentInstanceId))
+        {
+            var connected = ProtocolEnvelope.Create(
+                PortalMessageTypes.Connected,
+                payload: new { selected_protocol_version = ProtocolConstants.CurrentVersion },
+                agentId: agentId,
+                agentInstanceId: agentInstanceId,
+                sentAtUtc: DateTime.UtcNow);
+            EnqueueInboundText(ProtocolJson.Serialize(connected));
+        }
+
         return Task.CompletedTask;
     }
 
@@ -73,6 +89,29 @@ public sealed class FakeWebSocketTransport : IWebSocketTransport
         Disposed = true;
         _inbound.Writer.TryComplete();
         return ValueTask.CompletedTask;
+    }
+
+    private static bool TryReadHandshake(string json, out string? agentId, out string? agentInstanceId)
+    {
+        agentId = null;
+        agentInstanceId = null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("message_type", out var messageType) ||
+                messageType.GetString() != "agent.connect" ||
+                !root.TryGetProperty("payload", out var payload))
+                return false;
+
+            agentId = payload.TryGetProperty("agent_id", out var agent) ? agent.GetString() : null;
+            agentInstanceId = payload.TryGetProperty("agent_instance_id", out var instance) ? instance.GetString() : null;
+            return !string.IsNullOrWhiteSpace(agentId) && !string.IsNullOrWhiteSpace(agentInstanceId);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 }
 

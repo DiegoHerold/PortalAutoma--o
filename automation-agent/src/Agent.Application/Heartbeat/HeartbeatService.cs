@@ -25,6 +25,7 @@ public sealed class HeartbeatService : BackgroundService
     private readonly IClock _clock;
     private readonly PortalOptions _options;
     private readonly IOutboxRepository? _outbox;
+    private readonly IPendingArtifactRepository? _pendingArtifacts;
     private readonly ILogger<HeartbeatService> _logger;
 
     private DateTime? _lastSentAtUtc;
@@ -37,13 +38,15 @@ public sealed class HeartbeatService : BackgroundService
         IClock clock,
         IOptions<PortalOptions> options,
         ILogger<HeartbeatService> logger,
-        IOutboxRepository? outbox = null)
+        IOutboxRepository? outbox = null,
+        IPendingArtifactRepository? pendingArtifacts = null)
     {
         _connection = connection;
         _snapshotBuilder = snapshotBuilder;
         _clock = clock;
         _options = options.Value;
         _outbox = outbox;
+        _pendingArtifacts = pendingArtifacts;
         _logger = logger;
 
         _connection.MessageReceived += OnMessageReceivedAsync;
@@ -91,10 +94,14 @@ public sealed class HeartbeatService : BackgroundService
         {
             var status = _connection.GetStatus();
             var outboxPending = _outbox is null ? 0 : await _outbox.CountPendingAsync(ct);
+            var artifactDiagnostics = _pendingArtifacts is null ? null : await _pendingArtifacts.GetDiagnosticsAsync(ct);
+            var pendingArtifacts = artifactDiagnostics is null
+                ? 0
+                : artifactDiagnostics.Pending + artifactDiagnostics.Uploading + artifactDiagnostics.Uploaded + artifactDiagnostics.RetryWait;
             var payload = await _snapshotBuilder.BuildAsync(
                 _connection.CurrentState,
                 outboxPending: outboxPending,
-                pendingArtifacts: 0, // Upload de artefatos chega no Incremento 6.
+                pendingArtifacts: pendingArtifacts,
                 ct);
 
             var correlationId = $"hb_{Guid.NewGuid():N}";
@@ -119,13 +126,17 @@ public sealed class HeartbeatService : BackgroundService
 
     private Task OnMessageReceivedAsync(InboundPortalMessage message)
     {
-        if (message.MessageType == PortalMessageTypes.HeartbeatAck)
+        var matchesLastSent = string.Equals(message.CorrelationId, _lastCorrelationId, StringComparison.Ordinal);
+        var isHeartbeatAck =
+            message.MessageType == PortalMessageTypes.HeartbeatAck ||
+            (message.MessageType == PortalMessageTypes.PortalAck && matchesLastSent);
+
+        if (isHeartbeatAck)
         {
             _lastAckAtUtc = _clock.UtcNow;
 
             // Correlacionar não é obrigatório (qualquer ack é sinal de vida do Portal),
             // mas ajuda a diagnosticar acks atrasados/fora de ordem nos logs.
-            var matchesLastSent = string.Equals(message.CorrelationId, _lastCorrelationId, StringComparison.Ordinal);
             _logger.LogDebug(
                 "Heartbeat ack recebido (correlation_id={CorrelationId}, corresponde ao último enviado={Matches}).",
                 message.CorrelationId, matchesLastSent);

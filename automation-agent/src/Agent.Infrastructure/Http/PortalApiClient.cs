@@ -41,14 +41,12 @@ public sealed class PortalApiClient : IPortalApiClient
         var wire = new RegistrationRequest
         {
             InstallationId = request.InstallationId,
-            MachineId = request.MachineId,
+            LocalIdentity = request.MachineId,
+            MachineFingerprint = request.MachineId,
             Hostname = request.Hostname,
             AgentVersion = request.AgentVersion,
-            OperatingSystem = new RegistrationOsInfo
-            {
-                Name = request.OperatingSystemName,
-                Architecture = request.OperatingSystemArchitecture
-            },
+            OperatingSystem = request.OperatingSystemName,
+            Architecture = request.OperatingSystemArchitecture,
             RegistrationToken = request.RegistrationToken
         };
 
@@ -93,6 +91,110 @@ public sealed class PortalApiClient : IPortalApiClient
         }
     }
 
+    public async Task<PortalArtifactUploadTargetOutcome> RequestArtifactUploadAsync(
+        PortalArtifactUploadRequest request,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await _http.PostAsJsonAsync(
+                BuildUrl("artifacts/upload-requests"),
+                request,
+                ProtocolJson.Options,
+                ct);
+
+            if (!response.IsSuccessStatusCode)
+                return PortalArtifactUploadTargetOutcome.Failed(
+                    MapArtifactStatusToReason(response.StatusCode),
+                    $"Portal respondeu {(int)response.StatusCode} {response.ReasonPhrase}.",
+                    IsRetryable(response.StatusCode));
+
+            var target = await response.Content.ReadFromJsonAsync<PortalArtifactUploadTarget>(ProtocolJson.Options, ct);
+            return target is null || string.IsNullOrWhiteSpace(target.UploadUrl)
+                ? PortalArtifactUploadTargetOutcome.Failed("ARTIFACT_UPLOAD_TARGET_INVALID", "Resposta sem upload_url.", retryable: true)
+                : PortalArtifactUploadTargetOutcome.Ok(target);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or NotSupportedException)
+        {
+            _logger.LogWarning(ex, "Falha ao solicitar upload de artefato {ArtifactId}", request.ArtifactId);
+            return PortalArtifactUploadTargetOutcome.Failed("ARTIFACT_UPLOAD_REQUEST_FAILED", ex.Message, retryable: true);
+        }
+    }
+
+    public async Task<PortalArtifactUploadOutcome> UploadArtifactContentAsync(
+        PortalArtifactUploadTarget target,
+        string localPath,
+        string contentType,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var url = Uri.TryCreate(target.UploadUrl, UriKind.Absolute, out _)
+                ? target.UploadUrl
+                : BuildUrl(target.UploadUrl.TrimStart('/'));
+
+            await using var stream = File.OpenRead(localPath);
+            using var content = new StreamContent(stream);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+
+            using var request = new HttpRequestMessage(new HttpMethod(target.Method), url)
+            {
+                Content = content
+            };
+
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            return response.IsSuccessStatusCode
+                ? PortalArtifactUploadOutcome.Ok()
+                : PortalArtifactUploadOutcome.Failed(
+                    MapArtifactStatusToReason(response.StatusCode),
+                    $"Upload respondeu {(int)response.StatusCode} {response.ReasonPhrase}.",
+                    IsRetryable(response.StatusCode));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException)
+        {
+            _logger.LogWarning(ex, "Falha ao enviar artefato em {Path}", localPath);
+            return PortalArtifactUploadOutcome.Failed("ARTIFACT_UPLOAD_FAILED", ex.Message, retryable: true);
+        }
+    }
+
+    public async Task<PortalArtifactUploadOutcome> ConfirmArtifactUploadAsync(
+        PortalArtifactUploadConfirmation confirmation,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await _http.PostAsJsonAsync(
+                BuildUrl($"artifacts/{Uri.EscapeDataString(confirmation.ArtifactId)}/confirm"),
+                confirmation,
+                ProtocolJson.Options,
+                ct);
+
+            return response.IsSuccessStatusCode
+                ? PortalArtifactUploadOutcome.Ok()
+                : PortalArtifactUploadOutcome.Failed(
+                    MapArtifactStatusToReason(response.StatusCode),
+                    $"Confirmação respondeu {(int)response.StatusCode} {response.ReasonPhrase}.",
+                    IsRetryable(response.StatusCode));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or NotSupportedException)
+        {
+            _logger.LogWarning(ex, "Falha ao confirmar artefato {ArtifactId}", confirmation.ArtifactId);
+            return PortalArtifactUploadOutcome.Failed("ARTIFACT_CONFIRMATION_FAILED", ex.Message, retryable: true);
+        }
+    }
+
     private async Task<PortalRegistrationOutcome> ReadSuccessAsync(HttpResponseMessage response, CancellationToken ct)
     {
         RegistrationResponse? body;
@@ -106,13 +208,15 @@ public sealed class PortalApiClient : IPortalApiClient
             return PortalRegistrationOutcome.Rejected(RegistrationReasonCodes.InvalidResponse, ex.Message);
         }
 
-        if (body is null || string.IsNullOrWhiteSpace(body.AgentId))
+        var agentId = body?.AgentId ?? body?.Agent?.Id;
+        if (body is null || string.IsNullOrWhiteSpace(agentId))
         {
             return PortalRegistrationOutcome.Rejected(
                 RegistrationReasonCodes.InvalidResponse, "Resposta sem agent_id.");
         }
 
-        if (body.Credential is null || string.IsNullOrWhiteSpace(body.Credential.Value))
+        var credentialValue = ResolveCredentialValue(body.Credential);
+        if (body.Credential is null || string.IsNullOrWhiteSpace(credentialValue))
         {
             return PortalRegistrationOutcome.Rejected(
                 RegistrationReasonCodes.InvalidResponse, "Resposta sem credencial.");
@@ -120,8 +224,8 @@ public sealed class PortalApiClient : IPortalApiClient
 
         var credential = new AgentCredential
         {
-            Type = body.Credential.Type,
-            Value = body.Credential.Value,
+            Type = string.IsNullOrWhiteSpace(body.Credential.Type) ? "client_token" : body.Credential.Type,
+            Value = credentialValue,
             ExpiresAtUtc = body.Credential.ExpiresAt?.ToUniversalTime(),
             StoredAtUtc = _clock.UtcNow
         };
@@ -130,8 +234,26 @@ public sealed class PortalApiClient : IPortalApiClient
             ? null
             : new PortalEndpoints(body.Portal.WebSocketUrl, body.Portal.ApiBaseUrl);
 
-        _logger.LogInformation("Portal atribuiu agent_id={AgentId}", body.AgentId);
-        return PortalRegistrationOutcome.Ok(body.AgentId, credential, endpoints);
+        _logger.LogInformation("Portal atribuiu agent_id={AgentId}", agentId);
+        return PortalRegistrationOutcome.Ok(agentId, credential, endpoints);
+    }
+
+    private static string? ResolveCredentialValue(RegistrationCredential? credential)
+    {
+        if (credential is null)
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(credential.Value))
+            return credential.Value;
+
+        if (!string.IsNullOrWhiteSpace(credential.BearerToken))
+            return credential.BearerToken;
+
+        if (!string.IsNullOrWhiteSpace(credential.PublicIdentifier) &&
+            !string.IsNullOrWhiteSpace(credential.Secret))
+            return $"{credential.PublicIdentifier}:{credential.Secret}";
+
+        return null;
     }
 
     private async Task<PortalRegistrationOutcome> ReadFailureAsync(HttpResponseMessage response, CancellationToken ct)
@@ -173,6 +295,19 @@ public sealed class PortalApiClient : IPortalApiClient
         HttpStatusCode.UpgradeRequired => RegistrationReasonCodes.VersionUnsupported,
         _ => "REGISTRATION_FAILED"
     };
+
+    private static string MapArtifactStatusToReason(HttpStatusCode status) => status switch
+    {
+        HttpStatusCode.NotFound => "ARTIFACT_UPLOAD_TARGET_NOT_FOUND",
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "ARTIFACT_UPLOAD_UNAUTHORIZED",
+        HttpStatusCode.RequestEntityTooLarge => "ARTIFACT_TOO_LARGE",
+        HttpStatusCode.Conflict => "ARTIFACT_UPLOAD_CONFLICT",
+        _ => "ARTIFACT_UPLOAD_HTTP_ERROR"
+    };
+
+    private static bool IsRetryable(HttpStatusCode status) =>
+        status is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout ||
+        (int)status >= 500;
 
     private string BuildUrl(string relativePath)
     {

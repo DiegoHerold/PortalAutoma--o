@@ -35,5 +35,9 @@ class AgentConnectionManager:
         async with self._lock:
             return self._connections.get(agent_id)
 
+    async def count(self) -> int:
+        async with self._lock:
+            return len(self._connections)
+
 
 connection_manager = AgentConnectionManager()

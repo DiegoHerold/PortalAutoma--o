@@ -11,6 +11,7 @@ import websockets
 from sqlalchemy import select
 
 from infrastructure.database import SessionLocal
+from infrastructure.orm_metadata import initialize_orm_metadata
 from modules.catalog.infrastructure.orm.models import (
     AutomationManifestRecord,
     AutomationPackageRecord,
@@ -25,6 +26,8 @@ from modules.storage.infrastructure.orm.models import StoredObjectRecord
 
 BASE_URL = "http://localhost:8000/api/v1"
 WS_URL = "ws://localhost:8000/api/v1/agent-gateway/connect"
+
+initialize_orm_metadata()
 
 
 def envelope(agent_id: str, agent_instance_id: str, message_type: str, payload: dict, correlation_id: str | None = None) -> dict:
@@ -329,7 +332,20 @@ async def main() -> None:
             assert first["execution"]["status"] == "pending"
             offer_message = await recv_type(ws, "execution.offer")
             offer_payload = offer_message["payload"]
+            assert offer_message["message_id"]
+            assert offer_payload["command_id"]
             assert offer_payload["execution_offer_id"] == first["current_offer"]["id"]
+            assert offer_payload["execution_id"] == first["execution"]["id"]
+            assert offer_payload["task_execution_id"] == first["tasks"][0]["id"]
+            assert offer_payload["execution_attempt_id"] == first["current_attempt"]["id"]
+            assert offer_payload["agent_id"] == agent_id
+            assert offer_payload["agent_instance_id"] == agent_instance_id
+            assert offer_payload["automation_id"] == automation_id
+            assert offer_payload["automation_version"] == "1.0.0"
+            assert offer_payload["execution_mode"] == "background"
+            assert offer_payload["resources"]["cpu_units"] == 1
+            assert offer_payload["capabilities"][0]["key"] == capability_key
+            assert offer_payload["reservation_ttl_seconds"] > 0
 
             await ws.send(
                 json.dumps(
@@ -354,6 +370,11 @@ async def main() -> None:
             commit_message = await recv_type(ws, "execution.commit")
             commit_payload = commit_message["payload"]
             assert commit_payload["execution_offer_id"] == offer_payload["execution_offer_id"]
+            assert commit_payload["execution_id"] == first["execution"]["id"]
+            assert commit_payload["task_execution_id"] == first["tasks"][0]["id"]
+            assert commit_payload["execution_attempt_id"] == offer_payload["execution_attempt_id"]
+            assert commit_payload["agent_id"] == agent_id
+            assert commit_payload["agent_instance_id"] == agent_instance_id
 
             await ws.send(
                 json.dumps(

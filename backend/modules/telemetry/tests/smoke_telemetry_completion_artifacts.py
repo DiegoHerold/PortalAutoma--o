@@ -217,6 +217,74 @@ async def _assert_failed_terminal(
     assert details["current_attempt"]["error_code"] == "SMOKE_FAILED"
 
 
+async def _assert_cancelled_terminal(
+    ws,
+    client: httpx.AsyncClient,
+    admin_headers: dict[str, str],
+    version_id: int,
+    agent_id: str,
+    agent_instance_id: str,
+    capability_key: str,
+) -> None:
+    execution, offer = await _ready_running_attempt(ws, client, admin_headers, version_id, agent_id, agent_instance_id, capability_key)
+    execution_id = execution["execution"]["id"]
+    attempt_id = offer["execution_attempt_id"]
+    payload = {
+        "execution_attempt_id": attempt_id,
+        "event_id": f"evt_{uuid4().hex}",
+        "event_sequence": 1,
+        "occurred_at": _now(),
+        "cancelled_at": _now(),
+        "code": "SMOKE_CANCELLED",
+        "message": "Smoke cancellation terminal",
+    }
+    await ws.send(json.dumps(envelope(agent_id, agent_instance_id, "execution.cancelled", payload)))
+    cancelled_ack = await recv_type(ws, "portal.ack")
+    assert cancelled_ack["payload"]["result"]["execution"]["execution"]["status"] == "cancelled"
+
+    details_response = await client.get(f"/executions/{execution_id}", headers=admin_headers)
+    details_response.raise_for_status()
+    details = details_response.json()
+    assert details["execution"]["status"] == "cancelled"
+    assert details["tasks"][0]["status"] == "cancelled"
+    assert details["current_attempt"]["status"] == "cancelled"
+    assert details["current_attempt"]["error_code"] == "SMOKE_CANCELLED"
+
+
+async def _assert_timed_out_terminal(
+    ws,
+    client: httpx.AsyncClient,
+    admin_headers: dict[str, str],
+    version_id: int,
+    agent_id: str,
+    agent_instance_id: str,
+    capability_key: str,
+) -> None:
+    execution, offer = await _ready_running_attempt(ws, client, admin_headers, version_id, agent_id, agent_instance_id, capability_key)
+    execution_id = execution["execution"]["id"]
+    attempt_id = offer["execution_attempt_id"]
+    payload = {
+        "execution_attempt_id": attempt_id,
+        "event_id": f"evt_{uuid4().hex}",
+        "event_sequence": 1,
+        "occurred_at": _now(),
+        "timed_out_at": _now(),
+        "code": "SMOKE_TIMED_OUT",
+        "message": "Smoke timeout terminal",
+    }
+    await ws.send(json.dumps(envelope(agent_id, agent_instance_id, "execution.timed_out", payload)))
+    timed_out_ack = await recv_type(ws, "portal.ack")
+    assert timed_out_ack["payload"]["result"]["execution"]["execution"]["status"] == "timed_out"
+
+    details_response = await client.get(f"/executions/{execution_id}", headers=admin_headers)
+    details_response.raise_for_status()
+    details = details_response.json()
+    assert details["execution"]["status"] == "timed_out"
+    assert details["tasks"][0]["status"] == "timed_out"
+    assert details["current_attempt"]["status"] == "timed_out"
+    assert details["current_attempt"]["error_code"] == "SMOKE_TIMED_OUT"
+
+
 async def main() -> None:
     version_id, _automation_id, capability_key = prepare_published_automation_version()
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=30) as client:
@@ -332,48 +400,55 @@ async def main() -> None:
             artifact_bytes = b"hello artifact smoke"
             artifact_sha = hashlib.sha256(artifact_bytes).hexdigest()
             artifact_id = f"art_{uuid4().hex}"
-            await ws.send(
-                json.dumps(
-                    envelope(
-                        agent_id,
-                        agent_instance_id,
-                        "artifact.created",
-                        {
-                            "artifact_id": artifact_id,
-                            "execution_attempt_id": attempt_id,
-                            "name": "smoke.txt",
-                            "content_type": "text/plain",
-                            "size_bytes": len(artifact_bytes),
-                            "sha256": artifact_sha,
-                        },
-                    )
-                )
+            artifact_created_envelope = envelope(
+                agent_id,
+                agent_instance_id,
+                "artifact.created",
+                {
+                    "artifact_id": artifact_id,
+                    "execution_attempt_id": attempt_id,
+                    "name": "smoke.txt",
+                    "content_type": "text/plain",
+                    "size_bytes": len(artifact_bytes),
+                    "sha256": artifact_sha,
+                },
             )
+            await ws.send(json.dumps(artifact_created_envelope))
             artifact_created = await recv_type(ws, "portal.ack")
             upload = artifact_created["payload"]["result"]
             assert upload["artifact"]["id"] == artifact_id
             assert upload["upload_url"]
+
+            await ws.send(json.dumps(artifact_created_envelope))
+            duplicate_created = await recv_type(ws, "portal.ack")
+            duplicate_upload = duplicate_created["payload"]["result"]
+            assert duplicate_created["payload"]["duplicate"] is True
+            assert duplicate_upload["upload_session_id"] == upload["upload_session_id"]
+            assert duplicate_upload["upload_url"] == upload["upload_url"]
+
             put_response = await client.put(upload["upload_url"], content=artifact_bytes, headers={"content-type": "text/plain"})
             put_response.raise_for_status()
 
-            await ws.send(
-                json.dumps(
-                    envelope(
-                        agent_id,
-                        agent_instance_id,
-                        "artifact.uploaded",
-                        {
-                            "artifact_id": artifact_id,
-                            "execution_attempt_id": attempt_id,
-                            "upload_session_id": upload["upload_session_id"],
-                            "size_bytes": len(artifact_bytes),
-                            "sha256": artifact_sha,
-                        },
-                    )
-                )
+            artifact_uploaded_envelope = envelope(
+                agent_id,
+                agent_instance_id,
+                "artifact.uploaded",
+                {
+                    "artifact_id": artifact_id,
+                    "execution_attempt_id": attempt_id,
+                    "upload_session_id": upload["upload_session_id"],
+                    "size_bytes": len(artifact_bytes),
+                    "sha256": artifact_sha,
+                },
             )
+            await ws.send(json.dumps(artifact_uploaded_envelope))
             uploaded_ack = await recv_type(ws, "portal.ack")
             assert uploaded_ack["payload"]["result"]["status"] == "available"
+
+            await ws.send(json.dumps(artifact_uploaded_envelope))
+            duplicate_uploaded_ack = await recv_type(ws, "portal.ack")
+            assert duplicate_uploaded_ack["payload"]["duplicate"] is True
+            assert duplicate_uploaded_ack["payload"]["result"]["status"] == "available"
 
             artifacts_response = await client.get(f"/executions/{execution_id}/artifacts", headers=admin_headers)
             artifacts_response.raise_for_status()
@@ -412,6 +487,8 @@ async def main() -> None:
             assert details["telemetry"]["artifact_count"] == 1
 
             await _assert_failed_terminal(ws, client, admin_headers, version_id, agent_id, agent_instance_id, capability_key)
+            await _assert_cancelled_terminal(ws, client, admin_headers, version_id, agent_id, agent_instance_id, capability_key)
+            await _assert_timed_out_terminal(ws, client, admin_headers, version_id, agent_id, agent_instance_id, capability_key)
 
         await client.post(f"/agents/{agent_id}/disable", headers=admin_headers, json={"reason": "telemetry smoke complete"})
 

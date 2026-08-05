@@ -23,12 +23,14 @@ from modules.dispatch.application.use_cases import (
     AcceptExecutionOffer,
     ActivateAttemptDispatchResources,
     CommitExecutionOffer,
+    ReconcileAgentSyncState,
     ReconcileExpiredLeases,
     RejectExecutionOffer,
     ReleaseAttemptDispatchResources,
     RenewExecutionLease,
     ScheduleTaskExecution,
 )
+from modules.dispatch.application.dto import AgentSyncStateCommand
 from modules.dispatch.domain.errors import DispatchError
 from modules.orchestration.application.use_cases import (
     HandleExecutionCancelled,
@@ -64,6 +66,7 @@ SUPPORTED_AGENT_MESSAGES = {
     "agent.capacity.updated",
     "agent.capabilities.updated",
     "agent.diagnostic.result",
+    "agent.sync_state",
     "agent.update.progress",
     "agent.command.ack",
     "execution.accepted",
@@ -124,8 +127,21 @@ def route_agent_message(db: Session, envelope: dict[str, Any], protocol_version:
     except InboxPayloadConflictError as exc:
         raise EnvelopeValidationFailed(str(exc)) from exc
     if not is_new:
-        adapters.transaction.commit()
-        return {"ok": True, "duplicate": True, "message_id": envelope["message_id"]}
+        try:
+            if message_type == "artifact.created":
+                result = _handle_artifact_created(db, agent_id, agent_instance_id, payload)
+                return {"ok": True, "duplicate": True, "message_id": envelope["message_id"], "message_type": message_type, "result": _json(result)}
+            if message_type == "artifact.uploaded":
+                result = _handle_artifact_uploaded(db, agent_id, agent_instance_id, payload)
+                return {"ok": True, "duplicate": True, "message_id": envelope["message_id"], "message_type": message_type, "result": _json(result)}
+            if message_type == "artifact.failed":
+                result = _handle_artifact_failed(db, agent_id, agent_instance_id, payload)
+                return {"ok": True, "duplicate": True, "message_id": envelope["message_id"], "message_type": message_type, "result": _json(result)}
+            adapters.transaction.commit()
+            return {"ok": True, "duplicate": True, "message_id": envelope["message_id"]}
+        except (StorageError, ValueError) as exc:
+            adapters.transaction.rollback()
+            raise EnvelopeValidationFailed(str(exc)) from exc
 
     try:
         if message_type == "agent.heartbeat":
@@ -140,6 +156,8 @@ def route_agent_message(db: Session, envelope: dict[str, Any], protocol_version:
             result = AcknowledgeAgentCommand(adapters.commands, adapters.outbox, adapters.transaction).execute(agent_id, payload)
         elif message_type == "agent.diagnostic.result":
             result = _record_diagnostic_result(adapters, agent_id, agent_instance_id, payload)
+        elif message_type == "agent.sync_state":
+            result = _handle_agent_sync_state(db, agent_id, agent_instance_id, payload)
         elif message_type == "agent.update.progress":
             result = _record_update_progress(adapters, agent_id, payload)
         elif message_type == "execution.accepted":
@@ -276,6 +294,24 @@ def _handle_execution_lease_renew(db: Session, agent_id: str, agent_instance_id:
         )
     )
     return {"lease_id": lease.id, "status": lease.status, "expires_at": lease.expires_at.isoformat(), "renewal_sequence": lease.renewal_sequence}
+
+
+def _handle_agent_sync_state(db: Session, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    adapters = build_dispatch_adapters(db)
+    result = ReconcileAgentSyncState(
+        adapters.executions,
+        adapters.tasks,
+        adapters.attempts,
+        adapters.offers,
+        adapters.reservations,
+        adapters.locks,
+        adapters.leases,
+        adapters.automation_versions,
+        adapters.reconciliations,
+        adapters.outbox,
+        adapters.transaction,
+    ).execute(AgentSyncStateCommand(agent_id=agent_id, agent_instance_id=agent_instance_id, payload=payload))
+    return _json(result)
 
 
 def _handle_execution_event_batch(db: Session, agent_id: str, agent_instance_id: str, payload: dict[str, Any], envelope: dict[str, Any]) -> dict[str, Any]:

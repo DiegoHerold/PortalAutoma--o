@@ -131,7 +131,9 @@ async def main() -> None:
 
         agent_response = await client.get(f"/agents/{agent_id}", headers=admin_headers)
         agent_response.raise_for_status()
-        assert agent_response.json()["last_seen_at"] is not None
+        agent_payload = agent_response.json()
+        assert agent_payload["last_seen_at"] is not None
+        assert agent_payload["connectivity_status"] == "disconnected"
 
         disable_response = await client.post(f"/agents/{agent_id}/disable", headers=admin_headers, json={"reason": "smoke complete"})
         disable_response.raise_for_status()

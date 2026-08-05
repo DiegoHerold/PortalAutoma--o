@@ -7,7 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
 from infrastructure.database import SessionLocal
 from gateway.agent_gateway.authentication import authenticate_agent
@@ -17,22 +17,43 @@ from gateway.agent_gateway.errors import GatewayError, MessageTooLarge
 from gateway.agent_gateway.limits import load_gateway_limits
 from gateway.agent_gateway.message_router import route_agent_message, validate_envelope
 from gateway.agent_gateway.protocol_negotiation import negotiate_protocol
+from modules.dispatch.infrastructure.orm.models import AgentCommandRecord
 from modules.fleet.application.use_cases import RecordAgentConnected, RecordAgentDisconnected
 from modules.fleet.infrastructure.adapters import build_fleet_adapters
+from modules.telemetry.infrastructure.orm.models import EventAcknowledgementRecord, ExecutionEventRecord
 
 router = APIRouter()
 
 
 @router.get("/agent-gateway/health")
-def gateway_health() -> dict[str, str]:
-    return {"status": "ok"}
+async def gateway_health() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "component": "agent_gateway",
+        "connected_agents": await connection_manager.count(),
+    }
 
 
 @router.get("/agent-gateway/readiness")
-def gateway_readiness() -> dict[str, str]:
+async def gateway_readiness() -> dict[str, Any]:
     with SessionLocal() as db:
         db.execute(text("select 1"))
-    return {"status": "ready"}
+        pending_commands = int(
+            db.scalar(select(func.count(AgentCommandRecord.id)).where(AgentCommandRecord.status.in_(["pending", "sent"])))
+            or 0
+        )
+        telemetry_events = int(db.scalar(select(func.count(ExecutionEventRecord.id))) or 0)
+        telemetry_acknowledgements = int(db.scalar(select(func.count(EventAcknowledgementRecord.execution_attempt_id))) or 0)
+    return {
+        "status": "ready",
+        "component": "agent_gateway",
+        "checks": {
+            "database": "ok",
+            "connected_agents": await connection_manager.count(),
+            "command_delivery": {"pending_or_sent_commands": pending_commands},
+            "telemetry_ingestion": {"events": telemetry_events, "acknowledgements": telemetry_acknowledgements},
+        },
+    }
 
 
 @router.websocket("/agent-gateway/connect")

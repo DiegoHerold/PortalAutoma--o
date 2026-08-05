@@ -2,6 +2,7 @@ using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Models.Messaging;
 using Biason.AutomationAgent.Protocol.Messages;
 using Biason.AutomationAgent.Protocol.Serialization;
+using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -98,6 +99,8 @@ public sealed class PortalInboxService : IHostedService
             PortalMessageTypes.CommandAck,
             new CommandAcknowledgementPayload
             {
+                CommandId = TryReadString(command.PayloadJson, "command_id"),
+                CommandSequence = TryReadLong(command.PayloadJson, "command_sequence"),
                 MessageId = command.MessageId,
                 CommandType = command.CommandType,
                 Status = status,
@@ -115,5 +118,42 @@ public sealed class PortalInboxService : IHostedService
             AcknowledgedAtUtc = _clock.UtcNow,
             Detail = detail
         });
+    }
+
+    private static string? TryReadString(string json, string propertyName)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.TryGetProperty(propertyName, out var value) &&
+                   value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static long? TryReadLong(string json, string propertyName)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty(propertyName, out var value))
+                return null;
+
+            return value.ValueKind switch
+            {
+                JsonValueKind.Number when value.TryGetInt64(out var number) => number,
+                JsonValueKind.String when long.TryParse(value.GetString(), out var number) => number,
+                _ => null
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }
