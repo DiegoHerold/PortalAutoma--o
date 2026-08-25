@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "demo.biason_browser",
+  "name": "Biason - Demo Navegador (Playwright)",
+  "version": "1.0.0",
+  "description": "Demonstracao real: abre um navegador Chromium de verdade via Playwright, navega ate uma pagina, extrai dados e tira um screenshot como artefato. Roda visivel (headed) ou invisivel (headless) conforme o parametro 'headless' recebido pela automacao.",
+  "runtime": {
+    "id": "python-browser",
+    "version": "3.13-playwright"
+  },
+  "entrypoint": {
+    "type": "browser_playwright",
+    "module": "automation.main",
+    "callable": "run"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.browser_execution"]
+  },
+  "resources": {
+    "pool": "browser",
+    "slots": 1,
+    "max_memory_mb": 1536
+  },
+  "timeout": {
+    "execution_seconds": 180,
+    "graceful_shutdown_seconds": 15
+  }
+}

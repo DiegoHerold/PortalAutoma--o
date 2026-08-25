@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "certification.artifact",
+  "name": "Certification Artifact",
+  "version": "1.0.0",
+  "description": "Produces multiple artifacts of controlled size and type (text, JSON, binary) to validate the full artifact.created -> ACK -> HTTPS PUT -> artifact.uploaded lifecycle end to end.",
+  "runtime": {
+    "id": "python-core",
+    "version": "3.13"
+  },
+  "entrypoint": {
+    "type": "python_function",
+    "module": "automation.main",
+    "callable": "run"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.background_execution"]
+  },
+  "resources": {
+    "pool": "background",
+    "slots": 1
+  },
+  "timeout": {
+    "execution_seconds": 60,
+    "graceful_shutdown_seconds": 10
+  }
+}

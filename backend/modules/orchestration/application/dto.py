@@ -28,6 +28,7 @@ class AutomationVersionSnapshotDTO:
     package_id: str
     package_sha256: str
     package_size_bytes: int
+    package_download_url: str | None
     manifest: dict[str, Any]
     execution_mode: str
     timeout_seconds: int

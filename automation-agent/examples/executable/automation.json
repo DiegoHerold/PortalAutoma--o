@@ -5,12 +5,12 @@
   "version": "1.0.0",
   "description": "Simple executable that receives input, waits, generates result.",
   "runtime": {
-    "id": "dotnet-runtime",
+    "id": "executable",
     "version": "8.0"
   },
   "entrypoint": {
     "type": "executable",
-    "executable_path": "automation\\ExampleTool.exe"
+    "path": "automation\\ExampleTool.exe"
   },
   "capabilities": {
     "required": ["windows", "agent.background_execution"]

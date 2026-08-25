@@ -39,6 +39,7 @@ public interface IPortalApiClient
 public sealed record AgentRegistrationRequest(
     string InstallationId,
     string MachineId,
+    string? Name,
     string Hostname,
     string AgentVersion,
     string OperatingSystemName,

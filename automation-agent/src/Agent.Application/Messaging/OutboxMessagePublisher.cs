@@ -14,12 +14,18 @@ public sealed class OutboxMessagePublisher
     private readonly IOutboxRepository _outbox;
     private readonly IAgentIdentityService _identity;
     private readonly IClock _clock;
+    private readonly ExecutionAttemptSequenceTracker _sequences;
 
-    public OutboxMessagePublisher(IOutboxRepository outbox, IAgentIdentityService identity, IClock clock)
+    public OutboxMessagePublisher(
+        IOutboxRepository outbox,
+        IAgentIdentityService identity,
+        IClock clock,
+        ExecutionAttemptSequenceTracker? sequences = null)
     {
         _outbox = outbox;
         _identity = identity;
         _clock = clock;
+        _sequences = sequences ?? new ExecutionAttemptSequenceTracker();
     }
 
     public async Task<OutboxMessage> EnqueueAsync(
@@ -39,6 +45,7 @@ public sealed class OutboxMessagePublisher
         var identity = await _identity.GetIdentityAsync(ct);
         var now = _clock.UtcNow;
         var id = messageId ?? ProtocolEnvelope.NewMessageId();
+        var effectiveSequence = sequence ?? NextAttemptSequence(messageType, executionAttemptId);
         var normalized = NormalizeOutboundMessage(
             id,
             messageType,
@@ -46,7 +53,7 @@ public sealed class OutboxMessagePublisher
             identity?.AgentId,
             identity?.InstanceId,
             executionAttemptId,
-            sequence,
+            effectiveSequence,
             now);
         var payloadJson = normalized.PayloadJson;
 
@@ -59,7 +66,7 @@ public sealed class OutboxMessagePublisher
             identity?.InstanceId,
             executionId,
             executionAttemptId,
-            sequence,
+            effectiveSequence,
             correlationId,
             causationId,
             now);
@@ -80,7 +87,7 @@ public sealed class OutboxMessagePublisher
             AgentId = identity?.AgentId,
             ExecutionId = executionId,
             ExecutionAttemptId = executionAttemptId,
-            Sequence = sequence,
+            Sequence = effectiveSequence,
             CreatedAtUtc = now,
             AvailableAtUtc = now,
             Status = status,
@@ -88,6 +95,30 @@ public sealed class OutboxMessagePublisher
             LastError = lastError
         }, ct);
     }
+
+    private long? NextAttemptSequence(string messageType, string? executionAttemptId)
+    {
+        if (string.IsNullOrWhiteSpace(executionAttemptId) || !RequiresAttemptSequence(messageType))
+            return null;
+
+        return _sequences.Next(executionAttemptId);
+    }
+
+    private static bool RequiresAttemptSequence(string messageType) => messageType switch
+    {
+        PortalMessageTypes.ExecutionLog => true,
+        PortalMessageTypes.ExecutionProgress => true,
+        PortalMessageTypes.ExecutionMetric => true,
+        PortalMessageTypes.ExecutionPreparing => true,
+        PortalMessageTypes.ExecutionCancelling => true,
+        PortalMessageTypes.LeaseLost => true,
+        PortalMessageTypes.ExecutionCommitRejected => true,
+        PortalMessageTypes.ExecutionCompleted => true,
+        PortalMessageTypes.ExecutionFailed => true,
+        PortalMessageTypes.ExecutionCancelled => true,
+        PortalMessageTypes.ExecutionTimedOut => true,
+        _ => false
+    };
 
     private static NormalizedOutboundMessage NormalizeOutboundMessage(
         string messageId,

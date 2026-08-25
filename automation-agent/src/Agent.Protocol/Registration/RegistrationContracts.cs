@@ -14,6 +14,9 @@ public sealed class RegistrationRequest
     [JsonPropertyName("machine_fingerprint")]
     public string? MachineFingerprint { get; init; }
 
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
     [JsonPropertyName("hostname")]
     public string Hostname { get; init; } = default!;
 

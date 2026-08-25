@@ -68,7 +68,16 @@ class SqlAlchemyReadyTaskRepository:
         return [_task_to_dto(row) for row in rows]
 
     def get(self, task_execution_id: str) -> TaskExecutionDTO | None:
-        row = self.db.get(TaskExecutionRecord, task_execution_id)
+        # Locks the row (blocking, no skip_locked) so this single-task dispatch
+        # path - used by the synchronous POST /executions flow - can never run
+        # concurrently with the Celery beat "schedule_ready_tasks" poller's
+        # claim_ready() (which locks the same row via FOR UPDATE SKIP LOCKED
+        # every 5s). Without this, both paths could grab the same freshly-ready
+        # task at once and race to insert execution_attempts for it, which
+        # Postgres resolves as a deadlock instead of a simple wait - leaving the
+        # execution stuck in "pending" forever once the loser's transaction is
+        # rolled back.
+        row = self.db.get(TaskExecutionRecord, task_execution_id, with_for_update=True)
         return _task_to_dto(row) if row else None
 
     def save(self, task: TaskExecutionDTO) -> TaskExecutionDTO:

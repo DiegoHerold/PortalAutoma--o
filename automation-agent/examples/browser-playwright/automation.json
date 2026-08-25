@@ -14,7 +14,7 @@
     "callable": "run"
   },
   "capabilities": {
-    "required": ["windows", "agent.browser_execution", "internet_access"]
+    "required": ["windows", "agent.browser_execution"]
   },
   "resources": {
     "pool": "browser",

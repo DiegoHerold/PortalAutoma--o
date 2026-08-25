@@ -119,7 +119,6 @@ public sealed class ExecutionCancelRequestedHandler : IInboxCommandHandler
 
         if (state == ExecutionState.CancelRequested || state == ExecutionState.Cancelling)
         {
-            await SendCancellingAsync(executionId, attemptId, ct);
             await _executionManager.CancelAsync(executionId, ct);
             return InboxCommandHandlerResult.Processed("cancel_already_in_progress");
         }
@@ -174,7 +173,6 @@ public sealed class ExecutionCancelRequestedHandler : IInboxCommandHandler
         // Running (único estado restante não coberto acima): ver nota na
         // documentação da classe sobre por que o ExecutionRecord não é
         // transicionado aqui.
-        await SendCancellingAsync(executionId, attemptId, ct);
         await _executionManager.CancelAsync(executionId, ct);
 
         _logger.LogInformation(
@@ -182,15 +180,5 @@ public sealed class ExecutionCancelRequestedHandler : IInboxCommandHandler
             executionId, attemptId);
 
         return InboxCommandHandlerResult.Processed("cancel_requested_running");
-    }
-
-    private async Task SendCancellingAsync(string executionId, string attemptId, CancellationToken ct)
-    {
-        await _outboxPublisher.EnqueueAsync(
-            PortalMessageTypes.ExecutionCancelling,
-            new { ExecutionId = executionId, ExecutionAttemptId = attemptId },
-            executionId: executionId,
-            executionAttemptId: attemptId,
-            ct: ct);
     }
 }

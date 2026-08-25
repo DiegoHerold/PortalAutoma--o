@@ -15,6 +15,7 @@
     <ProjectReference Include="..\..\src\Agent.Domain\Agent.Domain.csproj" />
     <ProjectReference Include="..\..\src\Agent.Infrastructure\Agent.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Agent.Application\Agent.Application.csproj" />
+    <ProjectReference Include="..\..\src\Agent.ExecutionHost\Agent.ExecutionHost.csproj" />
     <ProjectReference Include="..\..\src\Agent.Protocol\Agent.Protocol.csproj" />
     <ProjectReference Include="..\..\src\Agent.Windows\Agent.Windows.csproj" />
   </ItemGroup>

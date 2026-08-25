@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "demo.biason_fiscal",
+  "name": "Biason - Demo Processamento Fiscal",
+  "version": "1.0.0",
+  "description": "Demonstracao real: processa uma lista de documentos fiscais, reporta progresso e gera um relatorio.",
+  "runtime": {
+    "id": "python-core",
+    "version": "3.13"
+  },
+  "entrypoint": {
+    "type": "python_function",
+    "module": "automation.main",
+    "callable": "run"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.background_execution"]
+  },
+  "resources": {
+    "pool": "background",
+    "slots": 1
+  },
+  "timeout": {
+    "execution_seconds": 120,
+    "graceful_shutdown_seconds": 10
+  }
+}

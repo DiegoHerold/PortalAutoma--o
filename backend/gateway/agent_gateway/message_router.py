@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -385,6 +386,8 @@ def _handle_execution_terminal(db: Session, agent_id: str, agent_instance_id: st
         payload=payload,
     )
     dispatch_adapters = build_dispatch_adapters(db)
+    if message_type == "execution.cancelled":
+        _complete_cancellation_request(dispatch_adapters, str(payload.get("execution_id") or ""))
     ReleaseAttemptDispatchResources(
         dispatch_adapters.reservations,
         dispatch_adapters.locks,
@@ -394,6 +397,17 @@ def _handle_execution_terminal(db: Session, agent_id: str, agent_instance_id: st
     ).execute(str(payload.get("execution_attempt_id") or ""), message_type)
     dispatch_adapters.transaction.commit()
     return {"telemetry": telemetry_result, "execution": details.to_payload()}
+
+
+def _complete_cancellation_request(dispatch_adapters, execution_id: str) -> None:
+    if not execution_id:
+        return
+    request = dispatch_adapters.cancellation_requests.current_for_execution(execution_id)
+    if request is None:
+        return
+    dispatch_adapters.cancellation_requests.save(
+        replace(request, status="completed", completed_at=utcnow())
+    )
 
 
 def _handle_artifact_created(db: Session, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> dict[str, Any]:

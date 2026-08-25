@@ -30,11 +30,13 @@ public sealed class AgentDirectoryResolver : IDirectoryResolver
         _logger = logger;
 
         var envPath = Environment.GetEnvironmentVariable(EnvVarName);
-        RootPath = overridePath
-            ?? envPath
-            ?? DefaultRootPath;
+        RootPath = !string.IsNullOrWhiteSpace(overridePath)
+            ? overridePath
+            : !string.IsNullOrWhiteSpace(envPath)
+                ? envPath
+                : DefaultRootPath;
 
-        if (!string.IsNullOrEmpty(envPath) && overridePath is null)
+        if (!string.IsNullOrWhiteSpace(envPath) && string.IsNullOrWhiteSpace(overridePath))
             _logger.LogInformation("Using data directory from environment variable {EnvVar}: {Path}", EnvVarName, envPath);
     }
 

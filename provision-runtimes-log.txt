@@ -1,0 +1,111 @@
+
+========== 0) Verificando pre-requisito: python-core-3.13 ==========
+OK: C:\Users\diego\Desktop\PortalAutomação\automation-agent\certification-runs\agent-data\store\runtimes\python-core-3.13 encontrado.
+
+========== 1) Runtime python-browser-3.13-playwright (entrypoint browser_playwright) ==========
+Clonando python-core-3.13 -> python-browser-3.13-playwright (C:\Users\diego\Desktop\PortalAutomação\automation-agent\certification-runs\agent-data\store\runtimes\python-browser-3.13-playwright)...
+  Clonado com sucesso.
+  ._pth ajustado: python313._pth (import site habilitado)
+  Baixando get-pip.py...
+  Instalando pip...
+Collecting pip
+  Using cached pip-26.2.1-py3-none-any.whl.metadata (4.6 kB)
+Using cached pip-26.2.1-py3-none-any.whl (1.8 MB)
+Installing collected packages: pip
+Successfully installed pip-26.2.1
+  Instalando pacote 'playwright'...
+Collecting playwright
+  Using cached playwright-1.62.0-py3-none-win_amd64.whl.metadata (3.3 kB)
+Collecting pyee<14,>=13 (from playwright)
+  Using cached pyee-13.0.1-py3-none-any.whl.metadata (3.0 kB)
+Collecting greenlet<4.0.0,>=3.1.1 (from playwright)
+  Downloading greenlet-3.5.5-cp313-cp313-win_amd64.whl.metadata (3.9 kB)
+Collecting typing-extensions (from pyee<14,>=13->playwright)
+  Using cached typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+Using cached playwright-1.62.0-py3-none-win_amd64.whl (38.2 MB)
+Downloading greenlet-3.5.5-cp313-cp313-win_amd64.whl (324 kB)
+Using cached pyee-13.0.1-py3-none-any.whl (15 kB)
+Using cached typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Installing collected packages: typing-extensions, greenlet, pyee, playwright
+
+Successfully installed greenlet-3.5.5 playwright-1.62.0 pyee-13.0.1 typing-extensions-4.16.0
+  Baixando Chromium (playwright install chromium)... isso pode demorar alguns minutos.
+Downloading Chrome for Testing 151.0.7922.34 (playwright chromium v1234)[2m from https://cdn.playwright.dev/builds/cft/151.0.7922.34/win64/chrome-win64.zip[22m
+|                                                                                |   0% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                                        |  10% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                                |  20% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                        |  30% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                |  40% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                        |  50% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                |  60% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                        |  70% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                |  80% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá        |  90% of 191.8 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá| 100% of 191.8 MiB
+Chrome for Testing 151.0.7922.34 (playwright chromium v1234) downloaded to C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\certification-runs\agent-data\store\runtimes\python-browser-3.13-playwright\browsers\chromium-1234
+Downloading FFmpeg (playwright ffmpeg v1011)[2m from https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1011/ffmpeg-win64.zip[22m
+|                                                                                |   0% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                                        |  10% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                                |  20% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                        |  30% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                |  40% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                        |  50% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                |  60% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                        |  70% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                |  80% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá        |  90% of 1.3 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá| 100% of 1.3 MiB
+FFmpeg (playwright ffmpeg v1011) downloaded to C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\certification-runs\agent-data\store\runtimes\python-browser-3.13-playwright\browsers\ffmpeg-1011
+Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234)[2m from https://cdn.playwright.dev/builds/cft/151.0.7922.34/win64/chrome-headless-shell-win64.zip[22m
+|                                                                                |   0% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                                        |  10% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                                |  20% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                        |  30% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                |  40% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                        |  50% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                |  60% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                        |  70% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                |  80% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá        |  90% of 114.5 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá| 100% of 114.5 MiB
+Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\certification-runs\agent-data\store\runtimes\python-browser-3.13-playwright\browsers\chromium_headless_shell-1234
+Downloading Winldd (playwright winldd v1007)[2m from https://cdn.playwright.dev/dbazure/download/playwright/builds/winldd/1007/winldd-win64.zip[22m
+|                                                                                |   1% of 0.1 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                                        |  10% of 0.1 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                                |  20% of 0.1 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                        |  31% of 0.1 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                                |  40% of 0.1 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                                |  62% of 0.1 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                        |  75% of 0.1 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá                |  87% of 0.1 MiB
+|ÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûáÔûá| 100% of 0.1 MiB
+Winldd (playwright winldd v1007) downloaded to C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\certification-runs\agent-data\store\runtimes\python-browser-3.13-playwright\browsers\winldd-1007
+
+>>> python-browser-3.13-playwright: READY
+
+========== 2) Runtime python-desktop-3.13 (entrypoint python_desktop - automacao de aplicativo VISIVEL) ==========
+Clonando python-core-3.13 -> python-desktop-3.13 (C:\Users\diego\Desktop\PortalAutomação\automation-agent\certification-runs\agent-data\store\runtimes\python-desktop-3.13)...
+  Clonado com sucesso.
+  ._pth ajustado: python313._pth (import site habilitado)
+  Baixando get-pip.py...
+  Instalando pip...
+Collecting pip
+  Using cached pip-26.2.1-py3-none-any.whl.metadata (4.6 kB)
+Using cached pip-26.2.1-py3-none-any.whl (1.8 MB)
+Installing collected packages: pip
+Successfully installed pip-26.2.1
+  Instalando pacotes 'pyautogui' e 'pywinauto'...
+Collecting pyautogui
+  Using cached PyAutoGUI-0.9.54.tar.gz (61 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+
+>>> python-desktop-3.13: FALHOU - ERROR: Exception:
+
+========== RESUMO ==========
+python-browser-3.13-playwright: READY
+python-desktop-3.13:            FALHOU
+
+Log completo salvo em: C:\Users\diego\Desktop\PortalAutomação\provision-runtimes-log.txt

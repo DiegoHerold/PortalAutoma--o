@@ -1,7 +1,9 @@
 using Biason.AutomationAgent.Domain.Contracts;
+using Biason.AutomationAgent.Domain.Configuration;
 using Biason.AutomationAgent.Domain.Enums;
 using Biason.AutomationAgent.Domain.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Biason.AutomationAgent.Windows.Detection;
 
@@ -10,17 +12,20 @@ public sealed class WindowsCapabilityDetector : ICapabilityDetector
     private readonly ISoftwareDetector _softwareDetector;
     private readonly ISessionInfoCollector _sessionCollector;
     private readonly IClock _clock;
+    private readonly CapacityOptions _capacityOptions;
     private readonly ILogger<WindowsCapabilityDetector> _logger;
 
     public WindowsCapabilityDetector(
         ISoftwareDetector softwareDetector,
         ISessionInfoCollector sessionCollector,
         IClock clock,
+        IOptions<CapacityOptions> capacityOptions,
         ILogger<WindowsCapabilityDetector> logger)
     {
         _softwareDetector = softwareDetector;
         _sessionCollector = sessionCollector;
         _clock = clock;
+        _capacityOptions = capacityOptions.Value;
         _logger = logger;
     }
 
@@ -103,7 +108,7 @@ public sealed class WindowsCapabilityDetector : ICapabilityDetector
         capabilities.Add(new Capability
         {
             Key = "agent.background_execution",
-            Status = CapabilityStatus.NotConfigured,
+            Status = _capacityOptions.BackgroundPoolSize > 0 ? CapabilityStatus.Available : CapabilityStatus.NotConfigured,
             Source = "agent",
             DetectedAtUtc = now
         });
@@ -111,7 +116,7 @@ public sealed class WindowsCapabilityDetector : ICapabilityDetector
         capabilities.Add(new Capability
         {
             Key = "agent.browser_execution",
-            Status = CapabilityStatus.NotConfigured,
+            Status = _capacityOptions.BrowserPoolSize > 0 ? CapabilityStatus.Available : CapabilityStatus.NotConfigured,
             Source = "agent",
             DetectedAtUtc = now
         });
@@ -119,7 +124,7 @@ public sealed class WindowsCapabilityDetector : ICapabilityDetector
         capabilities.Add(new Capability
         {
             Key = "agent.interactive_execution",
-            Status = CapabilityStatus.NotConfigured,
+            Status = _capacityOptions.InteractivePoolSize > 0 ? CapabilityStatus.Available : CapabilityStatus.NotConfigured,
             Source = "agent",
             DetectedAtUtc = now
         });

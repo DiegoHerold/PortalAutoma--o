@@ -1,0 +1,109 @@
+
+========== 1) Ambiente ==========
+Data/hora: 08/20/2026 11:35:32
+Pasta raiz: C:\Users\diego\Desktop\PortalAutomação
+dotnet: 10.0.302
+docker: Docker version 29.6.1, build 8900f1d
+
+========== 2) Containers Docker do Portal (docker compose ps) ==========
+NAME                       IMAGE                                      COMMAND                  SERVICE    CREATED       STATUS       PORTS
+portalautomao-backend-1    portalautomao-backend                      "sh -c 'alembic upgrÔÇª"   backend    5 days ago    Up 3 hours   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+portalautomao-beat-1       portalautomao-beat                         "celery -A workers.cÔÇª"   beat       2 weeks ago   Up 3 hours   
+portalautomao-flower-1     mher/flower:2.0                            "celery flower"          flower     2 weeks ago   Up 3 hours   0.0.0.0:5555->5555/tcp, [::]:5555->5555/tcp
+portalautomao-frontend-1   node:20-alpine                             "docker-entrypoint.sÔÇª"   frontend   2 weeks ago   Up 3 hours   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+portalautomao-minio-1      minio/minio:RELEASE.2024-11-07T00-52-20Z   "/usr/bin/docker-entÔÇª"   minio      2 weeks ago   Up 3 hours   0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+portalautomao-nginx-1      nginx:1.27-alpine                          "/docker-entrypoint.ÔÇª"   nginx      2 weeks ago   Up 3 hours   0.0.0.0:80->80/tcp, [::]:80->80/tcp
+portalautomao-postgres-1   postgres:16                                "docker-entrypoint.sÔÇª"   postgres   2 weeks ago   Up 3 hours   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+portalautomao-redis-1      redis:7                                    "docker-entrypoint.sÔÇª"   redis      2 weeks ago   Up 3 hours   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+portalautomao-worker-1     portalautomao-worker                       "celery -A workers.cÔÇª"   worker     5 days ago    Up 3 hours   
+
+
+========== 3) Health check do backend (http://localhost:8000/health) ==========
+Health OK: {"status":"ok","app":"Portal Automacoes API"}
+
+========== 4) dotnet restore AutomationAgent.sln ==========
+  Determinando os projetos a serem restaurados...
+  C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Agent.UnitTests\Agent.UnitTests.csproj restaurado (em 2,03 seg).
+  9 de 10 projetos est+úo atualizados para restaura+º+úo.
+
+
+========== 5) dotnet build AutomationAgent.sln -c Release ==========
+  Agent.Domain -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Domain\bin\Release\net8.0\Agent.Domain.dll
+  Agent.ExecutionHost -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.ExecutionHost\bin\Release\net8.0\win-x64\ExecutionHost.dll
+  Agent.Protocol -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Protocol\bin\Release\net8.0\Agent.Protocol.dll
+  Agent.Windows -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Windows\bin\Release\net8.0\Agent.Windows.dll
+  Agent.SessionRunner -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.SessionRunner\bin\Release\net8.0\win-x64\SessionRunner.dll
+  Agent.Infrastructure -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Infrastructure\bin\Release\net8.0\Agent.Infrastructure.dll
+  Agent.Application -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Application\bin\Release\net8.0\Agent.Application.dll
+  Agent.Service -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Service\bin\Release\net8.0\AgentService.dll
+  Agent.UnitTests -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Agent.UnitTests\bin\Release\net8.0\Agent.UnitTests.dll
+  Agent.IntegrationTests -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Agent.IntegrationTests\bin\Release\net8.0\Agent.IntegrationTests.dll
+
+Compila+º+úo com +¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:52.60
+
+
+>>> BUILD OK (AutomationAgent.sln)
+
+========== 6) dotnet test tests\Agent.UnitTests ==========
+  Agent.Domain -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Domain\bin\Release\net8.0\Agent.Domain.dll
+  Agent.ExecutionHost -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.ExecutionHost\bin\Release\net8.0\win-x64\ExecutionHost.dll
+  Agent.Windows -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Windows\bin\Release\net8.0\Agent.Windows.dll
+  Agent.Protocol -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Protocol\bin\Release\net8.0\Agent.Protocol.dll
+  Agent.Infrastructure -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Infrastructure\bin\Release\net8.0\Agent.Infrastructure.dll
+  Agent.Application -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Application\bin\Release\net8.0\Agent.Application.dll
+  Agent.UnitTests -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Agent.UnitTests\bin\Release\net8.0\Agent.UnitTests.dll
+Execu+º+úo de teste para C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Agent.UnitTests\bin\Release\net8.0\Agent.UnitTests.dll (.NETCoreApp,Version=v8.0)
+1 arquivos de teste no total corresponderam ao padr+úo especificado.
+
+Aprovado!  ÔÇô Com falha:     0, Aprovado:   172, Ignorado:     0, Total:   172, Dura+º+úo: 1 s - Agent.UnitTests.dll (net8.0)
+
+
+========== 7) dotnet test tests\Agent.IntegrationTests ==========
+  Agent.Domain -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Domain\bin\Release\net8.0\Agent.Domain.dll
+  Agent.Windows -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Windows\bin\Release\net8.0\Agent.Windows.dll
+  Agent.Protocol -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Protocol\bin\Release\net8.0\Agent.Protocol.dll
+  Agent.Infrastructure -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Infrastructure\bin\Release\net8.0\Agent.Infrastructure.dll
+  Agent.Application -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Application\bin\Release\net8.0\Agent.Application.dll
+  Agent.Service -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Service\bin\Release\net8.0\AgentService.dll
+  Agent.IntegrationTests -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Agent.IntegrationTests\bin\Release\net8.0\Agent.IntegrationTests.dll
+Execu+º+úo de teste para C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Agent.IntegrationTests\bin\Release\net8.0\Agent.IntegrationTests.dll (.NETCoreApp,Version=v8.0)
+1 arquivos de teste no total corresponderam ao padr+úo especificado.
+
+Aprovado!  ÔÇô Com falha:     0, Aprovado:   112, Ignorado:     0, Total:   112, Dura+º+úo: 6 s - Agent.IntegrationTests.dll (net8.0)
+
+
+========== 8) Certification.sln (harness de certificacao end-to-end) ==========
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est+úo atualizados para restaura+º+úo.
+
+  Agent.Domain -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Domain\bin\Debug\net8.0\Agent.Domain.dll
+  Agent.Protocol -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Protocol\bin\Debug\net8.0\Agent.Protocol.dll
+  Agent.Infrastructure -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Infrastructure\bin\Debug\net8.0\Agent.Infrastructure.dll
+  Certification.Core -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tools\Certification.Core\bin\Release\net8.0\Certification.Core.dll
+  Certification.Tests -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Certification.Tests\bin\Release\net8.0\Certification.Tests.dll
+  Certification.Cli -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tools\Certification.Cli\bin\Release\net8.0\certification.dll
+
+Compila+º+úo com +¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:17.79
+
+  Agent.Domain -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Domain\bin\Release\net8.0\Agent.Domain.dll
+  Agent.Protocol -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Protocol\bin\Release\net8.0\Agent.Protocol.dll
+  Agent.Infrastructure -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\src\Agent.Infrastructure\bin\Release\net8.0\Agent.Infrastructure.dll
+  Certification.Core -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tools\Certification.Core\bin\Release\net8.0\Certification.Core.dll
+  Certification.Tests -> C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Certification.Tests\bin\Release\net8.0\Certification.Tests.dll
+Execu+º+úo de teste para C:\Users\diego\Desktop\PortalAutoma+º+úo\automation-agent\tests\Certification.Tests\bin\Release\net8.0\Certification.Tests.dll (.NETCoreApp,Version=v8.0)
+1 arquivos de teste no total corresponderam ao padr+úo especificado.
+
+Aprovado!  ÔÇô Com falha:     0, Aprovado:    25, Ignorado:     0, Total:    25, Dura+º+úo: 7 s - Certification.Tests.dll (net8.0)
+
+
+========== RESUMO ==========
+Log completo salvo em: C:\Users\diego\Desktop\PortalAutomação\automation-agent-build-test-log.txt
+Me mande esse arquivo (ou o texto do terminal) para eu analisar o resultado real.

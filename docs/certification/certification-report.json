@@ -1,0 +1,62 @@
+{
+  "phase": "2",
+  "prompt": "7",
+  "generated_at": "2026-08-20T00:00:00-03:00",
+  "status": "NOT APPROVED",
+  "blockers": 0,
+  "blockers_note": "0 confirmed product-level blockers found by static audit. A separate session/tooling blocker (device_bash unavailable) prevented any live execution this session; see gap review B1. This is tracked outside the product blocker count because it is not a defect in Portal or Agent code.",
+  "high": 3,
+  "high_items": [
+    "Replay/reconciliation never exercised against a live in-flight execution (disconnect -> continue -> reconnect -> replay)",
+    "No automated security regression suite (Section 72 adversarial scenarios: package hash, manifest, path traversal, pipe token, execution token, unauthorized Session Runner, oversized message, invalid credential)",
+    "No PID-reuse regression test and no long-running (multi-heartbeat/lease-cycle) certification scenario"
+  ],
+  "core_failures": 8,
+  "core_failure_items": [
+    "Replay/outbox live scenario",
+    "Sync live scenario (route implemented; live disconnect+reconnect+replay never run)",
+    "Portal restart during active execution",
+    "Agent restart during active execution",
+    "Browser execution through real Portal",
+    "Interactive execution through real Portal",
+    "Session exclusivity (second interactive execution) through real Portal",
+    "Process/resource cleanup audit after a full scenario battery"
+  ],
+  "automated_regression_failures": 0,
+  "automated_regression_note": "No new failures found in static review, but the regression suite could not be executed this session (device_bash unavailable), so this is 'not executed' rather than a verified 0.",
+  "session_execution_capability": "UNAVAILABLE",
+  "last_live_execution_evidence_date": "2026-08-14",
+  "last_git_commit": {
+    "hash": "97343cd53e1d6b767a32a03d66dc2d999d85098d",
+    "message": "PROMPT 2: Corrigir e certificar o lifecycle real de Artifacts Portal ↔ Automation Agent",
+    "approx_date": "2026-08-06"
+  },
+  "documentation_corrections_applied": [
+    "docs/agent-feature-matrix.md 'Replay/outbox after reconnect' row falsely claimed agent.sync_state is unrouted by the Portal gateway; backend/gateway/agent_gateway/message_router.py:70,160-161 and backend/gateway/agent_gateway/tests/smoke_sync_state.py prove routing exists. Corrected in final-agent-feature-matrix.md."
+  ],
+  "areas": {
+    "Registration": "READY",
+    "Connectivity": "PARTIAL",
+    "Fleet": "PARTIAL",
+    "Dispatch": "READY",
+    "Background": "READY",
+    "Telemetry": "READY",
+    "Artifacts": "READY",
+    "Recovery": "BLOCKED",
+    "Browser": "BLOCKED",
+    "Interactive": "BLOCKED",
+    "Excel": "NOT_APPLICABLE",
+    "Dominio": "NOT_APPLICABLE",
+    "Security": "BLOCKED",
+    "Diagnostics": "PARTIAL"
+  },
+  "gate_formula": "BLOCKER == 0 AND HIGH == 0 AND CORE_FAIL == 0 AND AUTOMATED_REGRESSION_FAIL == 0 => APPROVED else NOT APPROVED",
+  "gate_evaluation": {
+    "blocker_zero": true,
+    "high_zero": false,
+    "core_fail_zero": false,
+    "automated_regression_fail_zero": true,
+    "result": "NOT APPROVED"
+  },
+  "recommended_next_step": "Do NOT start Fase 3. Restore live execution capability (working dotnet/docker/Windows access), re-run the existing background certification suite to confirm no regression since 2026-08-06, then build and run the five Core-scenario gaps (interactive, browser, session exclusivity, portal restart, agent restart) plus the Section 72 security suite before re-attempting this gate."
+}

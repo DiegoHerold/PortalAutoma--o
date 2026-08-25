@@ -161,6 +161,7 @@ public sealed class AgentRegistrationService : IAgentRegistrationService
         var request = new AgentRegistrationRequest(
             InstallationId: identity.InstallationId,
             MachineId: identity.MachineId,
+            Name: _agentOptions.Name,
             Hostname: Environment.MachineName,
             AgentVersion: _agentOptions.Version,
             OperatingSystemName: os.Name,

@@ -108,12 +108,26 @@ public sealed class InboxCommandProcessor : BackgroundService
             {
                 if (nextAttempt >= _options.MaxAttempts)
                 {
+                    _logger.LogError(
+                        ex,
+                        "Command handler for {CommandType} (message {MessageId}) failed permanently on attempt {Attempt}/{MaxAttempts}; dead-lettering.",
+                        command.CommandType,
+                        command.MessageId,
+                        nextAttempt,
+                        _options.MaxAttempts);
                     await _inbox.MarkDeadLetterAsync(command.Id, _clock.UtcNow, ex.Message, CancellationToken.None);
                     await _inboxService.EnqueueCommandAckAsync(command, InboxCommandStatus.DeadLetter, duplicate: false, ex.Message);
                     processed++;
                 }
                 else
                 {
+                    _logger.LogWarning(
+                        ex,
+                        "Command handler for {CommandType} (message {MessageId}) failed on attempt {Attempt}/{MaxAttempts}; scheduling retry.",
+                        command.CommandType,
+                        command.MessageId,
+                        nextAttempt,
+                        _options.MaxAttempts);
                     await _inbox.MarkPendingAsync(command.Id, ex.Message, CancellationToken.None);
                 }
             }

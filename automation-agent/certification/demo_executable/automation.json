@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "demo.biason_executable",
+  "name": "Biason - Demo Executavel (Validacao de Contratos)",
+  "version": "1.0.0",
+  "description": "Demonstracao real: roda um executavel .NET compilado, empacotado dentro do pacote da automacao, validando uma lista de contratos e gerando um relatorio.",
+  "runtime": {
+    "id": "executable",
+    "version": "1.0"
+  },
+  "entrypoint": {
+    "type": "executable",
+    "path": "automation\\ExampleTool.exe"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.background_execution"]
+  },
+  "resources": {
+    "pool": "background",
+    "slots": 1
+  },
+  "timeout": {
+    "execution_seconds": 60,
+    "graceful_shutdown_seconds": 10
+  }
+}

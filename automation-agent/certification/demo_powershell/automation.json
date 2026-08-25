@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "demo.biason_powershell",
+  "name": "Biason - Demo PowerShell (Conferencia de Certidoes)",
+  "version": "1.0.0",
+  "description": "Demonstracao real: roda um script PowerShell nativo no Agent, sem depender de nenhum runtime baixado - usa o PowerShell ja instalado na maquina.",
+  "runtime": {
+    "id": "powershell",
+    "version": "system"
+  },
+  "entrypoint": {
+    "type": "powershell_script",
+    "script": "automation\\main.ps1"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.background_execution"]
+  },
+  "resources": {
+    "pool": "background",
+    "slots": 1
+  },
+  "timeout": {
+    "execution_seconds": 60,
+    "graceful_shutdown_seconds": 10
+  }
+}

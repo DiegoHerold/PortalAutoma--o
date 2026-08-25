@@ -142,6 +142,38 @@ public sealed class OutboxInboxTests : IAsyncLifetime
         replay.MessageId.Should().Be(persisted.MessageId);
     }
 
+    [Fact]
+    public async Task Outbox_AssignsContiguousAttemptSequences_WhenSequenceIsOmitted()
+    {
+        var outbox = _helper.CreateOutboxRepository();
+        var publisher = CreatePublisher(outbox);
+
+        var preparing = await publisher.EnqueueAsync(
+            PortalMessageTypes.ExecutionPreparing,
+            new { execution_id = "exec_seq", execution_attempt_id = "att_seq" },
+            executionId: "exec_seq",
+            executionAttemptId: "att_seq");
+
+        var log = await publisher.EnqueueAsync(
+            PortalMessageTypes.ExecutionLog,
+            new { level = "info", message = "line" },
+            executionId: "exec_seq",
+            executionAttemptId: "att_seq");
+
+        var metric = await publisher.EnqueueAsync(
+            PortalMessageTypes.ExecutionMetric,
+            new { metric_name = "items_processed", value = 1 },
+            executionId: "exec_seq",
+            executionAttemptId: "att_seq");
+
+        preparing.Sequence.Should().Be(1);
+        log.Sequence.Should().Be(2);
+        metric.Sequence.Should().Be(3);
+        preparing.PayloadJson.Should().Contain("\"event_sequence\":1");
+        log.PayloadJson.Should().Contain("\"event_sequence\":2");
+        metric.PayloadJson.Should().Contain("\"event_sequence\":3");
+    }
+
     // === duplicated-event ===
 
     [Fact]

@@ -30,6 +30,7 @@ public sealed class ExecutionManager : IExecutionManager
     private readonly ILogger<ExecutionManager> _logger;
     private readonly IInteractiveExecutionCoordinator? _interactiveCoordinator;
     private readonly IExecutionLifecyclePublisher? _lifecyclePublisher;
+    private readonly ExecutionHostPipePump? _pipePump;
 
     private readonly Dictionary<string, ProcessHandle> _activeProcesses = new();
     private readonly HashSet<string> _cancelRequested = new();
@@ -52,7 +53,8 @@ public sealed class ExecutionManager : IExecutionManager
         IOptions<ExecutionOptions> options,
         ILogger<ExecutionManager> logger,
         IInteractiveExecutionCoordinator? interactiveCoordinator = null,
-        IExecutionLifecyclePublisher? lifecyclePublisher = null)
+        IExecutionLifecyclePublisher? lifecyclePublisher = null,
+        ExecutionHostPipePump? pipePump = null)
     {
         _execRepo = execRepo;
         _attemptRepo = attemptRepo;
@@ -71,11 +73,14 @@ public sealed class ExecutionManager : IExecutionManager
         _logger = logger;
         _interactiveCoordinator = interactiveCoordinator;
         _lifecyclePublisher = lifecyclePublisher;
+        _pipePump = pipePump;
     }
 
     public async Task<ExecutionResult> ExecuteAsync(ExecutionRecord execution, AutomationManifest manifest, string? inputJson, CancellationToken ct = default)
     {
-        var attemptId = $"att_{Guid.NewGuid():N}";
+        var attemptId = !string.IsNullOrWhiteSpace(execution.CurrentAttemptId)
+            ? execution.CurrentAttemptId!
+            : $"att_{Guid.NewGuid():N}";
         var pool = manifest.Resources?.Pool ?? PoolType.Background;
         var timeoutSeconds = manifest.Timeout?.ExecutionSeconds ?? _options.DefaultTimeoutSeconds;
 
@@ -99,6 +104,7 @@ public sealed class ExecutionManager : IExecutionManager
 
         ExecutionAttempt? attempt = null;
         string? workspacePath = null;
+        IAsyncDisposable? pipeSession = null;
 
         try
         {
@@ -120,8 +126,22 @@ public sealed class ExecutionManager : IExecutionManager
             // Resolve runtime and package
             var runtimeId = manifest.Runtime.Id;
             var runtimeVersion = manifest.Runtime.Version ?? "latest";
-            var runtimePath = _runtimeStore.GetPath(runtimeId, runtimeVersion)
-                ?? throw new InvalidOperationException($"Runtime not found: {runtimeId}:{runtimeVersion}");
+            var resolvedRuntimePath = _runtimeStore.GetPath(runtimeId, runtimeVersion);
+
+            // Nem todo entrypoint depende de um runtime gerenciado pelo Agent
+            // (baixado/extraído para o Runtime Store). PowerShellScript e
+            // Executable rodam contra binários já instalados na máquina
+            // (pwsh.exe do PATH, ou o .exe empacotado dentro do pacote) e os
+            // respectivos launchers (PowerShellLauncher/ExecutableLauncher)
+            // nunca leem ExecutionContext.RuntimePath. Exigir uma entrada no
+            // Runtime Store para esses tipos era uma checagem cega demais:
+            // bloqueava toda automação powershell_script/executable mesmo
+            // quando nada no caminho de execução real precisava disso.
+            var requiresManagedRuntime = RequiresManagedRuntime(manifest.Entrypoint.Type);
+            if (resolvedRuntimePath is null && requiresManagedRuntime)
+                throw new InvalidOperationException($"Runtime not found: {runtimeId}:{runtimeVersion}");
+
+            var runtimePath = resolvedRuntimePath ?? string.Empty;
 
             var packagePath = _packageStore.GetPath(execution.AutomationVersionId ?? execution.AutomationId!)
                 ?? throw new InvalidOperationException($"Package not found for automation {execution.AutomationId}");
@@ -139,6 +159,7 @@ public sealed class ExecutionManager : IExecutionManager
             }
 
             // Build execution context
+            var pipeName = $"biason_agent_{execution.ExecutionId}_{attemptId}";
             var execContext = new ExecutionContext
             {
                 ExecutionId = execution.ExecutionId,
@@ -149,6 +170,7 @@ public sealed class ExecutionManager : IExecutionManager
                 WorkspacePath = workspacePath,
                 RuntimePath = runtimePath,
                 PackagePath = packagePath,
+                PipeName = pipeName,
                 Pool = pool,
                 TimeoutSeconds = timeoutSeconds,
                 GracefulShutdownSeconds = manifest.Timeout?.GracefulShutdownSeconds ?? _options.GracefulShutdownSeconds,
@@ -176,6 +198,7 @@ public sealed class ExecutionManager : IExecutionManager
             }
 
             // Launch process
+            pipeSession = _pipePump?.Start(execContext, pipeName, cts.Token);
             var processHandle = await _processManager.LaunchAsync(execContext, cts.Token);
             execution.ProcessId = processHandle.ProcessId;
             attempt.ProcessId = processHandle.ProcessId;
@@ -263,6 +286,9 @@ public sealed class ExecutionManager : IExecutionManager
             _cancellation.Remove(execution.ExecutionId);
             _capacity.DecrementUsed(pool);
 
+            if (pipeSession is not null)
+                await pipeSession.DisposeAsync();
+
             if (execution.ReservationId is not null)
                 await _reservations.ReleaseAsync(execution.ReservationId, CancellationToken.None);
 
@@ -299,6 +325,16 @@ public sealed class ExecutionManager : IExecutionManager
     private static bool IsInteractive(AutomationManifest manifest, PoolType pool) =>
         pool == PoolType.Interactive ||
         string.Equals(manifest.Execution?.Mode, "interactive", StringComparison.OrdinalIgnoreCase);
+
+    // Mantém em sincronia com os launchers reais em Agent.Application/Launchers:
+    // apenas os tipos cujo LaunchSpec usa ExecutionContext.RuntimePath precisam
+    // de uma entrada resolvida no Runtime Store antes de executar.
+    private static bool RequiresManagedRuntime(EntrypointType entrypointType) => entrypointType switch
+    {
+        EntrypointType.PowerShellScript => false,
+        EntrypointType.Executable => false,
+        _ => true
+    };
 
     public Task<IReadOnlyList<ExecutionRecord>> GetActiveExecutionsAsync(CancellationToken ct = default)
         => _execRepo.GetActiveAsync(ct);

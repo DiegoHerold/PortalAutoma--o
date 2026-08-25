@@ -33,7 +33,9 @@ public sealed class ProcessTreeManager : IProcessManager
     public async Task<ProcessHandle> LaunchAsync(ExecutionContext context, CancellationToken ct = default)
     {
         var jobName = $"exec_{context.ExecutionId}_{context.AttemptId}";
-        var pipeName = $"biason_agent_{context.ExecutionId}_{context.AttemptId}";
+        var pipeName = string.IsNullOrWhiteSpace(context.PipeName)
+            ? $"biason_agent_{context.ExecutionId}_{context.AttemptId}"
+            : context.PipeName!;
 
         // Create Job Object with memory limit if specified
         long? memLimitMb = context.Manifest.Resources?.MaxMemoryMb;
@@ -137,15 +139,56 @@ public sealed class ProcessTreeManager : IProcessManager
             Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "ExecutionHost.exe"),
             Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "bin", "Debug", "net8.0", "win-x64", "ExecutionHost.exe"),
             Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "bin", "Release", "net8.0", "win-x64", "ExecutionHost.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Agent.ExecutionHost", "bin", "Debug", "net8.0", "win-x64", "ExecutionHost.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Agent.ExecutionHost", "bin", "Release", "net8.0", "win-x64", "ExecutionHost.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "artifacts", "publish", "AgentService", "ExecutionHost.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "artifacts", "publish", "ExecutionHost", "ExecutionHost.exe"),
         };
 
-        foreach (var path in candidates)
+        // Regressao real, encontrada rodando contra o Agent.Service online (nao
+        // em teste unitario nenhum): a ordem fixa da lista acima coloca
+        // bin/Debug antes de bin/Release. Um build de Debug de dias atras (de
+        // muito antes das correcoes desta sessao) continuava presente no disco
+        // e "primeiro que existir" o escolhia sempre, ignorando que o
+        // bin/Release tinha acabado de ser recompilado com o codigo corrigido.
+        // O ExecutionHost.exe realmente executado ficava permanentemente preso
+        // num binario de 6 dias atras - reiniciar o Agent.Service e recompilar
+        // a solution em Release nao adiantava nada, porque nenhum dos dois
+        // mexe em qual arquivo esse metodo escolhe. O stack trace do erro
+        // continuava citando codigo que ja tinha sido removido do fonte havia
+        // varios commits, o que so fez sentido depois de comparar a data de
+        // modificacao dos dois bin/*/ExecutionHost.dll. Corrigido escolhendo,
+        // entre os candidatos que existem, o de data de modificacao mais
+        // recente - o binario certo vence sempre, independente de qual
+        // configuracao (Debug/Release) foi compilada por ultimo ou em que
+        // pasta ela mora.
+        var resolved = PickNewestExisting(candidates);
+        if (resolved is null)
         {
-            if (File.Exists(path)) return Path.GetFullPath(path);
+            throw new InvalidOperationException(
+                $"ExecutionHost.exe not found. Searched: {string.Join(", ", candidates.Select(Path.GetFullPath))}");
         }
 
-        throw new InvalidOperationException(
-            $"ExecutionHost.exe not found. Searched: {string.Join(", ", candidates.Select(Path.GetFullPath))}");
+        return Path.GetFullPath(resolved);
+    }
+
+    /// <summary>
+    /// De todos os caminhos candidatos que realmente existem no disco,
+    /// devolve o de data de modificacao mais recente (null se nenhum
+    /// existir). Extraido de <see cref="ResolveExecutionHostPath"/> so essa
+    /// regra - a parte que realmente importa da correcao - da pra testar
+    /// direto com arquivos temporarios reais, sem depender de
+    /// AppContext.BaseDirectory nem da estrutura de pastas bin/Debug|Release
+    /// do repositorio.
+    /// </summary>
+    private static string? PickNewestExisting(IEnumerable<string> candidates)
+    {
+        return candidates
+            .Where(File.Exists)
+            .Select(path => (Path: path, WriteTimeUtc: File.GetLastWriteTimeUtc(path)))
+            .OrderByDescending(c => c.WriteTimeUtc)
+            .Select(c => (string?)c.Path)
+            .FirstOrDefault();
     }
 
     private async Task<string> WriteConfigFileAsync(ExecutionContext context, string pipeName, CancellationToken ct)
@@ -166,7 +209,15 @@ public sealed class ProcessTreeManager : IProcessManager
             entrypoint = new
             {
                 type = context.Manifest.Entrypoint.Type.ToString(),
-                executable_path = (string?)null,
+                // Bug real: isso ficava hardcoded em null, entao TODA
+                // automacao do tipo "executable" chegava no ExecutionHost
+                // sem o caminho do .exe e falhava com "Executable entrypoint
+                // requires 'executable_path'" (RuntimeLauncher.BuildExecutable)
+                // - mesmo com um manifest 100% valido. Precisa propagar o
+                // Entrypoint.Path (populado pelo ManifestValidator a partir de
+                // entrypoint.path no manifest) para o config que o
+                // ExecutionHost realmente le.
+                executable_path = context.Manifest.Entrypoint.Path,
                 arguments = context.Manifest.Entrypoint.Args,
                 module = context.Manifest.Entrypoint.Module,
                 callable = context.Manifest.Entrypoint.Callable,

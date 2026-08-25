@@ -103,7 +103,7 @@ public sealed class ExecutionCancelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Cancel_AlreadyCancelling_ResendsCancellingAck_AndSignalsExecutionManagerAgain()
+    public async Task Cancel_AlreadyCancelling_DoesNotReemitTelemetry_AndSignalsExecutionManagerAgain()
     {
         var fx = CreateFixture();
         await SeedExecutionAsync(fx, "exec_cancel_inflight", "att_cancel_inflight", ExecutionState.Cancelling, reservationId: null);
@@ -112,7 +112,7 @@ public sealed class ExecutionCancelTests : IAsyncLifetime
         var result = await fx.Handler.HandleAsync(command);
 
         result.Result.Should().Be("cancel_already_in_progress");
-        fx.Outbox.Sent.Should().ContainSingle(m => m.MessageType == PortalMessageTypes.ExecutionEventBatch);
+        fx.Outbox.Sent.Should().BeEmpty();
 
         // Estado não deveria ser alterado por este ramo (Cancelling->Cancelled
         // é responsabilidade do ExecutionManager, não deste handler).
@@ -136,7 +136,7 @@ public sealed class ExecutionCancelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Cancel_RunningExecution_SendsCancellingAck_DoesNotMutateExecutionRecord_SignalsExecutionManager()
+    public async Task Cancel_RunningExecution_DoesNotEmitIntermediateTelemetry_DoesNotMutateExecutionRecord_SignalsExecutionManager()
     {
         var fx = CreateFixture();
         await SeedExecutionAsync(fx, "exec_cancel_running", "att_cancel_running", ExecutionState.Running, reservationId: null);
@@ -145,10 +145,9 @@ public sealed class ExecutionCancelTests : IAsyncLifetime
         var result = await fx.Handler.HandleAsync(command);
 
         result.Result.Should().Be("cancel_requested_running");
-        fx.Outbox.Sent.Should().ContainSingle(m => m.MessageType == PortalMessageTypes.ExecutionEventBatch);
-        // Nenhum execution.cancelled ainda — quem fecha o ciclo é o
-        // ExecutionManager.ExecuteAsync em voo, não este handler.
-        fx.Outbox.Sent.Should().NotContain(m => m.MessageType == PortalMessageTypes.ExecutionCancelled);
+        // Nenhum evento intermediario aqui: o command ack pertence ao InboxCommandProcessor
+        // e o terminal execution.cancelled pertence ao ExecutionManager em voo.
+        fx.Outbox.Sent.Should().BeEmpty();
 
         // O handler não deve ter tocado no ExecutionRecord: a cópia em
         // memória que ExecutionManager.ExecuteAsync mantém é outra instância,

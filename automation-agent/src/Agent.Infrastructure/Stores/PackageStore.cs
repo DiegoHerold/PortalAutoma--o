@@ -34,8 +34,49 @@ public sealed class PackageStore : IPackageStore
         return Directory.Exists(path) ? path : null;
     }
 
-    public Task<PackageArtifact?> GetArtifactAsync(string packageId, CancellationToken ct = default)
-        => _repo.GetAsync(packageId, ct);
+    public async Task<PackageArtifact?> GetArtifactAsync(string packageId, CancellationToken ct = default)
+    {
+        var artifact = await _repo.GetAsync(packageId, ct);
+        if (artifact is not null)
+            return artifact;
+
+        // Exists() only checks the store directory on disk, so a package can
+        // pass that check (files still there) while its SQLite artifact
+        // record is gone - e.g. after the certification harness's "clean"
+        // command wipes the database but deliberately keeps the package
+        // store, or after any other partial reset of the local DB. Without
+        // this fallback, ExecutionOfferHandler saw Exists()=true, skipped
+        // re-provisioning, then got a null artifact here and permanently
+        // rejected the offer as MANIFEST_NOT_FOUND even though the package
+        // was sitting right there on disk. Reconstruct the record from what
+        // is actually present instead of losing an already-downloaded
+        // package to a metadata gap.
+        var storePath = GetStorePath(packageId);
+        if (!Directory.Exists(storePath))
+            return null;
+
+        var manifestPath = FindManifest(storePath);
+        if (manifestPath is null)
+            return null;
+
+        var recovered = new PackageArtifact
+        {
+            PackageId = packageId,
+            AutomationId = packageId,
+            AutomationVersionId = packageId,
+            Version = packageId,
+            Sha256 = string.Empty,
+            SizeBytes = 0,
+            StorePath = storePath,
+            ManifestPath = manifestPath,
+            DownloadedAtUtc = _clock.UtcNow,
+            VerifiedAtUtc = _clock.UtcNow,
+            IsValid = true
+        };
+        await _repo.SaveAsync(recovered, ct);
+        _logger.LogWarning("Recovered orphaned package {PackageId} from disk; its artifact record was missing.", packageId);
+        return recovered;
+    }
 
     public async Task<PackageArtifact> ImportAsync(string packageId, string automationId, string automationVersionId, string version, string archivePath, string sha256, CancellationToken ct = default)
     {

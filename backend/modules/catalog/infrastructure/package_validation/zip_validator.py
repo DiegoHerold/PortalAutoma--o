@@ -12,6 +12,19 @@ MAX_FILES = 5000
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024
 MAX_UNCOMPRESSED_RATIO = 100
 FORBIDDEN_EXTENSIONS = {".exe", ".bat", ".cmd", ".msi", ".ps1", ".vbs", ".js"}
+
+# Alguns tipos de entrypoint suportados pelo Agent EXIGEM exatamente as
+# extensoes bloqueadas acima (powershell_script precisa de um .ps1,
+# executable precisa de um .exe/.bat/.cmd/.msi dentro do pacote). Sem essa
+# excecao, nenhum pacote desses dois tipos jamais passava na validacao -
+# FORBIDDEN_EXTENSIONS foi pensado para pacotes "estaticos" (ex.: import de
+# codigo Python via GitHub), nao para os entrypoints que o proprio Agent
+# documenta e suporta. A extensao so e liberada quando o manifesto do
+# pacote declara um entrypoint.type que realmente precisa dela.
+ENTRYPOINT_ALLOWED_EXTENSIONS = {
+    "powershell-script": {".ps1"},
+    "executable": {".exe", ".bat", ".cmd", ".msi"},
+}
 RESERVED_WINDOWS_NAMES = {
     "con",
     "prn",
@@ -54,6 +67,14 @@ class ZipPackageValidator:
                 if total_uncompressed / compressed_size > MAX_UNCOMPRESSED_RATIO:
                     issues.append(_issue("PACKAGE_ZIP_BOMB_RISK", "", "Package compression ratio is suspicious."))
 
+                if "automation.yaml" not in names:
+                    issues.append(_issue("PACKAGE_MANIFEST_MISSING", "automation.yaml", "automation.yaml is required at package root."))
+                    return {"valid": False, "issues": issues}
+
+                raw_manifest = zf.read("automation.yaml").decode("utf-8")
+                manifest, manifest_result = parse_automation_manifest(raw_manifest)
+                allowed_extensions = ENTRYPOINT_ALLOWED_EXTENSIONS.get(manifest.entrypoint_type, set()) if manifest is not None else set()
+
                 for info in infos:
                     name = info.filename.replace("\\", "/")
                     if _is_symlink(info):
@@ -63,15 +84,9 @@ class ZipPackageValidator:
                     if info.file_size > MAX_FILE_SIZE_BYTES:
                         issues.append(_issue("PACKAGE_FILE_TOO_LARGE", name, "A package file exceeds the per-file size limit."))
                     suffix = PurePosixPath(name).suffix.lower()
-                    if suffix in FORBIDDEN_EXTENSIONS:
+                    if suffix in FORBIDDEN_EXTENSIONS and suffix not in allowed_extensions:
                         issues.append(_issue("PACKAGE_FORBIDDEN_EXTENSION", name, "Executable/script extension is not allowed in this static package."))
 
-                if "automation.yaml" not in names:
-                    issues.append(_issue("PACKAGE_MANIFEST_MISSING", "automation.yaml", "automation.yaml is required at package root."))
-                    return {"valid": False, "issues": issues}
-
-                raw_manifest = zf.read("automation.yaml").decode("utf-8")
-                manifest, manifest_result = parse_automation_manifest(raw_manifest)
                 issues.extend(manifest_result.to_payload())
                 if manifest is not None:
                     issues.extend(validate_manifest_package_paths(manifest, set(names)).to_payload())

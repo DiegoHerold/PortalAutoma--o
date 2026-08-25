@@ -20,13 +20,16 @@ using Serilog.Formatting.Compact;
 if (await EarlySessionCli.TryHandleAsync(args, CancellationToken.None))
     return;
 
+CertificationStartupTrace.Write("program.start");
 var builder = Host.CreateApplicationBuilder(args);
+CertificationStartupTrace.Write("builder.created");
 
 // === Configuration ===
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
     .AddEnvironmentVariables("AUTOMATION_AGENT_");
+CertificationStartupTrace.Write("configuration.loaded");
 
 builder.Services.AddOptions<AgentOptions>()
     .Bind(builder.Configuration.GetSection(AgentOptions.Section))
@@ -119,10 +122,18 @@ builder.Services.AddOptions<PortalOptions>()
     .ValidateOnStart();
 
 // === Serilog ===
-builder.Services.AddSerilog((services, loggerConfig) =>
+var bootstrapLoggingOptions = new LoggingOptions();
+builder.Configuration.GetSection(LoggingOptions.Section).Bind(bootstrapLoggingOptions);
+var bootstrapDevelopmentOptions = new DevelopmentOptions();
+builder.Configuration.GetSection(DevelopmentOptions.Section).Bind(bootstrapDevelopmentOptions);
+var bootstrapDataDirectory = bootstrapDevelopmentOptions.DataDirectory
+    ?? Environment.GetEnvironmentVariable("AUTOMATION_AGENT_DATA_DIR")
+    ?? @"C:\ProgramData\BiasonAutomationAgent";
+var bootstrapLogsPath = Path.Combine(bootstrapDataDirectory, "logs");
+Directory.CreateDirectory(bootstrapLogsPath);
+
+builder.Services.AddSerilog((_, loggerConfig) =>
 {
-    var dirs = services.GetRequiredService<IDirectoryResolver>();
-    var loggingOpts = services.GetRequiredService<IOptions<LoggingOptions>>().Value;
 
     loggerConfig
         .MinimumLevel.Information()
@@ -130,13 +141,13 @@ builder.Services.AddSerilog((services, loggerConfig) =>
         .Enrich.WithProperty("Application", "BiasonAutomationAgent")
         .WriteTo.File(
             new CompactJsonFormatter(),
-            Path.Combine(dirs.LogsPath, "agent-.log"),
+            Path.Combine(bootstrapLogsPath, "agent-.log"),
             rollingInterval: RollingInterval.Day,
-            fileSizeLimitBytes: loggingOpts.MaxFileSizeMb * 1024 * 1024,
-            retainedFileCountLimit: loggingOpts.RetainedFileCountLimit,
+            fileSizeLimitBytes: bootstrapLoggingOptions.MaxFileSizeMb * 1024 * 1024,
+            retainedFileCountLimit: bootstrapLoggingOptions.RetainedFileCountLimit,
             shared: true);
 
-    if (builder.Environment.IsDevelopment())
+    if (builder.Environment.IsDevelopment() || bootstrapDevelopmentOptions.ConsoleLogging)
     {
         loggerConfig.WriteTo.Console(outputTemplate:
             "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
@@ -240,6 +251,7 @@ builder.Services.AddSingleton<ILauncher, Biason.AutomationAgent.Application.Laun
 // Execution orchestration
 builder.Services.AddSingleton<ICancellationManager, Biason.AutomationAgent.Application.Execution.CancellationManager>();
 builder.Services.AddSingleton<IResultCollector, Biason.AutomationAgent.Application.Execution.ResultCollector>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.ExecutionHostPipePump>();
 builder.Services.AddSingleton<IExecutionManager, Biason.AutomationAgent.Application.Execution.ExecutionManager>();
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.ExecutionMetricsCollector>();
 builder.Services.AddSingleton<ICacheManager, Biason.AutomationAgent.Application.Execution.CacheManager>();
@@ -336,6 +348,8 @@ builder.Services.AddHostedService(sp =>
     sp.GetRequiredService<Biason.AutomationAgent.Application.Heartbeat.HeartbeatService>());
 
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.OutboxMessagePublisher>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.ExecutionAttemptSequenceTracker>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.AgentInventoryPublisher>();
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.IExecutionLifecyclePublisher,
     Biason.AutomationAgent.Application.Messaging.OutboxExecutionLifecyclePublisher>();
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Messaging.PortalInboxService>();
@@ -376,7 +390,22 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ResourceMonitorSer
 // Agent worker (main background service)
 builder.Services.AddHostedService<AgentWorker>();
 
+CertificationStartupTrace.Write("host.build.start");
 using var host = builder.Build();
+CertificationStartupTrace.Write("host.build.done");
+
+CertificationStartupTrace.Write("host.preflight.start");
+var startupDirs = host.Services.GetRequiredService<IDirectoryResolver>();
+if (!startupDirs.Validate(out var startupErrors))
+{
+    Console.Error.WriteLine($"Directory validation failed: {string.Join("; ", startupErrors)}");
+    Environment.ExitCode = 2;
+    return;
+}
+
+startupDirs.EnsureDirectoriesExist();
+await host.Services.GetRequiredService<SqliteDatabaseManager>().InitializeAsync();
+CertificationStartupTrace.Write("host.preflight.done");
 
 if (SessionCliHandler.IsSessionCommand(Environment.GetCommandLineArgs()))
 {
@@ -399,4 +428,6 @@ if (SessionCliHandler.IsSessionCommand(Environment.GetCommandLineArgs()))
         return;
 }
 
+CertificationStartupTrace.Write("host.run.start");
 await host.RunAsync();
+CertificationStartupTrace.Write("host.run.done");

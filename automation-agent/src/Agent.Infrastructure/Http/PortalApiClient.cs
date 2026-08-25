@@ -43,6 +43,7 @@ public sealed class PortalApiClient : IPortalApiClient
             InstallationId = request.InstallationId,
             LocalIdentity = request.MachineId,
             MachineFingerprint = request.MachineId,
+            Name = request.Name,
             Hostname = request.Hostname,
             AgentVersion = request.AgentVersion,
             OperatingSystem = request.OperatingSystemName,

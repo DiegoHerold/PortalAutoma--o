@@ -96,6 +96,7 @@ class RegisterAgent:
 
         local_identity = str(payload.get("local_identity") or payload.get("machine_id") or "").strip()
         hostname = str(payload.get("hostname") or "").strip()
+        requested_name = str(payload.get("name") or "").strip()
         if not local_identity or not hostname:
             raise AgentRegistrationError("local_identity and hostname are required.")
 
@@ -109,7 +110,7 @@ class RegisterAgent:
         if existing is None:
             agent = AgentDTO(
                 id=generate_agent_id(),
-                name=str(payload.get("name") or hostname),
+                name=requested_name or hostname,
                 hostname=hostname,
                 enabled=True,
                 connectivity_status="offline",
@@ -133,7 +134,7 @@ class RegisterAgent:
                 replace(
                     existing,
                     hostname=hostname,
-                    name=existing.name or str(payload.get("name") or hostname),
+                    name=requested_name or existing.name or hostname,
                     current_version=payload.get("agent_version") or existing.current_version,
                     machine_fingerprint=str(machine_fingerprint) if machine_fingerprint else existing.machine_fingerprint,
                     updated_at=now,

@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "description": "Reads parameters, generates output file, writes stdout, returns exit code 0.",
   "runtime": {
-    "id": "powershell-core",
+    "id": "powershell",
     "version": "7.4"
   },
   "entrypoint": {

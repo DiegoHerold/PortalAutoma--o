@@ -12,7 +12,13 @@ from modules.fleet.domain.capability import CapabilityRequirement
 
 DEFAULT_MANIFEST_FILENAME = "automation.yaml"
 SUPPORTED_SCHEMA_VERSIONS = {"1", "1.0"}
-SUPPORTED_ENTRYPOINT_TYPES = {"python-function", "python-module", "powershell-script", "executable"}
+SUPPORTED_ENTRYPOINT_TYPES = {
+    "python-function",
+    "python-module",
+    "powershell-script",
+    "executable",
+    "browser-playwright",
+}
 SUPPORTED_EXECUTION_MODES = {"interactive", "background"}
 
 
@@ -335,13 +341,13 @@ def validate_manifest_package_paths(manifest: AutomationManifest, package_paths:
         if value not in package_paths:
             result.add("MANIFEST_SCHEMA_NOT_FOUND", label, "Referenced schema does not exist in the package.", {"path": value})
 
-    entrypoint_path = _entrypoint_relative_path(manifest.entrypoint)
-    if entrypoint_path is not None and entrypoint_path not in package_paths:
+    entrypoint_candidates = _entrypoint_relative_path_candidates(manifest.entrypoint)
+    if entrypoint_candidates and not any(candidate in package_paths for candidate in entrypoint_candidates):
         result.add(
             "MANIFEST_ENTRYPOINT_NOT_FOUND",
             "entrypoint",
             "Entrypoint file referenced by the manifest was not found in the package.",
-            {"path": entrypoint_path},
+            {"path": entrypoint_candidates[0], "candidates": entrypoint_candidates},
         )
     return result
 
@@ -567,12 +573,34 @@ def _is_path_ignored(relative_path: str, ignored_paths: list[str]) -> bool:
 
 
 def _entrypoint_relative_path(entrypoint: dict[str, Any]) -> str | None:
-    if isinstance(entrypoint.get("path"), str):
-        return entrypoint["path"]
+    candidates = _entrypoint_relative_path_candidates(entrypoint)
+    return candidates[0] if candidates else None
+
+
+def _entrypoint_relative_path_candidates(entrypoint: dict[str, Any]) -> list[str]:
+    # Regressao: isso so verificava um unico caminho fixo, com prefixo
+    # "application/" hardcoded (application/<modulo>.py) - mas o Agent
+    # (RuntimeLauncher.BuildPythonFunction / PythonFunctionLauncher.cs) faz
+    # sys.path.insert(0, package_root) e importa o modulo diretamente, ou
+    # seja, o layout real e correto e "<modulo>.py" na RAIZ do pacote (ex.:
+    # "automation.main" -> "automation/main.py"), sem prefixo nenhum. Isso
+    # fazia todo pacote python-function corretamente estruturado (mas sem um
+    # "path" explicito no entrypoint) ser rejeitado com
+    # MANIFEST_ENTRYPOINT_NOT_FOUND. Agora verifica a raiz primeiro (a
+    # convencao que o Agent realmente usa), depois "src/" e "application/"
+    # como convencoes alternativas ja aceitas em validate_entrypoint_on_disk.
+    explicit_path = entrypoint.get("path")
+    if isinstance(explicit_path, str):
+        return [explicit_path]
     module = entrypoint.get("module")
     if isinstance(module, str):
-        return str(PurePosixPath("application", *module.split(".")[:-1], f"{module.split('.')[-1]}.py"))
-    return None
+        relative = PurePosixPath(*module.split(".")[:-1], f"{module.split('.')[-1]}.py")
+        return [
+            str(relative),
+            str(PurePosixPath("src") / relative),
+            str(PurePosixPath("application") / relative),
+        ]
+    return []
 
 
 def _module_to_relative_path(module: str) -> Path:

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Biason.AutomationAgent.ExecutionHost;
 using Biason.AutomationAgent.ExecutionHost.Launchers;
 using Biason.AutomationAgent.ExecutionHost.Protocol;
 using Serilog;
@@ -102,7 +103,7 @@ try
     }
 
     // Validate paths
-    ValidatePaths(config.Paths);
+    ExecutionHostPathValidator.Validate(config.Paths, config.Entrypoint.Type);
 
     // Connect to Agent Service via Named Pipe
     pipeClient = new PipeClient(config.PipeName, config.ExecutionId, config.AttemptId);
@@ -192,6 +193,8 @@ try
     // Send result
     if (pipeClient is not null)
     {
+        await SendOutputMetricsAsync(config.Paths.OutputPath, pipeClient, CancellationToken.None);
+
         var resultPayload = new
         {
             exit_code = exitCode,
@@ -258,31 +261,6 @@ static string? GetArg(string[] args, string name)
     return null;
 }
 
-static void ValidatePaths(PathsConfig paths)
-{
-    var required = new (string Name, string Path)[]
-    {
-        ("RuntimePath", paths.RuntimePath),
-        ("PackagePath", paths.PackagePath),
-        ("WorkspacePath", paths.WorkspacePath),
-    };
-
-    foreach (var (name, path) in required)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            throw new InvalidOperationException($"Missing required path: {name}");
-        if (!Directory.Exists(path))
-            throw new InvalidOperationException($"Path does not exist: {name}={path}");
-    }
-
-    // Ensure output directories exist
-    Directory.CreateDirectory(paths.InputPath);
-    Directory.CreateDirectory(paths.OutputPath);
-    Directory.CreateDirectory(paths.ArtifactsPath);
-    Directory.CreateDirectory(paths.TempPath);
-    Directory.CreateDirectory(paths.LogsPath);
-}
-
 static async Task CaptureOutputAsync(
     StreamReader reader, string filePath, string streamName,
     PipeClient? pipe, CancellationToken ct)
@@ -300,6 +278,8 @@ static async Task CaptureOutputAsync(
                 try
                 {
                     await pipe.SendLogAsync(streamName == "stderr" ? "error" : "info", line, ct);
+                    if (streamName == "stdout" && TryParseProgressLine(line, out var percentage))
+                        await pipe.SendProgressAsync(percentage, 100, line, ct);
                 }
                 catch { /* pipe failure should not stop capture */ }
             }
@@ -309,6 +289,45 @@ static async Task CaptureOutputAsync(
     catch (Exception ex)
     {
         Log.Warning(ex, "Error capturing {StreamName}", streamName);
+    }
+}
+
+static bool TryParseProgressLine(string line, out int percentage)
+{
+    percentage = 0;
+    var trimmed = line.Trim();
+    const string prefix = "progress ";
+    if (!trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        return false;
+
+    return int.TryParse(trimmed[prefix.Length..].Trim(), out percentage) &&
+           percentage >= 0 &&
+           percentage <= 100;
+}
+
+static async Task SendOutputMetricsAsync(string outputPath, PipeClient pipe, CancellationToken ct)
+{
+    var outputJsonPath = Path.Combine(outputPath, "output.json");
+    if (!File.Exists(outputJsonPath))
+        return;
+
+    try
+    {
+        await using var stream = File.OpenRead(outputJsonPath);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        if (!document.RootElement.TryGetProperty("metrics", out var metrics) ||
+            metrics.ValueKind != JsonValueKind.Object)
+            return;
+
+        foreach (var metric in metrics.EnumerateObject())
+        {
+            if (metric.Value.ValueKind is JsonValueKind.Number && metric.Value.TryGetDouble(out var value))
+                await pipe.SendMetricAsync(metric.Name, value, ct);
+        }
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex, "Error sending output metrics");
     }
 }
 

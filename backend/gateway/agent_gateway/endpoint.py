@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -96,15 +96,13 @@ async def connect_agent(websocket: WebSocket) -> None:
             await _close_previous(previous)
 
         await websocket.send_json(
-            {
-                "protocol_version": protocol_version,
-                "message_id": f"msg_{uuid4().hex}",
-                "message_type": "agent.connected",
-                "sent_at": datetime.utcnow().isoformat(),
-                "agent_id": agent_id,
-                "agent_instance_id": agent_instance_id,
-                "payload": connected_payload,
-            }
+            _portal_envelope(
+                "agent.connected",
+                connected_payload,
+                protocol_version,
+                agent_id=agent_id,
+                agent_instance_id=agent_instance_id,
+            )
         )
 
         delivery_task = asyncio.create_task(_delivery_loop(websocket, agent_id, agent_instance_id, protocol_version, limits))
@@ -118,16 +116,14 @@ async def connect_agent(websocket: WebSocket) -> None:
                 with SessionLocal() as db:
                     response = route_agent_message(db, envelope, protocol_version, limits)
                 await websocket.send_json(
-                    {
-                        "protocol_version": protocol_version,
-                        "message_id": f"msg_{uuid4().hex}",
-                        "message_type": "portal.ack",
-                        "sent_at": datetime.utcnow().isoformat(),
-                        "agent_id": agent_id,
-                        "agent_instance_id": agent_instance_id,
-                        "correlation_id": envelope.get("message_id"),
-                        "payload": response,
-                    }
+                    _portal_envelope(
+                        "portal.ack",
+                        response,
+                        protocol_version,
+                        agent_id=agent_id,
+                        agent_instance_id=agent_instance_id,
+                        correlation_id=envelope.get("message_id"),
+                    )
                 )
         finally:
             delivery_task.cancel()
@@ -138,10 +134,24 @@ async def connect_agent(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     except GatewayError as exc:
-        await _send_error(websocket, exc.code, str(exc))
+        await _send_error(
+            websocket,
+            exc.code,
+            str(exc),
+            protocol_version=protocol_version or "1.0",
+            agent_id=authenticated_agent.agent.id if authenticated_agent else None,
+            agent_instance_id=agent_instance_id,
+        )
         await _safe_close(websocket, code=1008)
     except Exception as exc:
-        await _send_error(websocket, "GATEWAY_INTERNAL_ERROR", "Gateway failed while processing the connection.")
+        await _send_error(
+            websocket,
+            "GATEWAY_INTERNAL_ERROR",
+            "Gateway failed while processing the connection.",
+            protocol_version=protocol_version or "1.0",
+            agent_id=authenticated_agent.agent.id if authenticated_agent else None,
+            agent_instance_id=agent_instance_id,
+        )
         await _safe_close(websocket, code=1011)
     finally:
         if authenticated_agent and agent_instance_id:
@@ -169,9 +179,52 @@ def _handshake_payload(message: dict[str, Any]) -> dict[str, Any]:
     return message
 
 
-async def _send_error(websocket: WebSocket, code: str, message: str) -> None:
+def _portal_envelope(
+    message_type: str,
+    payload: dict[str, Any],
+    protocol_version: str = "1.0",
+    *,
+    agent_id: str | None = None,
+    agent_instance_id: str | None = None,
+    correlation_id: str | None = None,
+) -> dict[str, Any]:
+    envelope = {
+        "protocol_version": protocol_version,
+        "message_id": f"msg_{uuid4().hex}",
+        "message_type": message_type,
+        "sent_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "payload": payload,
+    }
+    if agent_id:
+        envelope["agent_id"] = agent_id
+    if agent_instance_id:
+        envelope["agent_instance_id"] = agent_instance_id
+    if correlation_id:
+        envelope["correlation_id"] = correlation_id
+    return envelope
+
+
+async def _send_error(
+    websocket: WebSocket,
+    code: str,
+    message: str,
+    *,
+    protocol_version: str = "1.0",
+    agent_id: str | None = None,
+    agent_instance_id: str | None = None,
+    correlation_id: str | None = None,
+) -> None:
     try:
-        await websocket.send_json({"message_type": "portal.error", "payload": {"code": code, "message": message}})
+        await websocket.send_json(
+            _portal_envelope(
+                "portal.error",
+                {"code": code, "message": message},
+                protocol_version,
+                agent_id=agent_id,
+                agent_instance_id=agent_instance_id,
+                correlation_id=correlation_id,
+            )
+        )
     except Exception:
         pass
 
@@ -185,7 +238,14 @@ async def _safe_close(websocket: WebSocket, code: int) -> None:
 
 async def _close_previous(connection: GatewayConnection) -> None:
     try:
-        await connection.websocket.send_json({"message_type": "portal.disconnect", "payload": {"reason": "replaced_by_new_connection"}})
+        await connection.websocket.send_json(
+            _portal_envelope(
+                "portal.disconnect",
+                {"reason": "replaced_by_new_connection"},
+                agent_id=connection.agent_id,
+                agent_instance_id=connection.agent_instance_id,
+            )
+        )
         await connection.websocket.close(code=4000)
     except Exception:
         pass

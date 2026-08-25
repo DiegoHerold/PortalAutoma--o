@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "certification.echo",
+  "name": "Certification Echo",
+  "version": "1.0.0",
+  "description": "Minimal real execution proof for the Portal-Agent certification harness (Prompt 3). Emits logs, progress markers, a custom metric inside its result payload, and a deterministic artifact.",
+  "runtime": {
+    "id": "python-core",
+    "version": "3.13"
+  },
+  "entrypoint": {
+    "type": "python_function",
+    "module": "automation.main",
+    "callable": "run"
+  },
+  "capabilities": {
+    "required": ["windows", "agent.background_execution"]
+  },
+  "resources": {
+    "pool": "background",
+    "slots": 1
+  },
+  "timeout": {
+    "execution_seconds": 60,
+    "graceful_shutdown_seconds": 10
+  }
+}

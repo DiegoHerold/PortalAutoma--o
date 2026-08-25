@@ -836,7 +836,12 @@ def _requirements_snapshot(version, execution_id: str, priority: int, node: Flow
         "retry_policy": node.retry_policy or version.retry_policy,
         "priority": priority,
         "runtime": {"id": version.runtime_id, "version": version.runtime_version},
-        "package": {"id": version.package_id, "sha256": version.package_sha256, "size_bytes": version.package_size_bytes},
+        "package": {
+            "id": version.package_id,
+            "download_url": version.package_download_url,
+            "sha256": version.package_sha256,
+            "size_bytes": version.package_size_bytes,
+        },
         "required_pools": version.required_pools,
         "flow_node_id": node.id,
     }

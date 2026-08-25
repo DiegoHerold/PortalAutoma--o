@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Biason.AutomationAgent.Application.Execution;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Enums;
@@ -256,18 +257,16 @@ public sealed class ExecutionCommitHandler : IInboxCommandHandler
                 if (_artifactManager is not null && result.Artifacts.Count > 0)
                     await _artifactManager.RegisterAsync(executionId, attemptId, result.Artifacts, CancellationToken.None);
 
-                var messageType = result.Success ? PortalMessageTypes.ExecutionCompleted : PortalMessageTypes.ExecutionFailed;
+                await ReleaseLeaseAsync(attemptId, CancellationToken.None);
+
+                var messageType = result.Success
+                    ? PortalMessageTypes.ExecutionCompleted
+                    : execution.CurrentState == ExecutionState.TimedOut
+                        ? PortalMessageTypes.ExecutionTimedOut
+                        : PortalMessageTypes.ExecutionFailed;
                 await _outboxPublisher.EnqueueAsync(
                     messageType,
-                    new
-                    {
-                        ExecutionId = executionId,
-                        ExecutionAttemptId = attemptId,
-                        Success = result.Success,
-                        ExitCode = result.ExitCode,
-                        Error = result.ErrorOutput,
-                        CompletedAt = result.CompletedAtUtc
-                    },
+                    BuildTerminalPayload(executionId, attemptId, result),
                     executionId: executionId,
                     executionAttemptId: attemptId);
             }
@@ -281,6 +280,7 @@ public sealed class ExecutionCommitHandler : IInboxCommandHandler
                 _logger.LogInformation("Execution {ExecutionId}/{AttemptId} was cancelled.", executionId, attemptId);
                 try
                 {
+                    await ReleaseLeaseAsync(attemptId, CancellationToken.None);
                     await _outboxPublisher.EnqueueAsync(
                         PortalMessageTypes.ExecutionCancelled,
                         new { ExecutionId = executionId, ExecutionAttemptId = attemptId },
@@ -297,6 +297,7 @@ public sealed class ExecutionCommitHandler : IInboxCommandHandler
                 _logger.LogError(ex, "Unhandled exception while executing {ExecutionId}/{AttemptId} dispatched from execution.commit.", executionId, attemptId);
                 try
                 {
+                    await ReleaseLeaseAsync(attemptId, CancellationToken.None);
                     await _outboxPublisher.EnqueueAsync(
                         PortalMessageTypes.ExecutionFailed,
                         new { ExecutionId = executionId, ExecutionAttemptId = attemptId, Success = false, Error = ex.Message },
@@ -316,6 +317,65 @@ public sealed class ExecutionCommitHandler : IInboxCommandHandler
         return InboxCommandHandlerResult.Processed("committed");
     }
 
+    private static Dictionary<string, object?> BuildTerminalPayload(string executionId, string attemptId, ExecutionResult result)
+    {
+        var output = TryReadJsonObject(result.OutputJson);
+        var payload = new Dictionary<string, object?>
+        {
+            ["execution_id"] = executionId,
+            ["execution_attempt_id"] = attemptId,
+            ["success"] = result.Success,
+            ["exit_code"] = result.ExitCode,
+            ["error"] = result.ErrorOutput,
+            ["error_message"] = result.ErrorOutput,
+            ["completed_at"] = result.CompletedAtUtc,
+            ["output"] = output,
+            ["result"] = output,
+            ["resource_usage"] = new Dictionary<string, object?>
+            {
+                ["duration_ms"] = result.DurationMs,
+                ["peak_memory_mb"] = result.PeakMemoryMb,
+                ["cpu_time_seconds"] = result.CpuTimeSeconds
+            }
+        };
+
+        return payload;
+    }
+
+    private async Task ReleaseLeaseAsync(string? attemptId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(attemptId))
+            return;
+
+        var lease = await _leases.GetByAttemptAsync(attemptId, ct);
+        if (lease is null)
+            return;
+
+        if (lease.State is LeaseState.Released or LeaseState.Expired or LeaseState.Lost)
+            return;
+
+        lease.State = LeaseState.Released;
+        await _leases.UpdateAsync(lease, ct);
+    }
+
+    private static object? TryReadJsonObject(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                ? document.RootElement.Clone()
+                : new { value = document.RootElement.Clone() };
+        }
+        catch (JsonException)
+        {
+            return new { raw = json };
+        }
+    }
+
     private async Task FailCommittedExecutionAsync(ExecutionRecord execution, string reservationId, string reasonCode, CancellationToken ct)
     {
         _logger.LogError("Failing committed execution {ExecutionId}: {ReasonCode}", execution.ExecutionId, reasonCode);
@@ -324,6 +384,7 @@ public sealed class ExecutionCommitHandler : IInboxCommandHandler
             await ExecutionTransitions.TransitionAsync(_execRepo, _clock, execution, ExecutionState.Failed, ct);
 
         await _reservations.ReleaseAsync(reservationId, CancellationToken.None);
+        await ReleaseLeaseAsync(execution.CurrentAttemptId, CancellationToken.None);
 
         if (_desktopLocks is not null)
         {

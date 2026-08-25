@@ -19,6 +19,26 @@ public class DirectoryResolverTests
     }
 
     [Fact]
+    public void Constructor_WithEmptyOverridePath_UsesEnvironmentPath()
+    {
+        var previous = Environment.GetEnvironmentVariable("AUTOMATION_AGENT_DATA_DIR");
+        var envPath = Path.Combine(Path.GetTempPath(), $"agent-env-{Guid.NewGuid():N}");
+        try
+        {
+            Environment.SetEnvironmentVariable("AUTOMATION_AGENT_DATA_DIR", envPath);
+
+            var logger = Substitute.For<ILogger<AgentDirectoryResolver>>();
+            var resolver = new AgentDirectoryResolver(logger, "");
+
+            resolver.RootPath.Should().Be(envPath);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AUTOMATION_AGENT_DATA_DIR", previous);
+        }
+    }
+
+    [Fact]
     public void AllPaths_AreUnderRoot()
     {
         var logger = Substitute.For<ILogger<AgentDirectoryResolver>>();

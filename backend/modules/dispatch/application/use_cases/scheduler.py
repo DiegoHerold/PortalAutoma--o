@@ -400,7 +400,12 @@ def _requirements_from_version(version: AutomationVersionSnapshotDTO, task: Task
             "retry_policy": version.retry_policy,
             "priority": task.priority,
             "runtime": {"id": version.runtime_id, "version": version.runtime_version},
-            "package": {"id": version.package_id, "sha256": version.package_sha256, "size_bytes": version.package_size_bytes},
+            "package": {
+                "id": version.package_id,
+                "download_url": version.package_download_url,
+                "sha256": version.package_sha256,
+                "size_bytes": version.package_size_bytes,
+            },
             "required_pools": version.required_pools,
         },
         version,
@@ -410,12 +415,22 @@ def _requirements_from_version(version: AutomationVersionSnapshotDTO, task: Task
 def _enrich_requirements(requirements: dict[str, Any], version: AutomationVersionSnapshotDTO | None) -> dict[str, Any]:
     if version is None:
         return requirements
+    package = {
+        "id": version.package_id,
+        "download_url": version.package_download_url,
+        "sha256": version.package_sha256,
+        "size_bytes": version.package_size_bytes,
+        **(requirements.get("package") if isinstance(requirements.get("package"), dict) else {}),
+    }
+    if not package.get("download_url"):
+        package["download_url"] = version.package_download_url
     return {
         **requirements,
         "automation_id": version.automation_id,
         "automation_key": version.automation_key,
         "automation_name": version.automation_name,
         "automation_version": version.version,
+        "package": package,
         "resources": requirements.get("resources") or requirements.get("resource_requirements") or version.resources,
         "capabilities": requirements.get("capabilities") or requirements.get("required_capabilities") or version.required_capabilities,
     }
@@ -478,7 +493,7 @@ def _execution_offer_payload(offer, task: TaskExecutionDTO, requirements: dict[s
         "task_execution_id": task.id,
         "agent_id": offer.agent_id,
         "agent_instance_id": offer.agent_instance_id,
-        "automation_id": requirements.get("automation_id"),
+        "automation_id": str(requirements.get("automation_id") or "") or None,
         "automation_key": requirements.get("automation_key"),
         "automation_name": requirements.get("automation_name"),
         "automation_version": requirements.get("automation_version"),

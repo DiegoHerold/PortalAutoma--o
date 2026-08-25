@@ -284,7 +284,7 @@ class RecordAgentHeartbeat:
             self.sessions.add(replace(session, state=_interactive_state(session.available, session.locked)))
 
         configuration = ensure_configuration(self.configurations, agent_id)
-        pool_payload = payload.get("pools") or {}
+        pool_payload = payload.get("pools") or payload.get("capacity") or {}
         updated_pools: list[AgentPoolDTO] = []
         if isinstance(pool_payload, dict) and pool_payload:
             for pool_type in DEFAULT_AGENT_POOLS:

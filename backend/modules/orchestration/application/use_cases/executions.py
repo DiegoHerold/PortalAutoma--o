@@ -962,7 +962,12 @@ def _requirements_snapshot(version: AutomationVersionSnapshotDTO, execution_id: 
         "priority": priority,
         "preferred_agent_id": preferred_agent_id,
         "runtime": {"id": version.runtime_id, "version": version.runtime_version},
-        "package": {"id": version.package_id, "sha256": version.package_sha256, "size_bytes": version.package_size_bytes},
+        "package": {
+            "id": version.package_id,
+            "download_url": version.package_download_url,
+            "sha256": version.package_sha256,
+            "size_bytes": version.package_size_bytes,
+        },
         "required_pools": version.required_pools,
         "manifest_content_hash": version.manifest.get("content_hash") if isinstance(version.manifest, dict) else None,
     }
@@ -1002,7 +1007,12 @@ def _execution_offer_payload(offer: ExecutionOfferDTO, task: TaskExecutionDTO, v
         "task_execution_id": task.id,
         "automation_version_id": str(version.automation_version_id),
         "runtime": {"id": version.runtime_id, "version": version.runtime_version},
-        "package": {"id": version.package_id, "sha256": version.package_sha256, "size_bytes": version.package_size_bytes},
+        "package": {
+            "id": version.package_id,
+            "download_url": version.package_download_url,
+            "sha256": version.package_sha256,
+            "size_bytes": version.package_size_bytes,
+        },
         "input": {"parameters": parameters},
         "required_capabilities": version.required_capabilities,
         "required_pools": version.required_pools,

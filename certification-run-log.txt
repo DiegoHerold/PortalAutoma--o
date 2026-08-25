@@ -1,0 +1,27 @@
+
+========== 0) Runtime Python de certificacao ==========
+AVISO: nao encontrei C:\Users\diego\Desktop\PortalAutomação\python-3.13-embed-amd64.zip.
+Baixe o 'Windows embeddable package (64-bit)' do Python 3.13 em https://www.python.org/downloads/windows/
+e salve como 'C:\Users\diego\Desktop\PortalAutomação\python-3.13-embed-amd64.zip' (ou edite a variavel $pythonArchive no topo deste script).
+Sem isso, os cenarios de certificacao (que sao scripts Python) devem aparecer como BLOCKED abaixo -
+o que por si so ja confirma o gap real: o Agent nao baixa runtime sozinho, precisa vir pre-instalado.
+
+========== 1) certification prepare (sobe/reaproveita Docker, semeia automacoes de certificacao no Portal) ==========
+11:41:53 info: certification[0] Checking Docker Compose stack...
+11:41:54 info: certification[0] Stack already running; reusing it (docs item 16).
+11:41:55 info: certification[0] Portal health: READY
+11:41:55 info: certification[0] Gateway health: READY
+11:41:55 info: certification[0] Storage (MinIO) health: READY
+11:41:55 info: certification[0] Seeding certification automations/versions/packages via the Portal API...
+11:41:59 info: certification[0]   certification.artifact: automation_version_id=34 status=published
+11:41:59 info: certification[0]   certification.cancel: automation_version_id=35 status=published
+11:41:59 info: certification[0]   certification.echo: automation_version_id=30 status=published
+11:41:59 info: certification[0]   certification.fail: automation_version_id=31 status=published
+11:41:59 info: certification[0]   certification.progress: automation_version_id=33 status=published
+11:41:59 info: certification[0]   certification.timeout: automation_version_id=32 status=published
+11:41:59 info: certification[0] Checking certification runtime (python-core/3.13)...
+11:41:59 info: certification[0] Runtime: READY
+11:41:59 info: certification[0] prepare finished. Portal=True Gateway=True Storage=True Runtime=True
+
+
+========== 2) certification start (sobe um Agent.Service real e espera ele registrar/conectar no Portal) ==========

@@ -81,7 +81,6 @@ public sealed class ExecutionOfferAndCommitTests : IAsyncLifetime
 
         var lease = await fx.LeaseRepo.GetAsync("lease_1");
         lease.Should().NotBeNull();
-        lease!.State.Should().Be(LeaseState.Active);
 
         fx.Outbox.Sent.Should().Contain(m => m.MessageType == PortalMessageTypes.ExecutionEventBatch);
         fx.Outbox.Sent.Should().NotContain(m => m.MessageType == PortalMessageTypes.ExecutionStarted,
@@ -94,6 +93,12 @@ public sealed class ExecutionOfferAndCommitTests : IAsyncLifetime
             Arg.Any<Domain.Models.AutomationManifest>(),
             Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
+
+        await WaitUntilAsync(async () =>
+            (await fx.LeaseRepo.GetByAttemptAsync(attemptId))?.State == LeaseState.Released);
+
+        var nonFinalLeases = await fx.LeaseRepo.GetNonFinalAsync();
+        nonFinalLeases.Should().NotContain(l => l.ExecutionAttemptId == attemptId);
     }
 
     // === offer-reject ===
@@ -180,6 +185,27 @@ public sealed class ExecutionOfferAndCommitTests : IAsyncLifetime
         await fx.ExecutionManager.Received(1).ExecuteAsync(Arg.Any<Domain.Models.ExecutionRecord>(), Arg.Any<Domain.Models.AutomationManifest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task Commit_WhenExecutionManagerTimesOut_EnqueuesTimedOutTerminal()
+    {
+        var fx = CreateFixture(executionManagerOverride: new TimedOutExecutionManager());
+        var attemptId = "att_commit_timeout";
+        var executionId = "exec_commit_timeout";
+        await fx.OfferHandler.HandleAsync(BuildOfferCommand(executionId, attemptId, "off_commit_timeout"));
+
+        var result = await fx.CommitHandler.HandleAsync(BuildCommitCommand(executionId, attemptId, "off_commit_timeout", "lease_timeout"));
+
+        result.Success.Should().BeTrue();
+        await WaitUntilAsync(() => fx.Outbox.Sent.Any(m => m.MessageType == PortalMessageTypes.ExecutionEventBatch));
+        await fx.Outbox.AcknowledgeThroughAsync(attemptId, 1);
+        await WaitUntilAsync(() => fx.Outbox.Sent.Any(m => m.MessageType == PortalMessageTypes.ExecutionTimedOut));
+        fx.Outbox.Sent.Should().Contain(m => m.MessageType == PortalMessageTypes.ExecutionTimedOut);
+        fx.Outbox.Sent.Should().NotContain(m => m.MessageType == PortalMessageTypes.ExecutionFailed);
+
+        var lease = await fx.LeaseRepo.GetByAttemptAsync(attemptId);
+        lease!.State.Should().Be(LeaseState.Released);
+    }
+
     // === commit-invalid-reservation ===
 
     [Fact]
@@ -224,6 +250,13 @@ public sealed class ExecutionOfferAndCommitTests : IAsyncLifetime
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+    }
+
+    private static async Task WaitUntilAsync(Func<Task<bool>> condition, int timeoutMs = 2000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!await condition() && DateTime.UtcNow < deadline)
             await Task.Delay(10);
     }
 
@@ -317,7 +350,10 @@ public sealed class ExecutionOfferAndCommitTests : IAsyncLifetime
         return packageId;
     }
 
-    private TestFixture CreateFixture(int backgroundSlots = 5, int reservationTimeoutSeconds = 300)
+    private TestFixture CreateFixture(
+        int backgroundSlots = 5,
+        int reservationTimeoutSeconds = 300,
+        IExecutionManager? executionManagerOverride = null)
     {
         var executionRepo = new ExecutionRepository(_helper.DbManager);
         var reservationRepo = new ReservationRepository(_helper.DbManager);
@@ -358,17 +394,20 @@ public sealed class ExecutionOfferAndCommitTests : IAsyncLifetime
         var outboxPublisher = new OutboxMessagePublisher(outboxRepo, agentIdentity, clock);
         var outboxSpy = new OutboxSpy(outboxRepo);
 
-        var executionManager = Substitute.For<IExecutionManager>();
-        executionManager
-            .ExecuteAsync(Arg.Any<Domain.Models.ExecutionRecord>(), Arg.Any<Domain.Models.AutomationManifest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new Domain.Models.Execution.ExecutionResult
-            {
-                ExecutionId = "n-a",
-                AttemptId = "n-a",
-                Success = true,
-                ExitCode = 0,
-                CompletedAtUtc = DateTime.UtcNow
-            }));
+        var executionManager = executionManagerOverride ?? Substitute.For<IExecutionManager>();
+        if (executionManagerOverride is null)
+        {
+            executionManager
+                .ExecuteAsync(Arg.Any<Domain.Models.ExecutionRecord>(), Arg.Any<Domain.Models.AutomationManifest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new Domain.Models.Execution.ExecutionResult
+                {
+                    ExecutionId = "n-a",
+                    AttemptId = "n-a",
+                    Success = true,
+                    ExitCode = 0,
+                    CompletedAtUtc = DateTime.UtcNow
+                }));
+        }
 
         var downloadManager = Substitute.For<IDownloadManager>();
 
@@ -405,6 +444,9 @@ public sealed class ExecutionOfferAndCommitTests : IAsyncLifetime
 
         public List<Domain.Models.Messaging.OutboxMessage> Sent =>
             _outbox.GetReadyBatchAsync(100, DateTime.UtcNow.AddDays(1)).GetAwaiter().GetResult().ToList();
+
+        public Task AcknowledgeThroughAsync(string attemptId, long sequence) =>
+            _outbox.MarkAcknowledgedThroughSequenceAsync(attemptId, sequence, DateTime.UtcNow);
     }
 
     private sealed class ManualClock : IClock
@@ -413,5 +455,32 @@ public sealed class ExecutionOfferAndCommitTests : IAsyncLifetime
         public ManualClock(DateTime initialUtcNow) => _now = initialUtcNow;
         public DateTime UtcNow => _now;
         public void Advance(TimeSpan by) => _now = _now.Add(by);
+    }
+
+    private sealed class TimedOutExecutionManager : IExecutionManager
+    {
+        public Task<Domain.Models.Execution.ExecutionResult> ExecuteAsync(
+            Domain.Models.ExecutionRecord execution,
+            Domain.Models.AutomationManifest manifest,
+            string? inputJson,
+            CancellationToken ct = default)
+        {
+            execution.CurrentState = ExecutionState.TimedOut;
+            return Task.FromResult(new Domain.Models.Execution.ExecutionResult
+            {
+                ExecutionId = execution.ExecutionId,
+                AttemptId = execution.CurrentAttemptId ?? "att_missing",
+                Success = false,
+                ErrorOutput = "Execution timed out",
+                CompletedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        public Task CancelAsync(string executionId, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<Domain.Models.ExecutionRecord>> GetActiveExecutionsAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Domain.Models.ExecutionRecord>>(Array.Empty<Domain.Models.ExecutionRecord>());
+
+        public Task RecoverOrphanedAsync(CancellationToken ct = default) => Task.CompletedTask;
     }
 }

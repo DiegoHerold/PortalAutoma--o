@@ -8,3 +8,10 @@ node_modules/
 *.pyc
 dist/
 coverage/
+
+# Certification harness runtime data (docs/certification-harness.md).
+# Generated agent SQLite/runtime/package store, run logs, and reports —
+# reproducible from `certification prepare` + `certification run`, and may
+# transiently contain machine-local paths. Never contains committed
+# credentials by design (item 21/78), but is still not source.
+automation-agent/certification-runs/

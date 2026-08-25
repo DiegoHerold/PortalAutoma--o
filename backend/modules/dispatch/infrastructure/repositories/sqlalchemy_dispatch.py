@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from infrastructure.storage import get_package_storage
 from modules.catalog.infrastructure.orm.models import (
     AutomationManifestRecord,
     AutomationPackageRecord,
@@ -15,6 +16,7 @@ from modules.catalog.infrastructure.orm.models import (
     RuntimeRecord,
     RuntimeVersionRecord,
 )
+from modules.storage.infrastructure.orm.models import StoredObjectRecord
 from modules.dispatch.domain.errors import AgentSelectionError
 from modules.dispatch.domain.policies import required_pool_for_execution_mode
 from modules.dispatch.infrastructure.orm.models import ExecutionOfferRecord, ResourceReservationRecord
@@ -214,6 +216,7 @@ class SqlAlchemyAutomationVersionReader:
             package_id=package.id,
             package_sha256=package.sha256,
             package_size_bytes=package.size_bytes,
+            package_download_url=self._package_download_url(package),
             manifest=manifest,
             execution_mode=mode,
             timeout_seconds=_positive_int(execution.get("timeout_seconds"), 300),
@@ -243,6 +246,12 @@ class SqlAlchemyAutomationVersionReader:
             .order_by(AutomationPackageRecord.published_at.desc().nullslast(), AutomationPackageRecord.created_at.desc())
             .limit(1)
         )
+
+    def _package_download_url(self, package: AutomationPackageRecord) -> str | None:
+        stored = self.db.get(StoredObjectRecord, package.stored_object_id)
+        if stored is None or stored.deleted_at is not None:
+            return None
+        return get_package_storage().get_download_url(stored.bucket, stored.object_key, expires_in_seconds=900)
 
     def _runtime_version(self, version: AutomationVersion) -> RuntimeVersionRecord | None:
         if version.runtime_version_id:

@@ -11,7 +11,7 @@ namespace Biason.AutomationAgent.ExecutionHost.Protocol;
 public sealed class PipeClient : IAsyncDisposable
 {
     private readonly NamedPipeClientStream _pipe;
-    private readonly StreamWriter _writer;
+    private StreamWriter? _writer;
     private readonly string _executionId;
     private readonly string _attemptId;
     private long _sequence;
@@ -27,12 +27,15 @@ public sealed class PipeClient : IAsyncDisposable
         _executionId = executionId;
         _attemptId = attemptId;
         _pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        _writer = new StreamWriter(_pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
     }
 
     public async Task ConnectAsync(int timeoutMs = 10000, CancellationToken ct = default)
     {
         await _pipe.ConnectAsync(timeoutMs, ct);
+        _writer = new StreamWriter(_pipe, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), leaveOpen: true)
+        {
+            AutoFlush = true
+        };
     }
 
     public bool IsConnected => _pipe.IsConnected;
@@ -48,6 +51,9 @@ public sealed class PipeClient : IAsyncDisposable
             SentAtUtc = DateTime.UtcNow,
             Payload = payload
         };
+
+        if (_writer is null)
+            throw new InvalidOperationException("Pipe is not connected.");
 
         var json = JsonSerializer.Serialize(msg, JsonOptions);
         await _writer.WriteLineAsync(json.AsMemory(), ct);
@@ -65,7 +71,7 @@ public sealed class PipeClient : IAsyncDisposable
 
     public async Task SendMetricAsync(string name, double value, CancellationToken ct = default)
     {
-        await SendAsync(MessageTypes.Metric, new { name, value }, ct);
+        await SendAsync(MessageTypes.Metric, new { metric_name = name, metric_type = "gauge", value }, ct);
     }
 
     public async Task<string?> ReadMessageAsync(CancellationToken ct = default)
@@ -85,7 +91,8 @@ public sealed class PipeClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _writer.DisposeAsync();
+        if (_writer is not null)
+            await _writer.DisposeAsync();
         await _pipe.DisposeAsync();
     }
 }

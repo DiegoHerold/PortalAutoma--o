@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Biason.AutomationAgent.Application.Diagnostics;
 using Biason.AutomationAgent.Application.HealthChecks;
+using Biason.AutomationAgent.Application.Messaging;
 using Biason.AutomationAgent.Application.Services;
 using Biason.AutomationAgent.Domain.Contracts;
 using Biason.AutomationAgent.Domain.Enums;
@@ -34,6 +35,7 @@ public sealed class AgentWorker : BackgroundService
     private readonly ICredentialProtector _credentialProtector;
     private readonly IPortalConnectionManager _connectionManager;
     private readonly IConnectionStateRepository _connectionStateRepo;
+    private readonly AgentInventoryPublisher _inventoryPublisher;
     private readonly IOutboxRepository _outbox;
     private readonly IInboxRepository _inbox;
     private readonly IInteractiveSessionRepository _interactiveSessions;
@@ -74,6 +76,7 @@ public sealed class AgentWorker : BackgroundService
         ICredentialProtector credentialProtector,
         IPortalConnectionManager connectionManager,
         IConnectionStateRepository connectionStateRepo,
+        AgentInventoryPublisher inventoryPublisher,
         IOutboxRepository outbox,
         IInboxRepository inbox,
         IInteractiveSessionRepository interactiveSessions,
@@ -107,6 +110,7 @@ public sealed class AgentWorker : BackgroundService
         _credentialProtector = credentialProtector;
         _connectionManager = connectionManager;
         _connectionStateRepo = connectionStateRepo;
+        _inventoryPublisher = inventoryPublisher;
         _outbox = outbox;
         _inbox = inbox;
         _interactiveSessions = interactiveSessions;
@@ -123,6 +127,7 @@ public sealed class AgentWorker : BackgroundService
     {
         try
         {
+            CertificationStartupTrace.Write("agent_worker.start");
             // === STARTING ===
             _logger.LogInformation("Biason Automation Agent starting...");
 
@@ -134,11 +139,13 @@ public sealed class AgentWorker : BackgroundService
                 return;
             }
             _dirs.EnsureDirectoriesExist();
+            CertificationStartupTrace.Write("agent_worker.directories.ready");
 
             // Initialize database
             try
             {
                 await _dbManager.InitializeAsync(stoppingToken);
+                CertificationStartupTrace.Write("agent_worker.database.ready");
             }
             catch (Exception ex)
             {
@@ -149,12 +156,15 @@ public sealed class AgentWorker : BackgroundService
 
             // Load persisted state
             await _stateManager.LoadPersistedStateAsync(stoppingToken);
+            CertificationStartupTrace.Write("agent_worker.state.loaded");
 
             // === INITIALIZING ===
             await _stateManager.TransitionToAsync(AgentState.Initializing, "Startup sequence", source: "agent_worker", ct: stoppingToken);
+            CertificationStartupTrace.Write("agent_worker.initializing");
 
             // Create/load identity
             var identity = await _identityService.GetOrCreateIdentityAsync(stoppingToken);
+            CertificationStartupTrace.Write("agent_worker.identity.ready");
             _logger.LogInformation("Agent identity: InstallationId={InstallationId}, InstanceId={InstanceId}",
                 identity.InstallationId, identity.InstanceId);
 
@@ -166,11 +176,13 @@ public sealed class AgentWorker : BackgroundService
             _logger.LogInformation("Running machine profiler...");
             var profile = await _profiler.CaptureProfileAsync(stoppingToken);
             await _profileRepo.SaveAsync(profile, stoppingToken);
+            CertificationStartupTrace.Write("agent_worker.profile.ready");
 
             // Capability detection
             _logger.LogInformation("Detecting capabilities...");
             var capabilities = await _capabilityDetector.DetectAllAsync(stoppingToken);
             await _capabilityRepo.SaveAllAsync(capabilities, stoppingToken);
+            CertificationStartupTrace.Write("agent_worker.capabilities.ready");
 
             // Registro no Portal — idempotente: não gera novo registro se já houver
             // agent_id com credencial válida. Falha aqui NÃO impede o Agent de subir;
@@ -178,8 +190,10 @@ public sealed class AgentWorker : BackgroundService
             try
             {
                 var registrationResult = await _registration.EnsureRegisteredAsync(stoppingToken);
+                CertificationStartupTrace.Write($"agent_worker.registration.{registrationResult.Outcome}");
                 _logger.LogInformation("Registro no Portal: {Outcome} (agent_id={AgentId})",
                     registrationResult.Outcome, registrationResult.AgentId ?? "-");
+                await _inventoryPublisher.PublishCapabilitiesAsync("startup", stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

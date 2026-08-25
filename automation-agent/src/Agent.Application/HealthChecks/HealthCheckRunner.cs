@@ -615,6 +615,12 @@ public sealed class HealthCheckRunner
             {
                 Path.Combine(AppContext.BaseDirectory, "ExecutionHost.exe"),
                 Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "bin", "Debug", "net8.0", "win-x64", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "bin", "Release", "net8.0", "win-x64", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Agent.ExecutionHost", "bin", "Debug", "net8.0", "win-x64", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Agent.ExecutionHost", "bin", "Release", "net8.0", "win-x64", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "artifacts", "publish", "AgentService", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "artifacts", "publish", "ExecutionHost", "ExecutionHost.exe"),
             };
 
             var found = candidates.Any(File.Exists);
@@ -646,6 +652,12 @@ public sealed class HealthCheckRunner
             {
                 Path.Combine(AppContext.BaseDirectory, "ExecutionHost.exe"),
                 Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "bin", "Debug", "net8.0", "win-x64", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "Agent.ExecutionHost", "bin", "Release", "net8.0", "win-x64", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Agent.ExecutionHost", "bin", "Debug", "net8.0", "win-x64", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Agent.ExecutionHost", "bin", "Release", "net8.0", "win-x64", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "artifacts", "publish", "AgentService", "ExecutionHost.exe"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "artifacts", "publish", "ExecutionHost", "ExecutionHost.exe"),
             };
             var found = candidates.Any(File.Exists);
             return new HealthCheckResult

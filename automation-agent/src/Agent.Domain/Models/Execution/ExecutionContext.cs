@@ -15,6 +15,7 @@ public sealed class ExecutionContext
     public string WorkspacePath { get; init; } = default!;
     public string RuntimePath { get; init; } = default!;
     public string PackagePath { get; init; } = default!;
+    public string? PipeName { get; init; }
     public PoolType Pool { get; init; }
     public int TimeoutSeconds { get; init; }
     public int GracefulShutdownSeconds { get; init; }

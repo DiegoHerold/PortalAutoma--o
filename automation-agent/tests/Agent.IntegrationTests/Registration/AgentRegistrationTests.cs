@@ -56,7 +56,7 @@ public sealed class AgentRegistrationTests : IAsyncLifetime
         var service = new AgentRegistrationService(
             identity, store, portal, osInfo,
             portalOptions,
-            Options.Create(new AgentOptions { Version = "0.3.0" }),
+            Options.Create(new AgentOptions { Name = "certification-agent-01", Version = "0.3.0" }),
             _helper.Clock,
             NullLogger<AgentRegistrationService>.Instance);
 
@@ -121,6 +121,7 @@ public sealed class AgentRegistrationTests : IAsyncLifetime
         captured.Should().NotBeNull();
         captured!.InstallationId.Should().StartWith("ins_");
         captured.MachineId.Should().StartWith("mch_");
+        captured.Name.Should().Be("certification-agent-01");
         captured.AgentVersion.Should().Be("0.3.0");
         captured.OperatingSystemName.Should().Be("Windows 11 Pro");
         captured.RegistrationToken.Should().Be("token-de-registro");
