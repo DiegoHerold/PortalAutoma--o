@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -117,7 +117,7 @@ class CreateAutomationExecution:
             input={"parameters": command.parameters},
             timeout_seconds=version.timeout_seconds,
             requirements_snapshot=_requirements_snapshot(version, execution.id, command.priority, command.agent_id),
-            retry_policy=version.retry_policy or _default_retry_policy(),
+            retry_policy=_retry_policy(version),
             timeout_policy=version.timeout_policy or _default_timeout_policy(version.timeout_seconds),
             now=now,
         ).mark_ready(now).mark_queued(now)
@@ -225,7 +225,7 @@ class ListExecutionSummaries:
             if first_task:
                 attempts = self.attempts.list_for_execution(execution.id)
                 current_attempt = attempts[-1] if attempts else None
-                if current_attempt:
+                if current_attempt and current_attempt.agent_id:  # modo direto: sem Agent
                     summary = self.agent_selection.get_agent_summary(current_attempt.agent_id)
                     if summary:
                         agent_id = summary.get("id")
@@ -271,7 +271,7 @@ class GetExecutionDetails:
         current_attempt = attempts[-1] if attempts else None
         current_offer = self.offers.current_for_execution(execution_id) if current_attempt else None
         version = self.automation_versions.get_published_snapshot(tasks[0].automation_version_id) if tasks else None
-        agent = self.agent_selection.get_agent_summary(current_attempt.agent_id) if current_attempt else None
+        agent = self.agent_selection.get_agent_summary(current_attempt.agent_id) if current_attempt and current_attempt.agent_id else None
         return ExecutionDetailsDTO(
             execution=execution,
             tasks=tasks,
@@ -831,15 +831,15 @@ def new_id(prefix: str) -> str:
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)
 
 
 def parse_datetime(value: Any, default: datetime) -> datetime:
     if isinstance(value, datetime):
-        return value.replace(tzinfo=None) if value.tzinfo is not None else value
+        return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+            return _em_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
         except ValueError:
             return default
     return default
@@ -958,7 +958,7 @@ def _requirements_snapshot(version: AutomationVersionSnapshotDTO, execution_id: 
         "resource_requirements": version.resources,
         "exclusive_resources": version.exclusive_resources,
         "timeout_policy": version.timeout_policy or _default_timeout_policy(version.timeout_seconds),
-        "retry_policy": version.retry_policy or _default_retry_policy(),
+        "retry_policy": _retry_policy(version),
         "priority": priority,
         "preferred_agent_id": preferred_agent_id,
         "runtime": {"id": version.runtime_id, "version": version.runtime_version},
@@ -973,6 +973,16 @@ def _requirements_snapshot(version: AutomationVersionSnapshotDTO, execution_id: 
     }
 
 
+def _retry_policy(version: AutomationVersionSnapshotDTO) -> dict[str, Any]:
+    """Política da versão, sempre com o modo de execução e o "seguro repetir" do manifesto:
+    automação de tela só repete sozinha se declarar que é seguro."""
+    execucao = (version.manifest or {}).get("execution") if isinstance(version.manifest, dict) else {}
+    execucao = execucao if isinstance(execucao, dict) else {}
+    return {**(version.retry_policy or _default_retry_policy()), "execution_mode": version.execution_mode,
+            "safe_to_retry": bool(execucao.get("safe_to_retry", False)),
+            "central_state": bool(execucao.get("central_state", False))}
+
+
 def _default_retry_policy() -> dict[str, Any]:
     return {
         "max_attempts": 1,
@@ -981,7 +991,7 @@ def _default_retry_policy() -> dict[str, Any]:
         "backoff_multiplier": 2,
         "retryable_error_codes": [],
         "non_retryable_error_codes": [],
-        "retry_on_lost": True,
+        "retry_on_lost": False,
         "retry_on_timeout": False,
         "retry_on_agent_rejection": True,
     }
@@ -1277,3 +1287,8 @@ def _reservation_to_dto(reservation: ResourceReservation) -> ResourceReservation
         activated_at=reservation.activated_at,
         release_reason=reservation.release_reason,
     )
+
+
+def _em_utc(valor: datetime) -> datetime:
+    """Texto sem fuso é UTC; com fuso, convertido para UTC (o banco guarda timestamptz)."""
+    return valor.astimezone(UTC) if valor.tzinfo is not None else valor.replace(tzinfo=UTC)

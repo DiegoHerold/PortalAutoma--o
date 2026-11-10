@@ -41,6 +41,8 @@ public static class PortalMessageTypes
     public const string ExecutionLog = "execution.log";
     public const string ExecutionMetric = "execution.metric";
     public const string ExecutionEventBatch = "execution.event.batch";
+    /// <summary>Evento da automacao (contracts/automation-events/v1), transportado dentro do execution.event.batch.</summary>
+    public const string AutomationEvent = "automation.event";
     public const string ExecutionArtifactCreated = "artifact.created";
     public const string ExecutionCompleted = "execution.completed";
     public const string ExecutionFailed = "execution.failed";
@@ -73,7 +75,7 @@ public static class PortalMessageTypes
         Register, Connected, Resumed, Heartbeat, Profile, Capacity, CapabilitiesUpdated,
         DiagnosticResult, StateChanged, Health, DiagnosticsSummary, Draining, Ready,
         ExecutionAccept, ExecutionReject, ExecutionCommitRejected, ExecutionPreparing, ExecutionStarted,
-        ExecutionProgress, ExecutionLog, ExecutionMetric, ExecutionEventBatch, ExecutionArtifactCreated,
+        ExecutionProgress, ExecutionLog, ExecutionMetric, ExecutionEventBatch, AutomationEvent, ExecutionArtifactCreated,
         ExecutionCompleted, ExecutionFailed, ExecutionCancelling, ExecutionCancelled,
         ExecutionTimedOut, ExecutionInterrupted, ArtifactUploaded, ArtifactFailed,
         LeaseRenew, LeaseLost, SyncState, CommandAck, ProtocolError

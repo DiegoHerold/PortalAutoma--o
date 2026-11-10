@@ -3,6 +3,7 @@ import {
   Workflow,
   GitBranch,
   History,
+  ListOrdered,
   CalendarClock,
   Webhook,
   Package,
@@ -43,6 +44,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Visão geral",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/fila", label: "Fila", icon: ListOrdered, anyPermission: ["execution.read", "automation.read"] },
       { href: "/executions", label: "Execuções", icon: History, anyPermission: ["execution.read", "flow.read"] },
     ],
   },

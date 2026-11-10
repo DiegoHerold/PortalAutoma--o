@@ -68,6 +68,7 @@ class AgentRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    machine_id: Mapped[str | None] = mapped_column(ForeignKey("machines.id"), nullable=True, index=True)
 
 
 class AgentInstanceRecord(Base):
@@ -253,3 +254,78 @@ class AgentDiagnosticRecord(Base):
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class MachineRecord(Base):
+    """Máquina cadastrada pelo administrador (ADR-019). Pode ter Agent, instâncias diretas ou os dois."""
+
+    __tablename__ = "machines"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False, unique=True)
+    hostname: Mapped[str | None] = mapped_column(String(180))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ativa")
+    notes: Mapped[str | None] = mapped_column(Text)
+    pool_capacity: Mapped[dict] = mapped_column(JSONB, nullable=False,
+                                                default=lambda: {"interactive": 1, "browser": 1, "background": 2})
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class DirectInstanceRecord(Base):
+    """Automação + máquina no modo direto. Sempre "não gerenciada" (ADR-018)."""
+
+    __tablename__ = "direct_instances"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id"), nullable=False, index=True)
+    machine_id: Mapped[str | None] = mapped_column(ForeignKey("machines.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pendente")
+    reported_name: Mapped[str | None] = mapped_column(String(255))
+    reported_version: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[str | None] = mapped_column(String(120))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    public_key: Mapped[str | None] = mapped_column(Text)
+    quarantined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DirectEnrollmentCodeRecord(Base):
+    """Código de inscrição de uso único (só o hash)."""
+
+    __tablename__ = "direct_enrollment_codes"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_by: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    direct_instance_id: Mapped[str | None] = mapped_column(ForeignKey("direct_instances.id"), nullable=True)
+
+
+class DirectChallengeRecord(Base):
+    __tablename__ = "direct_challenges"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    direct_instance_id: Mapped[str] = mapped_column(ForeignKey("direct_instances.id", ondelete="CASCADE"), nullable=False, index=True)
+    nonce: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DirectSessionRecord(Base):
+    """Sessão de 10 minutos de uma instância direta (só o hash do token)."""
+
+    __tablename__ = "direct_sessions"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    direct_instance_id: Mapped[str] = mapped_column(ForeignKey("direct_instances.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

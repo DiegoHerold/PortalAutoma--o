@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 
@@ -44,7 +44,7 @@ class Automation:
             status=self.status,
             created_by=self.created_by,
             created_at=self.created_at,
-            updated_at=datetime.utcnow(),
+            updated_at=datetime.now(UTC),
         )
 
     def archive(self) -> "Automation":
@@ -58,5 +58,5 @@ class Automation:
             status=AutomationStatus.ARCHIVED,
             created_by=self.created_by,
             created_at=self.created_at,
-            updated_at=datetime.utcnow(),
+            updated_at=datetime.now(UTC),
         )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select
@@ -64,6 +64,11 @@ class SqlAlchemyExecutionAttemptTelemetryReader:
             attempt_status=attempt.status,
             task_status=task.status,
             execution_status=execution.status,
+            executor_type=attempt.executor_type,
+            executor_id=attempt.executor_id,
+            machine_id=attempt.machine_id,
+            automation_version_id=task.automation_version_id,
+            execution_created_at=execution.created_at,
         )
 
 
@@ -260,7 +265,7 @@ class SqlAlchemyEventAcknowledgementRepository:
             "highest_contiguous_sequence": acknowledgement.highest_contiguous_sequence,
             "missing_ranges": acknowledgement.missing_ranges,
             "duplicate_sequences": acknowledgement.duplicate_sequences,
-            "updated_at": acknowledgement.updated_at or datetime.utcnow(),
+            "updated_at": acknowledgement.updated_at or datetime.now(UTC),
         }
         stmt = (
             insert(EventAcknowledgementRecord)
@@ -339,6 +344,8 @@ def _event_dict(event: ExecutionEventDTO) -> dict[str, Any]:
         "message_id": event.message_id,
         "correlation_id": event.correlation_id,
         "causation_id": event.causation_id,
+        "executor_type": event.executor_type,
+        "executor_id": event.executor_id,
     }
 
 
@@ -360,6 +367,8 @@ def _event_to_dto(row: ExecutionEventRecord) -> ExecutionEventDTO:
         message_id=row.message_id,
         correlation_id=row.correlation_id,
         causation_id=row.causation_id,
+        executor_type=row.executor_type,
+        executor_id=row.executor_id,
     )
 
 

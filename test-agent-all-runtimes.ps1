@@ -16,7 +16,7 @@
 # Pre-requisitos:
 #   - O Agent.Service da certificacao (ou de producao) precisa estar
 #     rodando e conectado/online no Portal.
-#   - Docker do Portal rodando (docker compose ps).
+#   - Portal rodando (scripts\portal.ps1 status).
 #   - Internet nesta maquina (secao 9 baixa Playwright/Chromium na
 #     primeira vez - pode demorar alguns minutos so na primeira rodada).
 #
@@ -53,7 +53,6 @@ Section "0) Ambiente"
 Log "Data/hora: $(Get-Date)"
 Log "Pasta raiz: $root"
 try { Log ("dotnet: " + (dotnet --version)) } catch { Log "dotnet: NAO ENCONTRADO no PATH" }
-try { Log ("docker: " + (docker --version)) } catch { Log "docker: NAO ENCONTRADO no PATH" }
 
 $pwshOnPath = Get-Command pwsh.exe -ErrorAction SilentlyContinue
 if ($pwshOnPath) {
@@ -69,10 +68,8 @@ if (-not (Test-Path $agentDir)) {
     exit 1
 }
 
-Section "1) docker compose ps"
-Push-Location $root
-RunStreamed "docker" @("compose", "ps") | Out-Null
-Pop-Location
+Section "1) Processos do Portal (scripts\portal.ps1 status)"
+RunStreamed "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $root "scripts\portal.ps1"), "status") | Out-Null
 
 Section "2) Health check do backend"
 try {
@@ -188,14 +185,14 @@ foreach ($pkg in @("demo_fiscal", "demo_powershell", "demo_executable", "demo_br
 }
 
 Section "11) Rodando UMA EXECUCAO REAL por tipo de entrypoint contra o Agent online"
-Push-Location $root
-$exitDemo = RunStreamed "docker" @("compose", "exec", "-T", "backend", "python", "-m", "tools.certification.demo_all_runtimes")
+Push-Location (Join-Path $root "backend")
+$exitDemo = RunStreamed (Join-Path $root "backend\.venv\Scripts\python.exe") @("-m", "tools.certification.demo_all_runtimes")
 Pop-Location
 if ($exitDemo -eq 0) { Log "`n>>> TODOS os runtimes passaram (PASS)" } else { Log "`n>>> Pelo menos um runtime FALHOU - exit code $exitDemo (veja o resumo acima)" }
 
 Section "12) Curadoria do catalogo de Runtimes do Portal (mantem so os que a Biason usa)"
-Push-Location $root
-$exitCurate = RunStreamed "docker" @("compose", "exec", "-T", "backend", "python", "-m", "tools.certification.curate_runtime_catalog")
+Push-Location (Join-Path $root "backend")
+$exitCurate = RunStreamed (Join-Path $root "backend\.venv\Scripts\python.exe") @("-m", "tools.certification.curate_runtime_catalog")
 Pop-Location
 if ($exitCurate -eq 0) { Log "`n>>> Curadoria concluida sem falhas" } else { Log "`n>>> Curadoria teve falha(s) - exit code $exitCurate (veja o resumo acima)" }
 

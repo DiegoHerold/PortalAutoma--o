@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -19,7 +20,19 @@ SUPPORTED_ENTRYPOINT_TYPES = {
     "executable",
     "browser-playwright",
 }
-SUPPORTED_EXECUTION_MODES = {"interactive", "background"}
+SUPPORTED_EXECUTION_MODES = {"interactive", "background", "browser"}
+# Modo de execução (decisão 10): obrigatório. Nomes em português ou os do pool.
+EXECUTION_MODE_ALIASES = {
+    "tela": "interactive",
+    "navegador": "browser",
+    "segundo_plano": "background",
+    "interactive": "interactive",
+    "browser": "browser",
+    "background": "background",
+}
+EXECUTION_MODE_LABELS = {"interactive": "tela", "browser": "navegador", "background": "segundo_plano"}
+STEP_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
+ATTRIBUTE_PATTERN = re.compile(r"^[A-Za-z0-9_]{1,60}$")
 
 
 DEFAULT_IGNORED_PATHS = [
@@ -92,6 +105,32 @@ class ExecutionSpec:
     mode: str
     timeout_seconds: int
     graceful_cancellation_seconds: int
+    # Repetir sozinha depois de falha. Automação de tela só repete se declarar que é seguro.
+    safe_to_retry: bool = False
+    # Estado guardado fora da máquina: "continuar de onde parou" pode ir para outra máquina.
+    central_state: bool = False
+
+
+@dataclass(frozen=True)
+class ItemSpec:
+    """O que é um item desta automação (Empresa, Nota, Cliente)."""
+
+    label: str
+    key: str
+    label_attribute: str | None = None
+    group_attribute: str | None = None
+    attributes_schema: dict[str, Any] | None = None
+    work_attributes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class StepSpec:
+    """Etapa declarada, na ordem em que roda."""
+
+    key: str
+    name: str
+    per_item: bool = True
+    per_task: bool = False
 
 
 @dataclass(frozen=True)
@@ -127,6 +166,8 @@ class AutomationManifest:
     raw: dict[str, Any]
     normalized: dict[str, Any]
     content_hash: str
+    items: ItemSpec | None = None
+    steps: tuple[StepSpec, ...] = ()
 
     @property
     def timeout_seconds(self) -> int:
@@ -187,6 +228,8 @@ def parse_automation_manifest(raw_yaml: str) -> tuple[AutomationManifest | None,
     required_capabilities = _parse_capability_requirements(data.get("capabilities"), result)
     exclusive_resources = _parse_string_list(data.get("exclusive_resources"), "exclusive_resources", result)
     schemas = _parse_schema_refs(data.get("schemas"), result)
+    items = _parse_items(data.get("itens"), result)
+    steps = _parse_steps(data.get("etapas"), result)
 
     if not result.is_valid:
         return None, result
@@ -209,7 +252,20 @@ def parse_automation_manifest(raw_yaml: str) -> tuple[AutomationManifest | None,
             "mode": execution.mode,
             "timeout_seconds": execution.timeout_seconds,
             "graceful_cancellation_seconds": execution.graceful_cancellation_seconds,
+            "safe_to_retry": execution.safe_to_retry,
+            "central_state": execution.central_state,
         },
+        "items": None if items is None else {
+            "label": items.label,
+            "key": items.key,
+            "label_attribute": items.label_attribute,
+            "group_attribute": items.group_attribute,
+            "attributes_schema": items.attributes_schema,
+            "work_attributes": list(items.work_attributes),
+        },
+        "steps": [
+            {"key": s.key, "name": s.name, "per_item": s.per_item, "per_task": s.per_task} for s in steps
+        ],
         "resources": {
             "cpu_units": resources.cpu_units,
             "memory_mb": resources.memory_mb,
@@ -253,6 +309,8 @@ def parse_automation_manifest(raw_yaml: str) -> tuple[AutomationManifest | None,
             raw=data,
             normalized=normalized,
             content_hash=hashlib.sha256(canonical).hexdigest(),
+            items=items,
+            steps=steps,
         ),
         result,
     )
@@ -465,11 +523,25 @@ def _parse_execution(raw_execution: Any, result: ValidationResult) -> ExecutionS
     if raw_execution is not None and not isinstance(raw_execution, dict):
         result.add("MANIFEST_EXECUTION_INVALID", "execution", "execution must be a mapping.")
     mode = execution.get("mode")
+    if mode is None and execution.get("interactive_session") is True:
+        mode = "interactive"  # forma antiga de declarar tela
     if mode is None:
-        mode = "interactive" if execution.get("interactive_session") is True else "background"
-    if mode not in SUPPORTED_EXECUTION_MODES:
+        result.add(
+            "MANIFEST_EXECUTION_MODE_REQUIRED",
+            "execution.mode",
+            "Declare como a automação executa: execution.mode = tela, navegador ou segundo_plano.",
+        )
+        mode = "background"
+    elif mode not in EXECUTION_MODE_ALIASES:
         result.add("MANIFEST_EXECUTION_MODE_UNSUPPORTED", "execution.mode", "Unsupported execution mode.", {"value": mode})
         mode = "background"
+    else:
+        mode = EXECUTION_MODE_ALIASES[mode]
+    safe_to_retry = execution.get("seguro_repetir", execution.get("safe_to_retry", False))
+    central_state = execution.get("estado_central", execution.get("central_state", False))
+    for name, value in (("seguro_repetir", safe_to_retry), ("estado_central", central_state)):
+        if not isinstance(value, bool):
+            result.add("MANIFEST_EXECUTION_FLAG_INVALID", f"execution.{name}", f"{name} deve ser true ou false.")
     timeout_seconds = execution.get("timeout_seconds", 300)
     if not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
         result.add("MANIFEST_EXECUTION_TIMEOUT_INVALID", "execution.timeout_seconds", "Timeout must be a positive integer.")
@@ -482,7 +554,94 @@ def _parse_execution(raw_execution: Any, result: ValidationResult) -> ExecutionS
             "Graceful cancellation seconds must be a non-negative integer.",
         )
         graceful = 30
-    return ExecutionSpec(mode=mode, timeout_seconds=timeout_seconds, graceful_cancellation_seconds=graceful)
+    return ExecutionSpec(
+        mode=mode,
+        timeout_seconds=timeout_seconds,
+        graceful_cancellation_seconds=graceful,
+        safe_to_retry=safe_to_retry is True,
+        central_state=central_state is True,
+    )
+
+
+def _parse_items(raw: Any, result: ValidationResult) -> ItemSpec | None:
+    """Bloco ``itens``: opcional (automação sem itens só tem início, fim e log)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        result.add("MANIFEST_ITEMS_INVALID", "itens", "itens deve ser um mapeamento.")
+        return None
+    label = raw.get("nome")
+    key = raw.get("chave")
+    valid = True
+    if not isinstance(label, str) or not label.strip():
+        result.add("MANIFEST_ITEMS_LABEL_REQUIRED", "itens.nome", "Informe o nome do item na tela (ex.: Empresa).")
+        valid = False
+    if not isinstance(key, str) or not ATTRIBUTE_PATTERN.fullmatch(key):
+        result.add("MANIFEST_ITEMS_KEY_REQUIRED", "itens.chave", "Informe o atributo que identifica o item (ex.: codigo).")
+        valid = False
+    optional: dict[str, str | None] = {}
+    for field_name in ("rotulo", "grupo"):
+        value = raw.get(field_name)
+        if value is not None and (not isinstance(value, str) or not ATTRIBUTE_PATTERN.fullmatch(value)):
+            result.add("MANIFEST_ITEMS_ATTRIBUTE_INVALID", f"itens.{field_name}", f"itens.{field_name} deve ser um nome de atributo.")
+            value = None
+        optional[field_name] = value
+    schema = raw.get("atributos")
+    if schema is not None and (not isinstance(schema, dict) or schema.get("type", "object") != "object"):
+        result.add("MANIFEST_ITEMS_SCHEMA_INVALID", "itens.atributos", "itens.atributos deve ser um JSON Schema de objeto.")
+        schema = None
+    work = raw.get("afetam_trabalho", [])
+    if not isinstance(work, list) or not all(isinstance(w, str) and ATTRIBUTE_PATTERN.fullmatch(w) for w in work):
+        result.add("MANIFEST_ITEMS_WORK_INVALID", "itens.afetam_trabalho", "afetam_trabalho deve ser uma lista de atributos.")
+        work = []
+    if schema is not None:
+        declared = set(schema.get("properties", {}))
+        for name in [*work, *(v for v in optional.values() if v)]:
+            if name not in declared:
+                result.add("MANIFEST_ITEMS_ATTRIBUTE_UNKNOWN", "itens", f"O atributo {name!r} não está em itens.atributos.")
+    if not valid:
+        return None
+    return ItemSpec(
+        label=label.strip(),
+        key=key,
+        label_attribute=optional["rotulo"],
+        group_attribute=optional["grupo"],
+        attributes_schema=schema,
+        work_attributes=tuple(dict.fromkeys(work)),
+    )
+
+
+def _parse_steps(raw: Any, result: ValidationResult) -> tuple[StepSpec, ...]:
+    """Lista ``etapas``, na ordem. Opcional."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        result.add("MANIFEST_STEPS_INVALID", "etapas", "etapas deve ser uma lista.")
+        return ()
+    steps: list[StepSpec] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(raw):
+        path = f"etapas[{index}]"
+        if not isinstance(entry, dict):
+            result.add("MANIFEST_STEP_INVALID", path, "Cada etapa deve ser um mapeamento.")
+            continue
+        key = entry.get("chave")
+        if not isinstance(key, str) or not STEP_KEY_PATTERN.fullmatch(key):
+            result.add("MANIFEST_STEP_KEY_INVALID", f"{path}.chave", "Chave da etapa inválida (letras, números, _ . : -).")
+            continue
+        if key in seen:
+            result.add("MANIFEST_STEP_DUPLICATED", f"{path}.chave", f"Etapa {key!r} repetida.")
+            continue
+        seen.add(key)
+        raw_name = entry.get("nome")
+        name = raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else key
+        per_item = entry.get("por_item", True)
+        per_task = entry.get("por_tarefa", False)
+        if not isinstance(per_item, bool) or not isinstance(per_task, bool):
+            result.add("MANIFEST_STEP_FLAG_INVALID", path, "por_item e por_tarefa devem ser true ou false.")
+            continue
+        steps.append(StepSpec(key=key, name=name, per_item=per_item, per_task=per_task))
+    return tuple(steps)
 
 
 def _parse_resources(raw_resources: Any, result: ValidationResult) -> ResourceRequirements:

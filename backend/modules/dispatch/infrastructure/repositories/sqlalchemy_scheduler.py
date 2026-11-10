@@ -57,6 +57,8 @@ class SqlAlchemyReadyTaskRepository:
             select(TaskExecutionRecord)
             .where(
                 TaskExecutionRecord.status.in_(["ready", "queued"]),
+                # Job da fila nova espera o despacho da fila (Fase 3); o legado continua igual.
+                or_(TaskExecutionRecord.status == "ready", TaskExecutionRecord.enqueue_batch_id.is_(None)),
                 or_(TaskExecutionRecord.available_at.is_(None), TaskExecutionRecord.available_at <= now),
                 or_(TaskExecutionRecord.next_scheduling_attempt_at.is_(None), TaskExecutionRecord.next_scheduling_attempt_at <= now),
                 ~active_attempt,
@@ -249,10 +251,12 @@ class SqlAlchemyResourceLockRepository:
         rows = self.db.scalars(select(ResourceLockRecord).where(ResourceLockRecord.execution_attempt_id == execution_attempt_id).order_by(ResourceLockRecord.acquired_at)).all()
         return [_lock_to_dto(row) for row in rows]
 
-    def release_for_attempt(self, execution_attempt_id: str, now: datetime, reason: str) -> None:
+    def release_for_attempt(self, execution_attempt_id: str, now: datetime, reason: str,
+                            keep_scopes: tuple[str, ...] = ()) -> None:
         rows = self.db.scalars(
             select(ResourceLockRecord)
-            .where(ResourceLockRecord.execution_attempt_id == execution_attempt_id, ResourceLockRecord.status == "active")
+            .where(ResourceLockRecord.execution_attempt_id == execution_attempt_id, ResourceLockRecord.status == "active",
+                   ResourceLockRecord.scope.not_in(keep_scopes) if keep_scopes else True)
             .with_for_update()
         ).all()
         for row in rows:

@@ -251,6 +251,7 @@ builder.Services.AddSingleton<ILauncher, Biason.AutomationAgent.Application.Laun
 // Execution orchestration
 builder.Services.AddSingleton<ICancellationManager, Biason.AutomationAgent.Application.Execution.CancellationManager>();
 builder.Services.AddSingleton<IResultCollector, Biason.AutomationAgent.Application.Execution.ResultCollector>();
+builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.StepImageRegistrar>();
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.ExecutionHostPipePump>();
 builder.Services.AddSingleton<IExecutionManager, Biason.AutomationAgent.Application.Execution.ExecutionManager>();
 builder.Services.AddSingleton<Biason.AutomationAgent.Application.Execution.ExecutionMetricsCollector>();

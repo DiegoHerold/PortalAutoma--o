@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -58,6 +60,8 @@ from modules.telemetry.domain.errors import TelemetryError
 from modules.telemetry.infrastructure.adapters import build_telemetry_adapters
 from modules.telemetry.infrastructure.repositories.sqlalchemy_inbox import InboxPayloadConflictError
 
+logger = logging.getLogger(__name__)
+
 
 SUPPORTED_AGENT_MESSAGES = {
     "agent.connected",
@@ -103,7 +107,7 @@ def validate_envelope(envelope: dict[str, Any], authenticated_agent_id: str, age
     if not isinstance(envelope.get("payload"), dict):
         raise EnvelopeValidationFailed("Envelope payload must be an object.")
     sent_at = _parse_sent_at(envelope.get("sent_at"))
-    if abs((datetime.utcnow() - sent_at).total_seconds()) > 300:
+    if abs((datetime.now(UTC) - sent_at).total_seconds()) > 300:
         raise EnvelopeValidationFailed("Envelope timestamp is outside the accepted replay window.")
     if envelope["message_type"] == "agent.heartbeat" and _rough_size(envelope["payload"]) > limits.max_heartbeat_payload_bytes:
         raise MessageTooLarge("Heartbeat payload is too large.")
@@ -327,6 +331,7 @@ def _handle_execution_event_batch(db: Session, agent_id: str, agent_instance_id:
         adapters.masker,
         adapters.realtime,
         adapters.transaction,
+        projector=adapters.projector,
     ).execute(
         EventBatchCommand(
             execution_attempt_id=str(payload.get("execution_attempt_id") or ""),
@@ -460,7 +465,32 @@ def _handle_artifact_uploaded(db: Session, agent_id: str, agent_instance_id: str
             agent_instance_id=agent_instance_id,
         )
     )
+    _registrar_imagem_do_passo(db, artifact)
     return storage_payload(artifact)
+
+
+_IMAGEM_DO_PASSO = re.compile(r"^passos[/\\](?P<imagem_id>[A-Za-z0-9_-]{1,80})\.jpg$")
+
+
+def _registrar_imagem_do_passo(db: Session, artifact: Any) -> None:
+    """Modo agente: ``passos/<imagem_id>.jpg`` que subiu como artefato vira a imagem do passo.
+
+    Imagem recusada (vazia, corrompida) não derruba a confirmação do artefato: fica
+    registrada como recusada, com o motivo, e a tela mostra o passo sem imagem."""
+    from modules.storage.application.use_cases.objetos import LerObjeto
+    from modules.telemetry.domain.imagens import ImagemInvalida
+    from modules.telemetry.infrastructure.adapters.factory import build_registrar_imagem
+
+    achado = _IMAGEM_DO_PASSO.match(getattr(artifact, "name", "") or "")
+    if achado is None or not getattr(artifact, "stored_object_id", None):
+        return
+    adapters = build_storage_adapters(db)
+    try:
+        conteudo, _ = LerObjeto(adapters.object_storage, adapters.stored_objects).execute(artifact.stored_object_id)
+        build_registrar_imagem(db).execute(attempt_id=artifact.execution_attempt_id, imagem_id=achado["imagem_id"],
+                                           conteudo=conteudo, origem="agente")
+    except ImagemInvalida as exc:
+        logger.warning("imagem do passo %s recusada: %s", achado["imagem_id"], exc.motivo)
 
 
 def _handle_artifact_failed(db: Session, agent_id: str, agent_instance_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -532,7 +562,7 @@ def _parse_sent_at(value: Any) -> datetime:
     if not isinstance(value, str):
         raise EnvelopeValidationFailed("Envelope sent_at must be a date-time string.")
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+        return _em_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     except ValueError as exc:
         raise EnvelopeValidationFailed("Envelope sent_at is invalid.") from exc
 
@@ -544,7 +574,7 @@ def _parse_optional_datetime(value: Any) -> datetime | None:
         return value
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+            return _em_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
         except ValueError:
             return None
     return None
@@ -580,3 +610,8 @@ def _json(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
     return value
+
+
+def _em_utc(valor: datetime) -> datetime:
+    """Texto sem fuso é UTC; com fuso, convertido para UTC (o banco guarda timestamptz)."""
+    return valor.astimezone(UTC) if valor.tzinfo is not None else valor.replace(tzinfo=UTC)

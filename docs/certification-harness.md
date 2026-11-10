@@ -30,10 +30,8 @@ The harness targets the same stack the rest of this repo already assumes:
 - Windows (Agent.Service, ExecutionHost.exe, and Agent.Windows all use
   Windows-only APIs — DPAPI, WMI, Job Objects, named pipes with Windows ACLs).
 - .NET 8 SDK (`dotnet --version` should report an 8.x SDK).
-- Docker Desktop / Docker Engine with Compose v2 (`docker compose version`).
-- Python 3 with the backend's `requirements/dev.txt` installed, for running
-  `backend/tools/certification` both standalone and inside the backend
-  container.
+- The Portal installed with `scripts/portal.ps1 setup` (docs/deployment.md),
+  whose `backend/.venv` runs `backend/tools/certification`.
 
 None of this was available in the sandbox this harness was authored in (no
 `dotnet`, no `docker`, Linux only, no outbound access to install either —
@@ -74,7 +72,7 @@ backend/
     seed.py              # idempotent Portal-side provisioning
     execution.py          # create/observe/wait-until-terminal via the real API
     cli.py                 # `python -m tools.certification.cli <subcommand>`
-    tests/                  # pytest, runnable without Docker/DB
+    tests/                  # pytest, runnable without a database
 
 scripts/
   certification.ps1     # `.\scripts\certification.ps1 <command>` one-liner
@@ -124,15 +122,15 @@ Agent.Service process instead of a synthetic WebSocket client.
 
 `certification <prepare|start|status|run|stop|clean>`, built as a normal
 .NET console app (`automation-agent/tools/Certification.Cli`). Windows-side
-orchestration (docker compose, Agent.Service process, readiness polling)
+orchestration (scripts/portal.ps1, Agent.Service process, readiness polling)
 lives here in C#; Portal-side provisioning/execution/observation is
 delegated to `backend/tools/certification/cli.py` via
-`docker compose exec backend python -m tools.certification.cli ...` instead
+`backend/.venv/Scripts/python -m tools.certification.cli ...` instead
 of re-implementing the Portal HTTP contract twice.
 
 | Command | What it does |
 | --- | --- |
-| `prepare` | Reuses a healthy `docker compose` stack or runs `up -d`; waits for Portal/Gateway health; checks MinIO via `docker compose ps`; seeds the 5 `certification.*` automations/versions/packages through the real Portal API; ensures the `python-core`/`3.13` runtime is preseeded. |
+| `prepare` | Reuses a healthy stack (`portal.ps1 status`) or runs `portal.ps1 start`; waits for Portal/Gateway health; seeds the 5 `certification.*` automations/versions/packages through the real Portal API; ensures the `python-core`/`3.13` runtime is preseeded. |
 | `start` | Requests a fresh registration token, launches Agent.Service with an isolated data directory and `DOTNET_ENVIRONMENT=Certification`, polls `GET /agents` until the certification Agent is READY/DEGRADED, writes a diagnostic dump automatically if it times out. |
 | `status` | Read-only snapshot of Portal/Gateway/Agent/runtime/PID state. |
 | `run <scenario\|background\|all>` | Creates a real execution via the Portal API for each requested `certification.*` scenario, polls until terminal, classifies PASS/FAIL/BLOCKED against the *expected* terminal state (never "not FAILED = PASS"), writes `report.json`. `background` and `all` currently run `echo`, `fail`, `timeout`, `cancel`, `progress`, and `artifact`. |
@@ -287,7 +285,7 @@ schema's shape by hand (Python 3.10 in the authoring sandbox cannot import
 `modules.catalog.domain.manifest` — it uses `enum.StrEnum`, Python 3.11+
 only) but does round-trip every generated manifest through `yaml.safe_load`
 and check every field `parse_automation_manifest` requires. Re-run it
-inside the backend container (Python 3.11+) for the authoritative check.
+with the backend virtualenv (Python 3.12) for the authoritative check.
 
 ## 11. Packages are content-addressed
 
@@ -393,10 +391,10 @@ through.
 
 ## 16. Troubleshooting
 
-- **`docker-compose.yml not found`** — run from inside the repo, or set
+- **`scripts/portal.ps1 not found`** — run from inside the repo, or set
   `CERTIFICATION_REPO_ROOT`.
-- **`prepare` reports Storage NOT READY** — `docker compose ps` MinIO is
-  not `healthy`/`running`; check `docker compose logs minio`.
+- **`prepare` reports Portal NOT READY** — run `.\scripts\portal.ps1 status`
+  and check the logs listed in docs/deployment.md.
 - **`start` times out with Agent state `Registered` (not `Ready`)** — the
   Agent registered but never reported `connectivity_status = online` in
   Fleet; check the diagnostic dump written under

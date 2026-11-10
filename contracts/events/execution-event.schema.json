@@ -3,11 +3,22 @@
   "$id": "https://portal-automacoes.local/contracts/events/execution-event.schema.json",
   "title": "ExecutionEvent",
   "type": "object",
-  "required": ["event_id", "event_sequence", "event_type", "occurred_at", "payload"],
+  "required": [
+    "event_id",
+    "event_sequence",
+    "event_type",
+    "occurred_at",
+    "payload"
+  ],
   "additionalProperties": false,
   "properties": {
-    "event_id": { "type": "string" },
-    "event_sequence": { "type": "integer", "minimum": 1 },
+    "event_id": {
+      "type": "string"
+    },
+    "event_sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
     "event_type": {
       "enum": [
         "execution.started",
@@ -28,11 +39,26 @@
         "artifact.created",
         "artifact.available",
         "artifact.failed",
-        "diagnostic"
+        "diagnostic",
+        "automation.event"
+      ],
+      "description": "automation.event transporta, sem alteracao, um evento de contracts/automation-events/v1 no payload."
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "level": {
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
       ]
     },
-    "occurred_at": { "type": "string", "format": "date-time" },
-    "level": { "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] },
-    "payload": { "type": "object" }
+    "payload": {
+      "type": "object"
+    }
   }
 }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -130,4 +130,4 @@ class ExecutionOffer:
 
 
 def _naive(value: datetime) -> datetime:
-    return value.replace(tzinfo=None) if value.tzinfo is not None else value
+    return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)

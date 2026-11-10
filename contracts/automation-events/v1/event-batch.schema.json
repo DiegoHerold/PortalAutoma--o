@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/automation-events/v1/event-batch.schema.json",
+  "title": "AutomationEventBatch",
+  "description": "Lote de eventos enviado ao Portal no modo direto, e de dentro do execution.event.batch no modo agente.",
+  "type": "object",
+  "required": ["eventos"],
+  "additionalProperties": false,
+  "properties": {
+    "eventos": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": { "$ref": "automation-event.schema.json" }
+    }
+  }
+}

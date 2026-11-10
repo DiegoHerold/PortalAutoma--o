@@ -25,6 +25,7 @@ public static class LocalMessageTypes
     public const string InteractiveExecutionFailed = "interactive.execution.failed";
     public const string InteractiveExecutionCancelled = "interactive.execution.cancelled";
     public const string InteractiveExecutionHeartbeat = "interactive.execution.heartbeat";
+    public const string InteractiveAutomationEvent = "interactive.automation.event";
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -33,6 +34,6 @@ public static class LocalMessageTypes
         InteractiveExecutionStart, InteractiveExecutionCancel, InteractiveExecutionStarted,
         InteractiveExecutionLog, InteractiveExecutionProgress, InteractiveExecutionMetric,
         InteractiveExecutionArtifact, InteractiveExecutionCompleted, InteractiveExecutionFailed,
-        InteractiveExecutionCancelled, InteractiveExecutionHeartbeat
+        InteractiveExecutionCancelled, InteractiveExecutionHeartbeat, InteractiveAutomationEvent
     };
 }

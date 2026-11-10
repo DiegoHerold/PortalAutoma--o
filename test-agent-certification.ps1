@@ -4,7 +4,7 @@
 # O build e os 309 testes unitarios/integracao ja passaram 100% (rodou
 # antes com o test-agent.ps1). Este script vai alem: ele levanta um
 # Agent.Service DE VERDADE, conecta ele no seu Portal (que ja esta
-# rodando no Docker), registra, e manda o Agent executar automacoes
+# rodando nesta maquina), registra, e manda o Agent executar automacoes
 # reais (echo/fail/timeout/cancel/progress/artifact) - o teste mais
 # proximo possivel de "o agente esta pronto para rodar automacoes" sem
 # ser producao.
@@ -60,7 +60,7 @@ if (Test-Path $pythonArchive) {
 
 Push-Location $root
 
-Section "1) certification prepare (sobe/reaproveita Docker, semeia automacoes de certificacao no Portal)"
+Section "1) certification prepare (sobe/reaproveita o Portal, semeia automacoes de certificacao no Portal)"
 $prepareOut = dotnet $cli prepare 2>&1 | Out-String
 Log $prepareOut
 

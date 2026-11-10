@@ -162,3 +162,16 @@ class ServiceAccountRecord(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+class AutomationGrantRecord(Base):
+    """Concessão por automação (Fase 4): um usuário ou um time, e as ações."""
+
+    __tablename__ = "automation_grants"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("access_teams.id", ondelete="CASCADE"), nullable=True)
+    acoes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -21,7 +21,7 @@ def build_command_envelope(agent_id: str, agent_instance_id: str, protocol_versi
         "protocol_version": protocol_version,
         "message_id": f"msg_{uuid4().hex}",
         "message_type": command.message_type,
-        "sent_at": datetime.utcnow().isoformat(),
+        "sent_at": datetime.now(UTC).isoformat(),
         "agent_id": agent_id,
         "agent_instance_id": agent_instance_id,
         "correlation_id": command.id,
@@ -36,7 +36,7 @@ async def deliver_pending_commands(db: Session, websocket: WebSocket, agent_id: 
     for command in adapters.commands.pending_for_agent(agent_id, limits.max_pending_commands_per_agent):
         envelope = build_command_envelope(agent_id, agent_instance_id, protocol_version, command)
         await websocket.send_json(envelope)
-        adapters.commands.mark_sent(command.id, agent_instance_id, datetime.utcnow())
+        adapters.commands.mark_sent(command.id, agent_instance_id, datetime.now(UTC))
         delivered.append(command.id)
     adapters.transaction.commit()
     return delivered

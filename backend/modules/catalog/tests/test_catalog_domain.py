@@ -112,6 +112,7 @@ def test_manifest_package_paths_accept_root_relative_python_function_entrypoint(
                 "automation": {"id": "dominio.demo_root_layout", "name": "Demo", "version": "1.0.0"},
                 "entrypoint": {"type": "python-function", "module": "automation.main", "function": "run"},
                 "runtime": {"id": "python-core", "version": "3.13"},
+                "execution": {"mode": "segundo_plano"},
             }
         )
     )
@@ -136,6 +137,7 @@ def test_zip_validator_allows_extensions_required_by_declared_entrypoint_type() 
             "version": "1.0.0",
             "runtime": {"id": "powershell", "version": "system"},
             "entrypoint": {"type": "powershell-script", "script": "automation/main.ps1"},
+            "execution": {"mode": "segundo_plano"},
         }
     )
     with tempfile.TemporaryDirectory() as tmp:

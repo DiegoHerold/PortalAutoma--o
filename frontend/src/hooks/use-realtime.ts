@@ -18,10 +18,9 @@ type Options<T> = {
   enabled?: boolean;
 };
 
-function toWsUrl(path: string, token: string | null): string {
-  const base = API_BASE_URL.replace(/^http/, "ws");
-  const sep = path.includes("?") ? "&" : "?";
-  return `${base}${path}${token ? `${sep}token=${encodeURIComponent(token)}` : ""}`;
+function toWsUrl(path: string): string {
+  // O token vai na primeira mensagem, nunca na URL.
+  return `${API_BASE_URL.replace(/^http/, "ws")}${path}`;
 }
 
 /**
@@ -66,7 +65,7 @@ export function useRealtime<T = unknown>({
       setState((s) => (s === "polling" ? s : "connecting"));
       let ws: WebSocket;
       try {
-        ws = new WebSocket(toWsUrl(wsPath, token));
+        ws = new WebSocket(toWsUrl(wsPath));
       } catch {
         startPolling();
         return;
@@ -74,13 +73,18 @@ export function useRealtime<T = unknown>({
       socketRef.current = ws;
 
       ws.onopen = () => {
-        retryRef.current = 0;
-        stopPolling();
-        setState("online");
+        ws.send(JSON.stringify({ type: "auth", token }));
       };
       ws.onmessage = (event) => {
         try {
-          onMessage?.(JSON.parse(event.data));
+          const data = JSON.parse(event.data);
+          if (data?.type === "connected") {
+            retryRef.current = 0;
+            stopPolling();
+            setState("online");
+            return;
+          }
+          onMessage?.(data);
         } catch {
           /* ignore malformed frames */
         }

@@ -15,6 +15,8 @@ public sealed class PipeClient : IAsyncDisposable
     private readonly string _executionId;
     private readonly string _attemptId;
     private long _sequence;
+    // stdout, stderr, metricas e eventos da automacao escrevem ao mesmo tempo: uma linha por vez.
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -56,7 +58,15 @@ public sealed class PipeClient : IAsyncDisposable
             throw new InvalidOperationException("Pipe is not connected.");
 
         var json = JsonSerializer.Serialize(msg, JsonOptions);
-        await _writer.WriteLineAsync(json.AsMemory(), ct);
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            await _writer.WriteLineAsync(json.AsMemory(), ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     public async Task SendLogAsync(string level, string message, CancellationToken ct = default)
@@ -94,5 +104,6 @@ public sealed class PipeClient : IAsyncDisposable
         if (_writer is not null)
             await _writer.DisposeAsync();
         await _pipe.DisposeAsync();
+        _writeLock.Dispose();
     }
 }

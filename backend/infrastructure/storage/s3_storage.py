@@ -63,6 +63,9 @@ class S3PackageStorage(PackageStorage):
     def delete(self, bucket: str, object_key: str) -> None:
         self._client.delete_object(Bucket=bucket, Key=object_key)
 
+    def read_bytes(self, bucket: str, object_key: str) -> bytes:
+        return self._client.get_object(Bucket=bucket, Key=object_key)["Body"].read()
+
     def open_local_path(self, bucket: str, object_key: str) -> Path:
         tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
         self._client.download_file(bucket, object_key, str(tmp))

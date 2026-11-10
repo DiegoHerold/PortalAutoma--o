@@ -26,7 +26,7 @@ import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
-import { API_BASE_URL } from "@/lib/constants";
+import { abrirStream } from "@/lib/stream";
 import { EVENT_TYPE_LABELS, eventTypeLabel, executionLifecycleStatus, executionOriginLabel, executionTypeLabel, isExecutionActiveStatus } from "@/lib/status";
 import { formatDateTime, formatDuration } from "@/lib/utils";
 import type {
@@ -145,16 +145,15 @@ export function ExecutionDetail({ id }: { id: string }) {
 
   useEffect(() => {
     if (!token || terminal) return;
-    const source = new EventSource(`${API_BASE_URL}/executions/${id}/stream?token=${encodeURIComponent(token)}`);
-    const refresh = () => refetchAll();
-    source.onopen = () => setSseConnected(true);
-    source.addEventListener("execution.event", refresh);
-    source.addEventListener("execution.summary", refresh);
-    source.addEventListener("execution.progress", refresh);
-    source.addEventListener("execution.update", refresh);
-    source.onerror = () => setSseConnected(false);
+    // Token no cabeçalho, nunca na URL (lib/stream.ts).
+    const fechar = abrirStream(
+      `/executions/${id}/stream`,
+      token,
+      () => refetchAll(),
+      { aoMudarConexao: setSseConnected },
+    );
     return () => {
-      source.close();
+      fechar();
       setSseConnected(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

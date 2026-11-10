@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from modules.telemetry.application.dto import (
+    AttemptTelemetryContextDTO,
     EventAcknowledgementDTO,
     EventBatchAckDTO,
     EventBatchCommand,
@@ -32,9 +33,10 @@ from modules.telemetry.domain.errors import (
 from modules.telemetry.domain.states import ExecutionEventType, ExecutionMetricType
 
 
-MAX_EVENTS_PER_BATCH = 200
-MAX_EVENT_PAYLOAD_BYTES = 32 * 1024
-MAX_BATCH_BYTES = 128 * 1024
+# Limites do contrato automation-events/v1: 500 eventos por lote e 64 KB por evento.
+MAX_EVENTS_PER_BATCH = 500
+MAX_EVENT_PAYLOAD_BYTES = 64 * 1024
+MAX_BATCH_BYTES = 1_000_000
 TERMINAL_ATTEMPT_STATUSES = {"succeeded", "failed", "cancelled", "timed_out", "lost", "rejected", "expired"}
 
 
@@ -49,7 +51,9 @@ class IngestExecutionEventBatch:
         masker: SecretMaskingPort,
         realtime: RealtimePublisher,
         transaction: TelemetryTransaction,
+        projector: object | None = None,
     ) -> None:
+        self.projector = projector
         self.attempts = attempts
         self.events = events
         self.acknowledgements = acknowledgements
@@ -61,8 +65,11 @@ class IngestExecutionEventBatch:
 
     def execute(self, command: EventBatchCommand) -> EventBatchAckDTO:
         try:
-            telemetry_events = self._build_events(command)
+            context, telemetry_events = self._build_events(command)
             inserted, duplicate_sequences = self.events.add_many(telemetry_events)
+            if self.projector is not None:
+                # Só os inseridos: repetição não projeta duas vezes (idempotência).
+                self.projector.execute(context, inserted)
             metrics = _metrics_for_events(inserted)
             self.metrics.add_many(metrics)
             acknowledgement = self.acknowledgements.upsert(
@@ -100,7 +107,7 @@ class IngestExecutionEventBatch:
             acknowledgement=acknowledgement,
         )
 
-    def _build_events(self, command: EventBatchCommand) -> list[ExecutionEventDTO]:
+    def _build_events(self, command: EventBatchCommand) -> tuple[AttemptTelemetryContextDTO, list[ExecutionEventDTO]]:
         if not command.execution_attempt_id:
             raise TelemetryValidationError("execution_attempt_id is required.")
         if not isinstance(command.events, list) or not command.events:
@@ -113,7 +120,11 @@ class IngestExecutionEventBatch:
         context = self.attempts.get_context(command.execution_attempt_id)
         if context is None:
             raise ExecutionAttemptTelemetryError("ExecutionAttempt not found.")
-        if context.agent_id != command.agent_id or context.agent_instance_id != command.agent_instance_id:
+        if command.executor_type == "direct":
+            if context.executor_type != "direct" or not command.executor_id or context.executor_id != command.executor_id:
+                raise ExecutionAttemptTelemetryError("ExecutionAttempt belongs to another executor.")
+        elif context.executor_type != "agent" or context.agent_id != command.agent_id \
+                or context.agent_instance_id != command.agent_instance_id:
             raise ExecutionAttemptTelemetryError("ExecutionAttempt belongs to another Agent or AgentInstance.")
 
         sequences = [_required_int(event, "event_sequence") for event in command.events]
@@ -151,9 +162,11 @@ class IngestExecutionEventBatch:
                     message_id=command.message_id,
                     correlation_id=command.correlation_id,
                     causation_id=command.causation_id,
+                    executor_type=context.executor_type,
+                    executor_id=context.executor_id,
                 )
             )
-        return telemetry_events
+        return context, telemetry_events
 
 
 class GetExecutionEvents:
@@ -336,13 +349,16 @@ def _required_int(payload: dict[str, Any], field: str) -> int:
 
 
 def parse_datetime(value: Any, default: datetime) -> datetime:
+    """Sempre em UTC com fuso. Sem o fuso, o PostgreSQL lê o horário no fuso da sessão
+    (America/Sao_Paulo no portal) e grava o evento 3 horas adiantado."""
     if isinstance(value, datetime):
-        return value.replace(tzinfo=None) if value.tzinfo is not None else value
+        return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+            convertido = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError as exc:
             raise TelemetryValidationError(f"Invalid date-time: {value}.") from exc
+        return convertido.astimezone(UTC) if convertido.tzinfo is not None else convertido.replace(tzinfo=UTC)
     return default
 
 
@@ -351,4 +367,4 @@ def new_id(prefix: str) -> str:
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)

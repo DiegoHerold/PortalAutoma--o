@@ -5,7 +5,7 @@ step-by-step.
 
 ## 0. Prerequisites (once per machine)
 
-1. Windows 10/11, .NET 8 SDK, Docker Desktop with Compose v2.
+1. Windows 10/11, .NET 8 SDK, Portal installed with `.\scripts\portal.ps1 setup`.
 2. Clone/open this repo.
 3. Download a Python 3.13 embeddable package for Windows x64 from
    https://www.python.org/downloads/windows/ ("Windows embeddable package

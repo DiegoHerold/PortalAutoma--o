@@ -36,10 +36,7 @@ def test_official_backend_layers_do_not_import_legacy_app() -> None:
 
 
 def test_runtime_entrypoints_use_official_main() -> None:
-    dockerfile = read(BACKEND / "Dockerfile")
-    compose = read(ROOT / "docker-compose.yml")
+    launcher = read(ROOT / "scripts" / "portal.ps1")
 
-    assert "uvicorn main:app" in dockerfile
-    assert "uvicorn main:app" in compose
-    assert "app.main:app" not in dockerfile
-    assert "app.main:app" not in compose
+    assert "uvicorn main:app" in launcher
+    assert "app.main:app" not in launcher

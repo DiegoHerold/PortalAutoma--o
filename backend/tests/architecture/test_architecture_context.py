@@ -250,10 +250,12 @@ def test_new_backend_domain_and_application_ports_are_importable() -> None:
 
 
 def test_catalog_legacy_services_delegate_to_modules() -> None:
-    import_service = read(ROOT / "backend" / "app" / "services" / "automation_import_service.py")
+    # backend/app foi removido no corte final; a rota de importacao substituiu o service legado.
+    import_api = read(ROOT / "backend" / "modules" / "catalog" / "api" / "imports.py")
 
-    assert "ConfirmStagedAutomationImport" in import_service
-    assert "AutomationVersionRepository" not in import_service
+    assert "ConfirmStagedAutomationImport" in import_api
+    assert "AutomationVersionRepository" not in import_api
+    assert "infrastructure.orm" not in import_api
 
 
 def test_catalog_persistence_migration_defines_reliability_tables() -> None:

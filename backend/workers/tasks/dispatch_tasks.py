@@ -28,3 +28,14 @@ def schedule_ready_tasks(limit: int = 20) -> dict:
             "scheduled": result.scheduled,
             "skipped": result.skipped,
         }
+
+
+@celery_app.task(name="workers.tasks.dispatch_tasks.dispatch_queue")
+def dispatch_queue() -> dict:
+    """Ciclo da fila (Fase 3): marca jobs perdidos do modo direto e entrega os jobs às máquinas
+    livres, na ordem da fila. A oferta ao Agent segue no schedule_ready_tasks."""
+    from modules.dispatch.api.fila import despachar_agora
+
+    with SessionLocal() as db:
+        resultado = despachar_agora(db)
+        return {"perdidos": resultado["perdidos"], "entregues": len(resultado["entregues"])}

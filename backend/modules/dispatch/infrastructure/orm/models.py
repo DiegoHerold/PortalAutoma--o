@@ -108,7 +108,8 @@ class ResourceLockRecord(Base):
     resource_key: Mapped[str] = mapped_column(String(500), nullable=False)
     normalized_key: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     scope: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
-    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    machine_id: Mapped[str | None] = mapped_column(ForeignKey("machines.id"), nullable=True, index=True)
     execution_attempt_id: Mapped[str] = mapped_column(ForeignKey("execution_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -190,3 +191,31 @@ class ReconciliationRecord(Base):
     details: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class JobTokenRecord(Base):
+    """Token do job no modo direto: guardado como hash, vale só para aquele job."""
+
+    __tablename__ = "job_tokens"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    task_execution_id: Mapped[str] = mapped_column(ForeignKey("task_executions.id", ondelete="CASCADE"), nullable=False)
+    execution_attempt_id: Mapped[str] = mapped_column(ForeignKey("execution_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
+    direct_instance_id: Mapped[str] = mapped_column(ForeignKey("direct_instances.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class DirectCommandRecord(Base):
+    """Comando para uma tentativa do modo direto, entregue pelo long-poll da automação."""
+
+    __tablename__ = "direct_commands"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    execution_attempt_id: Mapped[str] = mapped_column(ForeignKey("execution_attempts.id", ondelete="CASCADE"), nullable=False)
+    command: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pendente")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

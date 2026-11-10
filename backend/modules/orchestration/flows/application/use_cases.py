@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -895,7 +895,7 @@ def _audit(audit_repo, actor: ActorDTO, action: str, resource_type: str, resourc
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)
 
 
 def new_id(prefix: str) -> str:

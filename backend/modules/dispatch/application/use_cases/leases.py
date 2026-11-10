@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 
 from modules.dispatch.application.ports import ExecutionLeaseRepository, OutboxPort, TransactionManager
 
@@ -13,7 +13,7 @@ class ReconcileExpiredLeases:
         self.transaction = transaction
 
     def execute(self, *, limit: int = 100) -> dict[str, int]:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         suspect = 0
         expired = 0
         for lease in self.leases.due_for_suspect(now, limit=limit):
@@ -35,7 +35,7 @@ class RevokeExecutionLease:
         self.transaction = transaction
 
     def execute(self, lease_id: str, reason: str) -> dict[str, str]:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         lease = self.leases.get(lease_id)
         if lease is None:
             raise ValueError("ExecutionLease not found.")

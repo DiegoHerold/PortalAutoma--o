@@ -4,6 +4,11 @@ from copy import deepcopy
 from typing import Any
 
 from modules.telemetry.domain.errors import TelemetryValidationError
+from modules.telemetry.infrastructure.adapters.automation_events import (
+    message_and_level,
+    scrub_automation_event,
+    validate_automation_event,
+)
 from modules.telemetry.domain.states import ExecutionEventType, ExecutionLogLevel, ExecutionMetricType
 
 
@@ -15,6 +20,10 @@ class DefaultEventPayloadValidator:
             raise TelemetryValidationError(f"Unsupported event_type: {event_type}.") from exc
         if not isinstance(payload, dict):
             raise TelemetryValidationError("Event payload must be an object.")
+        if event_type_enum == ExecutionEventType.AUTOMATION_EVENT:
+            event = scrub_automation_event(validate_automation_event(deepcopy(payload)))
+            message, automation_level = message_and_level(event)
+            return event, automation_level, message
         normalized = deepcopy(payload)
         normalized_level = _normalize_level(level or normalized.get("level"), event_type_enum)
         message = _message_from_payload(normalized, event_type_enum)

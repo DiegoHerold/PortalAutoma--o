@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Boxes, ChevronsLeft, ChevronsRight, X } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, X } from "lucide-react";
 
 import { NAV_GROUPS, type NavItem } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -65,15 +66,25 @@ export function SidebarContent({
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className={cn("flex h-16 items-center gap-2.5 px-5", collapsed && "justify-center px-0")}>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Boxes className="h-5 w-5" />
-        </div>
-        {!collapsed && (
-          <div className="leading-tight">
-            <p className="font-display text-sm font-semibold text-white">Portal</p>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-sidebar-foreground/60">Automações</p>
-          </div>
+      <div
+        className={cn(
+          "flex h-16 items-center gap-3 border-b-[3px] border-sidebar-primary/80 px-5",
+          collapsed && "justify-center px-0",
+        )}
+      >
+        {collapsed ? (
+          <span className="titulo-condensado flex h-9 w-9 items-center justify-center rounded-md bg-sidebar-accent text-lg text-white">
+            B
+          </span>
+        ) : (
+          <>
+            <Image src="/marca/logo-biason-branco.png" alt="Biason" width={88} height={28} priority className="h-7 w-auto" />
+            <p className="titulo-condensado border-l border-sidebar-border pl-3 text-[17px] font-medium leading-tight text-sidebar-primary">
+              Portal de
+              <br />
+              Automações
+            </p>
+          </>
         )}
       </div>
 
@@ -81,7 +92,7 @@ export function SidebarContent({
         {groups.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/45">
+              <p className="px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-sidebar-primary/60">
                 {group.label}
               </p>
             )}
@@ -105,9 +116,9 @@ export function SidebarContent({
                     )}
                   >
                     {active && (
-                      <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
+                      <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-sidebar-primary" />
                     )}
-                    <Icon className={cn("h-[18px] w-[18px] shrink-0", active ? "text-primary" : "text-sidebar-foreground/60")} />
+                    <Icon className={cn("h-[18px] w-[18px] shrink-0", active ? "text-sidebar-primary" : "text-sidebar-foreground/60")} />
                     {!collapsed && (
                       <span className="flex-1 truncate">{item.label}</span>
                     )}
@@ -140,7 +151,7 @@ export function SidebarContent({
 
       {!collapsed && (
         <div className="border-t border-sidebar-border p-4">
-          <p className="text-[11px] text-sidebar-foreground/50">Portal de Automações · Biason</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/50">by Biason</p>
         </div>
       )}
     </div>

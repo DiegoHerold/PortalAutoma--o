@@ -69,6 +69,18 @@ public class ResultCollectorTests : IDisposable
     }
 
     [Fact]
+    public async Task Collect_SkipsStepImages_AlreadyUploadedDuringTheRun()
+    {
+        Directory.CreateDirectory(Path.Combine(_workspacePath, "artifacts", "passos"));
+        await File.WriteAllBytesAsync(Path.Combine(_workspacePath, "artifacts", "passos", "img_1.jpg"), new byte[] { 0xFF, 0xD8, 0xFF });
+        await File.WriteAllTextAsync(Path.Combine(_workspacePath, "artifacts", "report.txt"), "test report");
+
+        var result = await _sut.CollectAsync("exec_5", "att_1", _workspacePath, 0);
+
+        result.Artifacts.Select(a => a.Name).Should().Equal("report.txt");
+    }
+
+    [Fact]
     public async Task Collect_WithStderr_ReadsError()
     {
         var stderrPath = Path.Combine(_workspacePath, "logs", "stderr.log");

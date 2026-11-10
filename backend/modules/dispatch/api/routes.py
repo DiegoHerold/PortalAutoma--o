@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,7 +24,7 @@ def get_dispatch_queue(
     limit: int = 100,
 ) -> dict[str, Any]:
     adapters = build_dispatch_adapters(db)
-    items = adapters.ready_tasks.claim_ready(datetime.utcnow(), min(limit, 200))
+    items = adapters.ready_tasks.claim_ready(datetime.now(UTC), min(limit, 200))
     adapters.transaction.rollback()
     return {"items": [to_payload(item) for item in items]}
 

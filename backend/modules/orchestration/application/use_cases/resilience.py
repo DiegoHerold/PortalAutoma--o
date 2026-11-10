@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -34,7 +34,9 @@ class EvaluateRetryPolicy:
         non_retryable = set(policy.get("non_retryable_error_codes") or [])
         if error_code and error_code in non_retryable:
             return {"retry": False, "reason": "non_retryable_error_code", "error_code": error_code}
-        if reason == "lost" and not bool(policy.get("retry_on_lost", True)):
+        if policy.get("execution_mode") == "interactive" and not bool(policy.get("safe_to_retry", False)):
+            return {"retry": False, "reason": "screen_automation_not_safe_to_retry"}
+        if reason == "lost" and not bool(policy.get("retry_on_lost", False)):
             return {"retry": False, "reason": "retry_on_lost_disabled"}
         if reason == "timeout" and not bool(policy.get("retry_on_timeout", False)):
             return {"retry": False, "reason": "retry_on_timeout_disabled"}
@@ -286,7 +288,9 @@ class DetectLostAttempts:
             self.leases.save(replace(lease, status="expired"))
             self.attempts.save(replace(attempt, status="lost", completed_at=now, error_code="LEASE_EXPIRED", error_message="Execution lease expired after grace period."))
             self.reservations.release_for_attempt(attempt.id, now, "attempt_lost")
-            self.locks.release_for_attempt(attempt.id, now, "attempt_lost")
+            # A trava de tela fica: a máquina pode ainda estar rodando; quem libera é a pessoa
+            # que decide continuar ou recomeçar.
+            self.locks.release_for_attempt(attempt.id, now, "attempt_lost", keep_scopes=("maquina_tela",))
             decision = EvaluateRetryPolicy().execute(task, attempt, reason="lost", error_code="LEASE_EXPIRED")
             if decision.get("retry"):
                 available_at = now + timedelta(seconds=int(decision["delay_seconds"]))
@@ -308,8 +312,9 @@ class DetectLostAttempts:
                 )
                 retried += 1
             else:
-                self.tasks.save(replace(task, status="failed", completed_at=now, failure_summary="Attempt lost and retry policy denied a new attempt."))
-                self.executions.save(replace(execution, status="failed", completed_at=now, failure_summary="Attempt lost and retry policy denied a new attempt."))
+                # Perdido: não volta sozinho para a fila. Uma pessoa escolhe continuar ou recomeçar.
+                self.tasks.save(replace(task, status="lost", lost_at=now,
+                                        failure_summary="Máquina sem sinal: job perdido, aguardando decisão."))
             self.outbox.append_event("execution_attempt.lost", "execution_attempt", attempt.id, {"execution_attempt_id": attempt.id, "lease_id": lease.id, "retry": bool(decision.get("retry"))})
             lost += 1
         self.transaction.commit()
@@ -353,7 +358,7 @@ def _positive_int(value: Any, default: int) -> int:
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)
 
 
 def new_id(prefix: str) -> str:

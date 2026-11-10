@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from modules.catalog.domain.errors import InvalidCatalogStateTransition
@@ -58,7 +58,7 @@ class RuntimeVersion:
     def transition_to(self, status: RuntimeVersionStatus) -> "RuntimeVersion":
         if status not in ALLOWED_RUNTIME_VERSION_TRANSITIONS[self.status]:
             raise InvalidCatalogStateTransition(f"Cannot transition runtime version from {self.status} to {status}.")
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         return RuntimeVersion(
             id=self.id,
             runtime_id=self.runtime_id,

@@ -432,6 +432,7 @@ public sealed class SessionRunnerPipeServer : BackgroundService
                 case LocalMessageTypes.InteractiveExecutionFailed:
                 case LocalMessageTypes.InteractiveExecutionCancelled:
                 case LocalMessageTypes.InteractiveExecutionHeartbeat:
+                case LocalMessageTypes.InteractiveAutomationEvent:
                     await RecordInteractiveExecutionMessageAsync(envelope, ct);
                     break;
             }
@@ -537,6 +538,7 @@ public sealed class SessionRunnerPipeServer : BackgroundService
         LocalMessageTypes.InteractiveExecutionFailed => PortalMessageTypes.ExecutionFailed,
         LocalMessageTypes.InteractiveExecutionCancelled => PortalMessageTypes.ExecutionCancelled,
         LocalMessageTypes.InteractiveExecutionHeartbeat => PortalMessageTypes.ExecutionMetric,
+        LocalMessageTypes.InteractiveAutomationEvent => PortalMessageTypes.AutomationEvent,
         _ => PortalMessageTypes.ExecutionLog
     };
 

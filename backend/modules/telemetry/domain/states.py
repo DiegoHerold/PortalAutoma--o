@@ -23,6 +23,8 @@ class ExecutionEventType(StrEnum):
     ARTIFACT_AVAILABLE = "artifact.available"
     ARTIFACT_FAILED = "artifact.failed"
     DIAGNOSTIC = "diagnostic"
+    # Evento da automacao (contracts/automation-events/v1), igual no modo agente e no direto.
+    AUTOMATION_EVENT = "automation.event"
 
 
 class ExecutionLogLevel(StrEnum):

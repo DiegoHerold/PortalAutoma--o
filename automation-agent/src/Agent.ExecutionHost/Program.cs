@@ -15,6 +15,7 @@ using Serilog.Formatting.Compact;
 var exitCode = 1;
 PipeClient? pipeClient = null;
 Process? automationProcess = null;
+AutomationEventsServer? eventsServer = null;
 
 try
 {
@@ -127,6 +128,22 @@ try
     // Build and launch the automation process
     var startInfo = RuntimeLauncher.BuildStartInfo(config);
 
+    // Canal de eventos da automacao (contracts/automation-events/v1): o SDK conecta pelo
+    // pipe e token destas variaveis. O evento segue intacto para o Agent e dele ao Portal.
+    if (OperatingSystem.IsWindows())
+    {
+        var agentPipe = pipeClient;
+        eventsServer = AutomationEventsServer.Create(config.AttemptId, async (evento, token) =>
+        {
+            if (agentPipe is not null && agentPipe.IsConnected)
+                await agentPipe.SendAsync(MessageTypes.AutomationEvent, evento, token);
+        });
+        eventsServer.Start();
+        startInfo.Environment[AutomationEventsServer.EnvPipe] = eventsServer.PipeName;
+        startInfo.Environment[AutomationEventsServer.EnvToken] = eventsServer.Token;
+        Log.Information("Automation events pipe ready: {PipeName}", eventsServer.PipeName);
+    }
+
     if (pipeClient is not null)
         await pipeClient.SendAsync(MessageTypes.Started, new
         {
@@ -167,7 +184,18 @@ try
         if (pipeClient is not null)
             await pipeClient.SendAsync(MessageTypes.CancellationRequested, null, CancellationToken.None);
 
-        // Graceful shutdown attempt
+        // Pede para a automacao encerrar pelo canal de eventos e espera o tempo de
+        // encerramento gracioso antes de matar a arvore de processos.
+        if (eventsServer is not null && OperatingSystem.IsWindows() && !automationProcess.HasExited)
+        {
+            try
+            {
+                await eventsServer.SendCommandAsync("cancelar", "tempo limite ou cancelamento", CancellationToken.None);
+                automationProcess.WaitForExit(config.GracefulShutdownSeconds * 1000);
+            }
+            catch { /* automacao sem SDK: segue para o encerramento forcado */ }
+        }
+
         if (!automationProcess.HasExited)
         {
             try
@@ -238,6 +266,13 @@ finally
             try { automationProcess.Kill(entireProcessTree: true); } catch { }
         }
         automationProcess.Dispose();
+    }
+
+    if (eventsServer is not null && OperatingSystem.IsWindows())
+    {
+        Log.Information("Automation events forwarded: {Count} (last sequence {Sequence})",
+            eventsServer.ForwardedCount, eventsServer.HighestSequence);
+        await eventsServer.DisposeAsync();
     }
 
     if (pipeClient is not null)

@@ -45,6 +45,35 @@ sera feita depois, sem redesenhar as telas.
 | Gateway | `WS /agent-gateway/connect`, `GET /agent-gateway/health`, `GET /agent-gateway/readiness` | Modular |
 | Compatibilidade | `GET/POST/PUT/DELETE /workers`, `GET /workers/installer-config` | Adapter Worker -> Agent |
 
+## Rotas da Fila (Fase 3)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Fila | `GET /fila` | `/fila` (`components/fila/fila-manager.tsx`), relida a cada 5 s ate o tempo real da Fase 4 | `can_view` por automacao; `rodando[].job_id` so para admin |
+| Pedido | `POST /fila/execucoes` | ainda sem tela (Fase 6, junto com o pedido pela automacao) | `can_execute` |
+| Prioridade | `PATCH /fila/jobs/{id}` | botoes de prioridade na linha do job | `can_execute`, so job `queued` |
+| Cancelar | `POST /fila/jobs/{id}/cancelar` | botao com confirmacao do efeito | `can_execute`, so job `queued` |
+| Job perdido | `POST /fila/jobs/{id}/decisao` (`continuar` ou `recomecar`) | secao "Jobs perdidos" com confirmacao do efeito | `can_execute` |
+| Despacho | `POST /fila/despachar` | sem tela; o Celery roda o mesmo ciclo a cada 5 s | admin |
+
+Os tipos TypeScript ficam em `frontend/src/lib/fila.ts` e seguem
+`VerFila.execute` em `backend/modules/dispatch/application/use_cases/queue.py`.
+
+## Rotas do Acompanhar e do acesso por automacao (Fase 4)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Acompanhar | `GET /execucoes/{id}/acompanhar` | `/execucoes/[id]` (`components/acompanhar/`) | `ver_execucoes`; tela e passos so com `ver_telas_e_logs` |
+| Log ao vivo | `GET /execucoes/{id}/logs?depois=&limite=&esconder_espera=` | painel "Log ao vivo" | `ver_telas_e_logs` |
+| Imagem do passo | `GET /execucoes/{id}/imagens/{imagem_id}?tamanho=miniatura\|media\|cheia` | lida por `fetch` com o token e mostrada por `blob:`; nunca URL publica | `ver_telas_e_logs`; ver e auditado |
+| Avisos | `GET /execucoes/{id}/avisos`, `GET /fila/avisos` (SSE) | `lib/stream.ts` | token no cabecalho `Authorization` |
+| Stream antigo | `GET /executions/{id}/stream` | tela tecnica `/executions/[id]` | token so no cabecalho; logs so com `ver_telas_e_logs` |
+| WebSocket | `WS /ws/executions` | `hooks/use-realtime.ts` | token na primeira mensagem `{"type":"auth","token":...}` |
+| Acesso | `GET/PUT /automations/{id}/acessos`, `GET /automations/{id}/acessos/minhas` | `/automations/[id]/acessos` | admin ou gestor para mudar |
+
+Nenhuma rota aceita credencial na URL. O `EventSource` do navegador nao manda
+cabecalho, por isso os streams sao lidos por `fetch` (`lib/stream.ts`).
+
 ## Compatibilidade Fleet no frontend
 
 O frontend atual continua consumindo `/workers`. Esse endpoint agora e uma
@@ -67,7 +96,8 @@ usando `status`, que agora traduz `Agent.connectivity_status`.
 
 ## Garantias
 
-- Nao redesenhar telas nesta etapa.
+- O redesenho com a identidade Biason foi pedido explicitamente (ADR-020) e
+  acontece por tokens em `globals.css`; fora dele, nao redesenhar telas.
 - Nao criar mocks para esconder backend ausente.
 - Endpoints antigos podem permanecer como adaptadores quando chamarem a nova
   camada de aplicacao e nao duplicarem regra.

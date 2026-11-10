@@ -17,9 +17,9 @@ use_cases/scheduler.py: AGENT_OFFLINE, RESOURCE_SNAPSHOT_EXPIRED,
 CAPABILITY_UNAVAILABLE, POOL_UNAVAILABLE, RUNTIME_UNAVAILABLE, etc). Isso
 mostra o motivo real em vez de ficar adivinhando.
 
-Uso (rode de dentro do container do backend, com os execution_id que
+Uso (rode a partir de backend/ com o virtualenv, com os execution_id que
 ainda estao "pending" - pegue do resumo do demo_all_runtimes.py):
-  docker compose exec -T backend python -u -m tools.certification.diagnose_pending <execution_id> [<execution_id> ...]
+  .venv/Scripts/python -u -m tools.certification.diagnose_pending <execution_id> [<execution_id> ...]
 """
 
 from __future__ import annotations

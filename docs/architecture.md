@@ -23,7 +23,7 @@ flowchart TB
         Workers["Workers internos"]
         Scheduler["Scheduler"]
         DB[("PostgreSQL\nfonte oficial")]
-        Objects[("MinIO/S3\npacotes, runtimes, artefatos")]
+        Objects[("Storage local/S3\npacotes, runtimes, artefatos")]
     end
 
     subgraph Agent["Automation Agent - execution plane"]
@@ -56,7 +56,7 @@ Regras:
 
 - Backend: FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, Redis, Celery, JWT.
 - Frontend: Next.js 15, React, TypeScript, Tailwind CSS.
-- Infra: Docker Compose, Nginx, Redis, PostgreSQL, Flower, MinIO/S3 ou storage local.
+- Infra: processos nativos no Windows (`scripts/portal.ps1`), Redis, PostgreSQL, storage local ou S3.
 - Agent atual: protocolo exposto pelo Portal em `agents.py` e
   `agent_gateway_service.py`; o repo externo do Agent nao esta presente neste
   workspace.
@@ -201,7 +201,7 @@ WebSocket: handshake, heartbeat, ofertas, aceite, rejeicao, commit,
 cancelamento, comandos administrativos, eventos recentes, ACK e renovacao de
 lease.
 
-HTTPS/S3/MinIO: downloads de runtimes e pacotes, uploads de artefatos e
+HTTPS/S3: downloads de runtimes e pacotes, uploads de artefatos e
 diagnosticos, sincronizacao de lotes grandes e recuperacao apos longos
 periodos offline.
 
@@ -210,7 +210,7 @@ periodos offline.
 PostgreSQL e a fonte oficial para catalogo, fleet, execucoes, tentativas,
 ofertas, comandos, leases, eventos, outbox e inbox.
 
-MinIO/S3 guarda pacotes, runtimes, artefatos e diagnosticos. Binarios grandes
+O storage local ou S3 guarda pacotes, runtimes, artefatos e diagnosticos. Binarios grandes
 nao devem ser armazenados no PostgreSQL.
 
 Redis pode ser usado como cache, pub/sub, presenca acelerada ou rate limiting,

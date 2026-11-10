@@ -12,6 +12,7 @@ from sqlalchemy import text
 from api import health
 from api.errors import http_error, install_error_handlers
 from gateway.bootstrap import router as agent_gateway_router
+from gateway.direct_gateway import router as direct_gateway_router
 from infrastructure.config import get_settings
 from infrastructure.database import SessionLocal
 from infrastructure.logging import configure_logging
@@ -21,6 +22,10 @@ from modules.catalog.api.github_integrations import router as github_integration
 from modules.catalog.api.imports import router as automation_imports_router
 from modules.catalog.api.routes import router as catalog_module_router
 from modules.dispatch.api.routes import router as dispatch_module_router
+from gateway.direct_gateway.instancias import router as instancias_diretas_router
+from modules.access.api.concessoes import router as concessoes_router
+from modules.fleet.api.instancias_diretas import router as admin_instancias_router
+from modules.dispatch.api.fila import router as fila_router
 from modules.fleet.api.routes import router as fleet_module_router
 from modules.governance.api.routes import router as governance_module_router
 from modules.orchestration.api.job_compat import router as job_compat_router
@@ -33,7 +38,9 @@ from modules.orchestration.scheduling.api.routes import (
 from modules.orchestration.triggers.api.routes import router as trigger_module_router
 from modules.orchestration.triggers.api.webhooks import router as webhook_module_router
 from modules.storage.api.routes import router as storage_module_router
+from modules.telemetry.api.acompanhar import router as acompanhar_router
 from modules.telemetry.api.realtime import router as realtime_router
+from modules.telemetry.api.routes import automation_times_router as telemetry_times_router
 from modules.telemetry.api.routes import router as telemetry_module_router
 from bootstrap.defaults import BootstrapService
 
@@ -114,6 +121,7 @@ def register_catalog_routes(router: APIRouter) -> None:
 def register_fleet_routes(router: APIRouter) -> None:
     router.include_router(fleet_module_router, tags=["fleet"])
     router.include_router(agent_gateway_router)
+    router.include_router(direct_gateway_router)
 
 
 def register_execution_routes(router: APIRouter) -> None:
@@ -122,7 +130,13 @@ def register_execution_routes(router: APIRouter) -> None:
     router.include_router(trigger_module_router, tags=["triggers"])
     router.include_router(webhook_module_router, tags=["webhooks"])
     router.include_router(dispatch_module_router, tags=["dispatch"])
+    router.include_router(fila_router)
+    router.include_router(concessoes_router)
+    router.include_router(instancias_diretas_router)
+    router.include_router(admin_instancias_router)
     router.include_router(telemetry_module_router, tags=["telemetry"])
+    router.include_router(acompanhar_router)
+    router.include_router(telemetry_times_router, tags=["telemetry"])
     router.include_router(storage_module_router, tags=["storage"])
 
 

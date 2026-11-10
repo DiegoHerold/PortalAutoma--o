@@ -37,6 +37,10 @@ celery_app.conf.beat_schedule = {
         "task": "workers.tasks.housekeeping_tasks.expire_execution_offers",
         "schedule": 30.0,
     },
+    "dispatch-queue-every-5-seconds": {
+        "task": "workers.tasks.dispatch_tasks.dispatch_queue",
+        "schedule": 5.0,
+    },
     "schedule-ready-tasks-every-5-seconds": {
         "task": "workers.tasks.dispatch_tasks.schedule_ready_tasks",
         "schedule": 5.0,

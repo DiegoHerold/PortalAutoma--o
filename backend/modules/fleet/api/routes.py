@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
@@ -98,7 +98,7 @@ def create_worker(
     user: Any = Depends(get_current_user),
 ) -> WorkerResponse:
     ensure_permission(db, user, "agent.manage")
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     adapters = build_fleet_adapters(db)
     created = adapters.agents.add(
         AgentDTO(
@@ -151,7 +151,7 @@ def update_worker(
                 "desired_version": payload.desired_version or agent.desired_version,
                 "local_identity": payload.machine_id or agent.local_identity,
                 "machine_fingerprint": payload.machine_id or agent.machine_fingerprint,
-                "updated_at": datetime.utcnow(),
+                "updated_at": datetime.now(UTC),
             }
         )
     )
@@ -293,7 +293,7 @@ def patch_agent(
         agent = adapters.agents.get(agent_id)
         if agent is None:
             raise HTTPException(status_code=404, detail="Agent not found.")
-        saved = adapters.agents.save(agent.__class__(**{**asdict(agent), "name": payload.name, "updated_at": datetime.utcnow()}))
+        saved = adapters.agents.save(agent.__class__(**{**asdict(agent), "name": payload.name, "updated_at": datetime.now(UTC)}))
         adapters.transaction.commit()
         return _json(saved)
     return get_agent(agent_id, db, user)
@@ -415,7 +415,7 @@ def _ensure_agent_for_worker(db: Session, worker: FleetWorkerRecord) -> AgentDTO
     existing = adapters.agents.get(worker.agent_id) if worker.agent_id else None
     if existing is not None:
         return existing
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     agent_id = worker.agent_id or f"agt_worker_{worker.id}"
     if not worker.agent_id:
         worker.agent_id = agent_id

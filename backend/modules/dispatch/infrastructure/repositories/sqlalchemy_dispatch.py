@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -321,7 +321,7 @@ class SimpleAgentSelectionAdapter:
         }
 
     def _compatible(self, agent, request: AgentSelectionRequestDTO) -> tuple[bool, str]:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if not agent.enabled:
             return False, "agent_disabled"
         if agent.administrative_status not in {"enabled"}:
@@ -490,4 +490,4 @@ def _timeout_policy(manifest: dict[str, Any], execution_timeout_seconds: int) ->
 
 
 def _naive(value: datetime) -> datetime:
-    return value.replace(tzinfo=None) if value.tzinfo is not None else value
+    return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)

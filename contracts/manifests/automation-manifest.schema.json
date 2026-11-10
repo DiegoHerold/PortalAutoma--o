@@ -3,30 +3,65 @@
   "$id": "https://portal-automacoes.local/contracts/manifests/automation-manifest.schema.json",
   "title": "Automation manifest",
   "type": "object",
-  "required": ["schema_version", "id", "name", "version", "runtime", "entrypoint"],
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "version",
+    "runtime",
+    "entrypoint",
+    "execution"
+  ],
   "additionalProperties": true,
   "properties": {
-    "schema_version": { "type": "integer", "minimum": 1 },
-    "id": { "type": "string" },
-    "name": { "type": "string" },
-    "version": { "type": "string" },
-    "description": { "type": "string" },
-    "category": { "type": "string" },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
     "runtime": {
       "type": "object",
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "version": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
       }
     },
     "entrypoint": {
       "type": "object",
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
-        "type": { "type": "string" },
-        "module": { "type": "string" },
-        "callable": { "type": "string" }
+        "type": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "callable": {
+          "type": "string"
+        }
       }
     },
     "capabilities": {
@@ -36,9 +71,122 @@
           "type": "array",
           "items": {
             "oneOf": [
-              { "type": "string" },
-              { "$ref": "../capabilities/capability-requirement.schema.json" }
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "../capabilities/capability-requirement.schema.json"
+              }
             ]
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "description": "Como a automação executa (ADR-019, decisão 10 da Fase 0). O modo é obrigatório.",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "tela",
+            "navegador",
+            "segundo_plano",
+            "interactive",
+            "browser",
+            "background"
+          ],
+          "description": "tela: uma por máquina, somando os dois modos de conexão. navegador e segundo_plano: capacidade do pool."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "graceful_cancellation_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seguro_repetir": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pode repetir sozinha depois de falha. Automação de tela só repete se declarar true."
+        },
+        "estado_central": {
+          "type": "boolean",
+          "default": false,
+          "description": "O estado fica fora da máquina: continuar de onde parou pode ir para outra máquina."
+        }
+      }
+    },
+    "itens": {
+      "type": "object",
+      "description": "O que é um item desta automação (Empresa, Nota, Cliente). Opcional.",
+      "required": [
+        "nome",
+        "chave"
+      ],
+      "properties": {
+        "nome": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Nome do item na tela."
+        },
+        "chave": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_]{1,60}$",
+          "description": "Atributo que identifica o item."
+        },
+        "rotulo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_]{1,60}$",
+          "description": "Atributo mostrado como nome do item."
+        },
+        "grupo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_]{1,60}$",
+          "description": "Atributo com a chave do item que lidera o grupo (ex.: a matriz)."
+        },
+        "atributos": {
+          "type": "object",
+          "description": "JSON Schema (objeto) dos atributos do item no cadastro."
+        },
+        "afetam_trabalho": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]{1,60}$"
+          },
+          "description": "Atributos que mudam o trabalho do item; mudar um deles zera a base da estimativa."
+        }
+      }
+    },
+    "etapas": {
+      "type": "array",
+      "description": "Etapas na ordem em que rodam. A estimativa da automação é a soma das etapas.",
+      "items": {
+        "type": "object",
+        "required": [
+          "chave"
+        ],
+        "properties": {
+          "chave": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,120}$"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "por_item": {
+            "type": "boolean",
+            "default": true,
+            "description": "false: etapa da execução (ex.: iniciar), estimada com todas as execuções da automação."
+          },
+          "por_tarefa": {
+            "type": "boolean",
+            "default": false,
+            "description": "true: cresce com o número de tarefas (ex.: centros de custo)."
           }
         }
       }

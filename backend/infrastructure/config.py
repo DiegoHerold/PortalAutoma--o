@@ -20,14 +20,14 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     algorithm: str = "HS256"
 
-    postgres_server: str = "postgres"
+    postgres_server: str = "127.0.0.1"
     postgres_port: int = 5432
     postgres_user: str = "portal"
     postgres_password: str = "portal"
     postgres_db: str = "portal_automacoes"
 
-    redis_url: str = "redis://redis:6379/0"
-    celery_result_backend: str = "redis://redis:6379/1"
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    celery_result_backend: str = "redis://127.0.0.1:6379/1"
 
     frontend_url: str = "http://localhost:3000"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     backend_public_url: str = "http://localhost:8000"
 
     storage_backend: Literal["local", "s3"] = "local"
-    local_storage_path: str = "/data/packages"
+    local_storage_path: str = "data/packages"
     s3_endpoint_url: str | None = None
     s3_public_endpoint_url: str | None = None
     s3_region: str = "us-east-1"

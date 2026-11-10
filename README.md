@@ -21,14 +21,15 @@ Principios centrais:
 - PostgreSQL e a fonte oficial de estados persistentes.
 - WebSocket, Redis, Celery e mensageria sao meios de transporte ou execucao
   interna, nao fontes de verdade.
-- Arquivos grandes trafegam por HTTPS/S3/MinIO, nao pelo WebSocket.
+- Arquivos grandes trafegam por HTTPS/S3, nao pelo WebSocket.
 
 ## Stack atual
 
 - `backend/`: FastAPI, SQLAlchemy, Alembic, PostgreSQL, Redis, Celery,
   storage local/S3 e gateway de Agent.
 - `frontend/`: Next.js, TypeScript e Tailwind para a interface operacional.
-- `infra/`: Docker Compose, Nginx, Redis, PostgreSQL e monitoramento.
+- `infra/`: configuracao de monitoramento.
+- `scripts/portal.ps1`: sobe e derruba o Portal nativamente no Windows.
 - `docs/`: contexto arquitetural, ciclos de vida, migracao e ADRs.
 - `contracts/`: schemas versionados de protocolo, mensagens, eventos,
   manifests, capabilities e codigos de erro.
@@ -44,9 +45,9 @@ Nao remova dados nem endpoints legados sem seguir `docs/migration.md`.
 
 ## Primeiro uso
 
-1. Copie `backend/.env.example` para `backend/.env` se quiser separar
-   configuracao real.
-2. Suba a stack com `docker compose up --build`.
+1. Prepare a maquina com `.\scripts\portal.ps1 setup` (requisitos em
+   `docs/deployment.md`).
+2. Suba o Portal com `.\scripts\portal.ps1 start`.
 3. Acesse o frontend em `http://localhost:3000`.
 4. Entre com `admin@portal.local` / `admin123`.
 

@@ -31,17 +31,14 @@ Section "1) Ambiente"
 Log "Data/hora: $(Get-Date)"
 Log "Pasta raiz: $root"
 try { Log ("dotnet: " + (dotnet --version)) } catch { Log "dotnet: NAO ENCONTRADO no PATH" }
-try { Log ("docker: " + (docker --version)) } catch { Log "docker: NAO ENCONTRADO no PATH" }
 
-Section "2) Containers Docker do Portal (docker compose ps)"
-Push-Location $root
+Section "2) Processos do Portal (scripts\portal.ps1 status)"
 try {
-    $composeOut = docker compose ps 2>&1 | Out-String
-    Log $composeOut
+    $statusOut = & (Join-Path $root "scripts\portal.ps1") status 6>&1 | Out-String
+    Log $statusOut
 } catch {
-    Log "Falha ao rodar 'docker compose ps': $_"
+    Log "Falha ao rodar 'scripts\portal.ps1 status': $_"
 }
-Pop-Location
 
 Section "3) Health check do backend (http://localhost:8000/health)"
 try {

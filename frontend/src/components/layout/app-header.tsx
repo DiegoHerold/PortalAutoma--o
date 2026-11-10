@@ -57,7 +57,7 @@ export function AppHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
             onClick={() => setMenuOpen((o) => !o)}
             className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-3 text-sm transition-colors hover:bg-accent"
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+            <span className="titulo-condensado flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#2b4a73] to-[#1b3a63] text-sm text-white ring-1 ring-inset ring-nevoa/40">
               {initials}
             </span>
             <span className="hidden max-w-[120px] truncate font-medium sm:inline">{user?.name ?? "Usuário"}</span>

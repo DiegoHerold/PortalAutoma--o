@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from modules.catalog.domain.errors import ImmutablePublishedVersionError, InvalidCatalogStateTransition
 from modules.catalog.domain.states import ALLOWED_AUTOMATION_VERSION_TRANSITIONS, AutomationVersionStatus
@@ -56,7 +56,7 @@ class AutomationVersion:
     def transition_to(self, status: AutomationVersionStatus) -> "AutomationVersion":
         if status not in ALLOWED_AUTOMATION_VERSION_TRANSITIONS[self.status]:
             raise InvalidCatalogStateTransition(f"Cannot transition automation version from {self.status} to {status}.")
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         return AutomationVersion(
             id=self.id,
             automation_id=self.automation_id,

@@ -1,12 +1,12 @@
 """Command-line entrypoint for the Portal-side half of the certification
-harness. Meant to run inside the backend container, matching how the
+harness. Meant to run from backend/ with the backend virtualenv, matching how the
 existing smoke scripts are invoked:
 
-    docker compose exec backend python -m tools.certification.cli health
-    docker compose exec backend python -m tools.certification.cli seed
-    docker compose exec backend python -m tools.certification.cli create-execution --scenario echo --agent-id agt_xxx
-    docker compose exec backend python -m tools.certification.cli observe --execution-id exe_xxx
-    docker compose exec backend python -m tools.certification.cli wait --execution-id exe_xxx --timeout 60
+    .venv/Scripts/python -m tools.certification.cli health
+    .venv/Scripts/python -m tools.certification.cli seed
+    .venv/Scripts/python -m tools.certification.cli create-execution --scenario echo --agent-id agt_xxx
+    .venv/Scripts/python -m tools.certification.cli observe --execution-id exe_xxx
+    .venv/Scripts/python -m tools.certification.cli wait --execution-id exe_xxx --timeout 60
 
 The Windows-side Certification.Cli (automation-agent/tools/Certification.Cli)
 shells out to these subcommands for everything that must happen on the

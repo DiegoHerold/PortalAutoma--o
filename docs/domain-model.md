@@ -20,12 +20,16 @@ Fleet:
 - `AgentCapability`
 - `AgentResourceSnapshot`
 - `AgentConfiguration`
+- `Machine` (ADR-019)
+- `DirectInstance` (ADR-018, modo direto)
 
 Orchestration:
 
 - `Execution`
 - `TaskExecution`
-- `ExecutionAttempt`
+- `ExecutionAttempt` (executor `agent` ou `direct`)
+- `ExecutionItem` (item da execução: Empresa, Nota...)
+- `StepPlan` (tarefas previstas e feitas por item e etapa)
 - `FlowExecution`
 - `ScheduleExecution`
 
@@ -35,6 +39,8 @@ Dispatch:
 - `ResourceReservation`
 - `ResourceLock`
 - `ExecutionLease`
+- `JobToken` (modo direto: vale só para o job, guardado como hash)
+- `DirectCommand`
 
 Telemetry:
 
@@ -42,6 +48,9 @@ Telemetry:
 - `ExecutionLog`
 - `ExecutionMetric`
 - `EventAcknowledgement`
+- `StepRun` (etapa medida: base das estimativas)
+- `AttemptPause` (tempo fora da estimativa)
+- `EstimateSnapshot` (estimativa congelada no início, regra 8)
 
 Storage:
 
@@ -267,3 +276,14 @@ Durante a migracao:
 - `Execution` legado e adaptador para `ExecutionAttempt`.
 - `Automation.package_url` e fallback temporario para `AutomationVersion`
   publicada.
+
+
+## Estimativas (Fase 2)
+
+As regras ficam em `backend/modules/telemetry/domain/estimativas.py` (funções puras) e
+estão descritas no topo do arquivo. A base de uma etapa vem de `StepRun`, sempre do
+mesmo item, da mesma automação e com a mesma assinatura de trabalho
+(`ExecutionItem.work_signature`, calculada só com os atributos que o manifesto declara
+em `itens.afetam_trabalho`). A estimativa é congelada em `EstimateSnapshot` quando a
+tentativa começa e quando cada item começa; o ritmo por tarefa fica fixo e a quantidade
+de tarefas acompanha o que a automação declarar.

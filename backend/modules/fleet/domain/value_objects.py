@@ -4,11 +4,11 @@ import hashlib
 import hmac
 import secrets
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)
 
 
 def generate_agent_id() -> str:

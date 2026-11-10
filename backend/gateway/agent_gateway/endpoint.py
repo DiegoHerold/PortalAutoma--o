@@ -17,7 +17,7 @@ from gateway.agent_gateway.errors import GatewayError, MessageTooLarge
 from gateway.agent_gateway.limits import load_gateway_limits
 from gateway.agent_gateway.message_router import route_agent_message, validate_envelope
 from gateway.agent_gateway.protocol_negotiation import negotiate_protocol
-from modules.dispatch.infrastructure.orm.models import AgentCommandRecord
+from modules.dispatch.infrastructure.repositories import SqlAlchemyAgentCommandStore
 from modules.fleet.application.use_cases import RecordAgentConnected, RecordAgentDisconnected
 from modules.fleet.infrastructure.adapters import build_fleet_adapters
 from modules.telemetry.infrastructure.orm.models import EventAcknowledgementRecord, ExecutionEventRecord
@@ -38,10 +38,7 @@ async def gateway_health() -> dict[str, Any]:
 async def gateway_readiness() -> dict[str, Any]:
     with SessionLocal() as db:
         db.execute(text("select 1"))
-        pending_commands = int(
-            db.scalar(select(func.count(AgentCommandRecord.id)).where(AgentCommandRecord.status.in_(["pending", "sent"])))
-            or 0
-        )
+        pending_commands = SqlAlchemyAgentCommandStore(db).count_pending_or_sent()
         telemetry_events = int(db.scalar(select(func.count(ExecutionEventRecord.id))) or 0)
         telemetry_acknowledgements = int(db.scalar(select(func.count(EventAcknowledgementRecord.execution_attempt_id))) or 0)
     return {

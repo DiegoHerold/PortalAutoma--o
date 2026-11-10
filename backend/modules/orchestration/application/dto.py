@@ -84,6 +84,14 @@ class TaskExecutionDTO:
     last_scheduling_attempt_at: datetime | None = None
     next_scheduling_attempt_at: datetime | None = None
     last_scheduling_failure: dict[str, Any] | None = None
+    group_key: str | None = None
+    dedup_key: str | None = None
+    manual_position: int | None = None
+    enqueue_batch_id: str | None = None
+    enqueued_at: datetime | None = None
+    pool: str | None = None
+    required_machine_id: str | None = None
+    lost_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -91,8 +99,8 @@ class ExecutionAttemptDTO:
     id: str
     task_execution_id: str
     attempt_number: int
-    agent_id: str
-    agent_instance_id: str
+    agent_id: str | None
+    agent_instance_id: str | None
     status: str
     runtime_version_id: str | None
     package_id: str | None
@@ -110,6 +118,9 @@ class ExecutionAttemptDTO:
     output: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     resource_usage: dict[str, Any] | None = None
+    executor_type: str = "agent"
+    executor_id: str | None = None
+    machine_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -75,9 +75,9 @@ class OutboxWorker:
         return processed
 
     def _recover_stuck_messages(self, db) -> None:
-        from datetime import datetime, timedelta
+        from datetime import UTC, datetime, timedelta
 
-        threshold = datetime.utcnow() - timedelta(seconds=self.config.stuck_processing_seconds)
+        threshold = datetime.now(UTC) - timedelta(seconds=self.config.stuck_processing_seconds)
         rows = db.scalars(
             select(OutboxMessageRecord).where(
                 OutboxMessageRecord.status == "processing",

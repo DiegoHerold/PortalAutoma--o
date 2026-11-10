@@ -61,7 +61,11 @@ const config: Config = {
           foreground: "hsl(var(--sidebar-foreground))",
           border: "hsl(var(--sidebar-border))",
           accent: "hsl(var(--sidebar-accent))",
+          primary: "hsl(var(--sidebar-primary))",
         },
+        titulo: "hsl(var(--titulo))",
+        nevoa: "hsl(var(--nevoa))",
+        areia: "hsl(var(--areia))",
       },
       borderRadius: {
         lg: "var(--radius)",

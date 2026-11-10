@@ -13,8 +13,8 @@ class ExecutionAttempt:
     id: str
     task_execution_id: str
     attempt_number: int
-    agent_id: str
-    agent_instance_id: str
+    agent_id: str | None
+    agent_instance_id: str | None
     status: ExecutionAttemptStatus
     runtime_version_id: str | None
     package_id: str | None
@@ -32,6 +32,9 @@ class ExecutionAttempt:
     output: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     resource_usage: dict[str, Any] | None = None
+    executor_type: str = "agent"
+    executor_id: str | None = None
+    machine_id: str | None = None
 
     @classmethod
     def create(
@@ -61,6 +64,43 @@ class ExecutionAttempt:
             package_id=package_id,
             offer_id=None,
             created_at=now,
+            executor_type="agent",
+            executor_id=agent_id,
+        )
+
+    @classmethod
+    def create_direct(
+        cls,
+        *,
+        id: str,
+        task_execution_id: str,
+        attempt_number: int,
+        direct_instance_id: str,
+        machine_id: str,
+        package_id: str | None,
+        now: datetime,
+    ) -> "ExecutionAttempt":
+        """Tentativa no modo direto (ADR-018): não há oferta, o job vai já reservado
+        para a instância direta (commit implícito). Oferta continua exclusiva do Agent."""
+        if attempt_number <= 0:
+            raise ValueError("ExecutionAttempt attempt_number must be positive.")
+        if not direct_instance_id or not machine_id:
+            raise ValueError("ExecutionAttempt direta requer a instância direta e a máquina.")
+        return cls(
+            id=id,
+            task_execution_id=task_execution_id,
+            attempt_number=attempt_number,
+            agent_id=None,
+            agent_instance_id=None,
+            status=ExecutionAttemptStatus.COMMITTED,
+            runtime_version_id=None,
+            package_id=package_id,
+            offer_id=None,
+            created_at=now,
+            committed_at=now,
+            executor_type="direct",
+            executor_id=direct_instance_id,
+            machine_id=machine_id,
         )
 
     def mark_offered(self, offer_id: str, now: datetime) -> "ExecutionAttempt":

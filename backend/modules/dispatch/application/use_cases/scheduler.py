@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -262,6 +262,9 @@ class FindEligibleAgents:
         return result
 
     def _apply_filters(self, candidate: DispatchCandidate, snapshot, requirements: dict[str, Any], excluded_agent_ids: set[str], now: datetime) -> DispatchCandidate:
+        exigido = (requirements.get("dispatch") or {}).get("required_agent_id")
+        if exigido and candidate.agent_id != exigido:
+            return candidate.reject("NOT_SELECTED_BY_QUEUE", "A fila escolheu outra máquina para este job.", required=exigido)
         if candidate.agent_id in excluded_agent_ids:
             candidate = candidate.reject("AGENT_ALREADY_REJECTED", "Agent already rejected this TaskExecution.")
         if not snapshot.enabled:
@@ -612,11 +615,11 @@ def _positive_int(value: Any, default: int) -> int:
 
 
 def _naive(value: datetime) -> datetime:
-    return value.replace(tzinfo=None) if value.tzinfo is not None else value
+    return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)
 
 
 def new_id(prefix: str) -> str:

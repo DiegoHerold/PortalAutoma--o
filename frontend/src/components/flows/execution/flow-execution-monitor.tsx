@@ -30,7 +30,7 @@ import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
-import { API_BASE_URL } from "@/lib/constants";
+import { abrirStream } from "@/lib/stream";
 import { jobStatusMeta } from "@/lib/status";
 import { formatDateTime, formatDuration } from "@/lib/utils";
 import { flowNodeTypes } from "@/components/flows/editor/nodes";
@@ -122,20 +122,18 @@ export function FlowExecutionMonitor({ flowExecutionId }: { flowExecutionId: str
   // com o polling acima como fonte de verdade.
   useEffect(() => {
     if (!token || !executionId) return;
-    const source = new EventSource(`${API_BASE_URL}/executions/${executionId}/stream?token=${encodeURIComponent(token)}`);
     const refetchAll = () => {
       void details.refetch();
       void tasks.refetch();
       void attempts.refetch();
       void events.refetch();
     };
-    source.addEventListener("open", () => setSseConnected(true));
-    source.addEventListener("execution.event", refetchAll);
-    source.addEventListener("execution.summary", refetchAll);
-    source.addEventListener("execution.progress", refetchAll);
-    source.onerror = () => setSseConnected(false);
+    // Token no cabeçalho, nunca na URL (lib/stream.ts).
+    const fechar = abrirStream(`/executions/${executionId}/stream`, token, refetchAll, {
+      aoMudarConexao: setSseConnected,
+    });
     return () => {
-      source.close();
+      fechar();
       setSseConnected(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

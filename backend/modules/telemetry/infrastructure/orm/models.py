@@ -62,8 +62,10 @@ class ExecutionEventRecord(Base):
     execution_id: Mapped[str] = mapped_column(ForeignKey("orchestration_executions.id", ondelete="CASCADE"), nullable=False, index=True)
     task_execution_id: Mapped[str] = mapped_column(ForeignKey("task_executions.id", ondelete="CASCADE"), nullable=False, index=True)
     execution_attempt_id: Mapped[str] = mapped_column(ForeignKey("execution_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
-    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
-    agent_instance_id: Mapped[str] = mapped_column(ForeignKey("agent_instances.id"), nullable=False, index=True)
+    agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    agent_instance_id: Mapped[str | None] = mapped_column(ForeignKey("agent_instances.id"), nullable=True, index=True)
+    executor_type: Mapped[str] = mapped_column(String(20), nullable=False, default="agent", server_default="agent")
+    executor_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     event_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     level: Mapped[str | None] = mapped_column(String(20), index=True)
@@ -109,3 +111,90 @@ class ExecutionMetricRecord(Base):
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+class StepRunRecord(Base):
+    """Uma etapa medida numa tentativa: a base das estimativas."""
+
+    __tablename__ = "step_runs"
+    __table_args__ = (
+        UniqueConstraint("execution_attempt_id", "start_sequence", name="uq_step_runs_attempt_sequence"),
+        Index("ix_step_runs_history", "automation_id", "step_key", "item_key", "completed_at"),
+        Index("ix_step_runs_attempt_open", "execution_attempt_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    execution_id: Mapped[str] = mapped_column(ForeignKey("orchestration_executions.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_execution_id: Mapped[str] = mapped_column(ForeignKey("task_executions.id", ondelete="CASCADE"), nullable=False)
+    execution_attempt_id: Mapped[str] = mapped_column(ForeignKey("execution_attempts.id", ondelete="CASCADE"), nullable=False)
+    automation_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    automation_version_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    step_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    item_key: Mapped[str | None] = mapped_column(String(120))
+    work_signature: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="executando")
+    planned_tasks: Mapped[int | None] = mapped_column(Integer)
+    tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    gross_seconds: Mapped[float | None] = mapped_column(Float)
+    paused_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    net_seconds: Mapped[float | None] = mapped_column(Float)
+    machine_id: Mapped[str | None] = mapped_column(String(80))
+    executor_type: Mapped[str] = mapped_column(String(20), nullable=False, default="agent")
+    start_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class AttemptPauseRecord(Base):
+    """Tempo fora do controle da automação (reinício, espera externa)."""
+
+    __tablename__ = "attempt_pauses"
+
+    execution_attempt_id: Mapped[str] = mapped_column(ForeignKey("execution_attempts.id", ondelete="CASCADE"), primary_key=True)
+    start_sequence: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reason: Mapped[str] = mapped_column(String(40), nullable=False)
+    item_key: Mapped[str | None] = mapped_column(String(120))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EstimateSnapshotRecord(Base):
+    """Estimativa congelada no início (regra 8): uma linha por item e etapa da tentativa."""
+
+    __tablename__ = "estimate_snapshots"
+
+    execution_attempt_id: Mapped[str] = mapped_column(ForeignKey("execution_attempts.id", ondelete="CASCADE"), primary_key=True)
+    entry_key: Mapped[str] = mapped_column(String(250), primary_key=True)
+    execution_id: Mapped[str] = mapped_column(ForeignKey("orchestration_executions.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_execution_id: Mapped[str] = mapped_column(ForeignKey("task_executions.id", ondelete="CASCADE"), nullable=False)
+    cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class StepImageRecord(Base):
+    """Imagem de um passo (Fase 4): três medidas no Storage, nunca no banco."""
+
+    __tablename__ = "step_images"
+    __table_args__ = (
+        UniqueConstraint("execution_attempt_id", "imagem_id", name="uq_step_images_tentativa_imagem"),
+        Index("ix_step_images_execution", "execution_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    imagem_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    execution_id: Mapped[str] = mapped_column(ForeignKey("orchestration_executions.id", ondelete="CASCADE"), nullable=False)
+    task_execution_id: Mapped[str] = mapped_column(ForeignKey("task_executions.id", ondelete="CASCADE"), nullable=False)
+    execution_attempt_id: Mapped[str] = mapped_column(ForeignKey("execution_attempts.id", ondelete="CASCADE"), nullable=False)
+    automation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    origem: Mapped[str] = mapped_column(String(20), nullable=False)
+    cheia_id: Mapped[str | None] = mapped_column(ForeignKey("stored_objects.id"), nullable=True)
+    media_id: Mapped[str | None] = mapped_column(ForeignKey("stored_objects.id"), nullable=True)
+    miniatura_id: Mapped[str | None] = mapped_column(ForeignKey("stored_objects.id"), nullable=True)
+    largura: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    altura: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    motivo_recusa: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
