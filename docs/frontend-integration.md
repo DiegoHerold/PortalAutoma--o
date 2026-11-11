@@ -93,7 +93,7 @@ cabecalho, por isso os streams sao lidos por `fetch` (`lib/stream.ts`).
 |---|---|---|---|
 | Avisos | `GET /notificacoes?limite=`, `POST /notificacoes/lidas` (`{ids?}`; sem `ids` marca todos) | sino no topo (`components/layout/sino-de-avisos.tsx`), relê a cada minuto | a própria pessoa |
 | Preferências | `GET` e `PUT /notificacoes/preferencias` (`{tipos, fila_minutos}`) | Configurações > Notificações | a própria pessoa; `maquina_offline` e `fila_parada` só admin ou gestor (422 para os outros) |
-| Retenção por automação | `GET /governance/retencao-por-automacao`, `PUT /governance/retencao-por-automacao/{automation_id}` (`{imagens_dias, logs_dias}`, `null` = sem prazo) | `/governance/retention` | `admin.system` |
+| Retenção por automação | `GET /governance/retencao-por-automacao`, `PUT /governance/retencao-por-automacao/{automation_id}` (`{imagens_dias, logs_dias, arquivos_dias}`, `null` = sem prazo) | `/governance/retention` | `admin.system` |
 | Imagem apagada | `GET /execucoes/{id}/imagens/{imagem_id}` responde **410** depois da retenção; a situação da imagem vem `apagada` | Acompanhar e Painel ("Imagem apagada pela retenção em ...") | `ver_telas_e_logs` |
 
 ## Rotas da automação no Catálogo (Fase 7)
@@ -109,6 +109,40 @@ cabecalho, por isso os streams sao lidos por `fetch` (`lib/stream.ts`).
 
 Erros de validação vêm como `{"error": {"details": {"campos": {"<chave>": "<motivo>"}}}}`; o
 frontend lê com `enviar()` de `lib/campos.ts` e mostra cada motivo embaixo do campo.
+
+## O que a automação declara e os arquivos dela (Fase 8)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Entradas | `GET /automations/{id}/formulario`: cada campo traz `origem` (`automacao`/`portal`) e `fora_de_uso`. O `PUT` ignora essas duas marcas vindas do navegador e mantém as gravadas | aba **Entradas** (antes "Campos", mesma âncora `#campos`), Executar (esconde `fora_de_uso`), "Para executar" na Visão geral | como na Fase 7 |
+| Tabela da automação | `GET /automations/{id}/itens/proposta` (`null` sem prévia; senão `recebida_em`, `instancia_id`, `total`, `novos`, `alterados`, `iguais`, `erros`, recalculada contra o cadastro atual) | aviso e janela na aba Itens | `editar_itens` |
+| Aprovar | `POST /automations/{id}/itens/proposta/aprovar` (`{chaves?}`; sem `chaves`, todas). 422 se o escolhido quebrar um grupo (filial sem a matriz); 404 sem prévia | aba Itens | `editar_itens` |
+| Descartar | `DELETE /automations/{id}/itens/proposta` (204) | aba Itens | `editar_itens` |
+| Arquivos | `GET /automations/{id}/arquivos?busca=&antes=&limite=` (`{arquivos, cursor}`; sem as imagens dos passos) | aba **Arquivos** | `ver_telas_e_logs` |
+| Baixar | `GET /automations/{id}/arquivos/{arquivo_id}/baixar` com o token no cabeçalho (`apiDownload`); 410 se a retenção apagou; auditado | aba Arquivos | `ver_telas_e_logs` |
+| Retenção | `PUT /governance/retencao-por-automacao/{id}` aceita `arquivos_dias` | `/governance/retention` | `admin.system` |
+
+## Painel prático (11/11/2026)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Executar automação | `GET /painel/executaveis` (`{automacoes: [{id, nome, descricao}]}`, sem as arquivadas) → abre a janela Executar de sempre | Painel: botão "Executar automação" (atalho **E**) | lista só o que a pessoa pode `executar` |
+| Últimas automações | `GET /painel/recentes?limite=3&maquina=` (`automacoes`: uma por automação, a execução mais recente, com `pode_executar`, `ultima.{execucao_id, status, quando, maquinas, itens}`; `maquinas` para o filtro) | Painel: "Últimas automações", "Executar" e "Repetir" (mesmos itens marcados); filtro por máquina lembrado no navegador | `ver_execucoes` para aparecer; `executar` para os botões |
+
+## Máquinas e times (11/11/2026)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Vínculos da máquina | `GET /maquinas/{id}/vinculos` (`maquina`, `automacoes`, `agents`, `fila`, `rodando`) | Máquinas > Gerenciar > Apagar | admin ou gestor |
+| Apagar máquina | `DELETE /maquinas/{id}?confirmar=true`: sem `confirmar` e com vínculos, 409 com `error.details.vinculos`; com execução rodando, 409 sempre; apagada some de `GET /maquinas` | idem | admin ou gestor |
+| Time por dentro | `GET /teams/{id}/detalhes` (`membros`, `categorias`, `automacoes`, `acoes_possiveis`) | Times > Membros e permissões | `admin.users` |
+| Membros | `POST /teams/{id}/membros` (`{usuarios: [ids]}`), `DELETE /teams/{id}/membros/{user_id}` | idem | `admin.users` |
+| Categorias do time | `PUT /teams/{id}/categorias` (`{categorias: [{category_id, can_view, can_execute}]}`, substitui) | idem | `admin.users` |
+| Automações do time | `PUT /automations/{id}/acessos` com `team_id` (lista vazia retira) | idem | admin ou gestor |
+| Times da pessoa | `GET` e `PUT /users/{id}/times` (`{times: [ids]}`, substitui) | Usuários > criar/editar | `admin.users` |
+
+As permissões por categoria dos times ativos entram no `GET /auth/me` (`permissions`) somadas às
+da pessoa.
 
 ## Compatibilidade Fleet no frontend
 

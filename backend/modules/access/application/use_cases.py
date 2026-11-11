@@ -9,6 +9,7 @@ from uuid import uuid4
 from modules.access.application.dto import AuthenticatedUserDTO, CreatedServiceAccountDTO, ServiceAccountDTO, TokenDTO, UserDTO
 from modules.access.application.ports import AccessRepository, PasswordHasher, TokenIssuer, TransactionManager
 from modules.access.domain import AccessConflict, AccessResourceNotFound, AuthenticationFailed, AuthorizationDenied, RoleSlug, UserStatus, normalize_email
+from modules.access.domain.times import efetivas
 from modules.governance.domain.audit import AuditEvent
 from modules.governance.infrastructure.repositories import SqlAlchemyAuditEventRepository
 
@@ -110,6 +111,8 @@ class AuthenticateToken:
         user = self.access.get_user_record(int(subject))
         if user is None or not bool(getattr(user, "is_active", False)) or getattr(user, "status", "active") != UserStatus.ACTIVE:
             raise AuthenticationFailed("Could not validate credentials.")
+        # O que os times ativos dão por categoria vale junto com o da pessoa (só nesta requisição).
+        user.team_category_permissions = self.access.categorias_pelos_times(user.id)
         return user
 
 
@@ -128,7 +131,7 @@ class GetAuthenticatedUser:
             role=user.role.slug,
             role_id=user.role.id,
             organization_id=user.organization_id,
-            permissions=user.category_permissions,
+            permissions=efetivas(user.category_permissions, self.access.categorias_pelos_times(user.id)),
             rbac_permissions=user.permissions,
         )
 
@@ -448,7 +451,7 @@ def _legacy_category_allowed(user: Any, category_id: int, permission: str) -> bo
     action = _permission_to_legacy_action(permission)
     if action is None:
         return False
-    for item in getattr(user, "category_permissions", []) or []:
+    for item in efetivas(getattr(user, "category_permissions", []) or [], getattr(user, "team_category_permissions", []) or []):
         if int(getattr(item, "category_id", 0)) == int(category_id) and bool(getattr(item, action, False)):
             return True
     return False

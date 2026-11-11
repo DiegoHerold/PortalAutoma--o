@@ -49,7 +49,7 @@ export function ExecutarAutomacao({ id, nome, aberto, fechar, preEscolhidos = []
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto]);
   useEffect(() => {
-    if (form.data) setValores(valoresIniciais(form.data.entrada));
+    if (form.data) setValores(valoresIniciais(form.data.entrada.filter((c) => !c.fora_de_uso)));
   }, [form.data]);
 
   const nomeItem = form.data?.item?.nome ?? "Item";
@@ -158,13 +158,13 @@ export function ExecutarAutomacao({ id, nome, aberto, fechar, preEscolhidos = []
           )}
           <section className="space-y-3">
             <h3 className="titulo-condensado text-xl">{temItens ? "2. " : ""}Informações do pedido</h3>
-            {form.data.entrada.length === 0 ? (
+            {form.data.entrada.filter((c) => !c.fora_de_uso).length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Esta automação não pede nenhuma informação. Para criar campos (ex.: competência), use a aba Campos.
+                Esta automação não pede nenhuma informação. Para criar campos (ex.: competência), use a aba Entradas.
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
-                {form.data.entrada.map((c) => (
+                {form.data.entrada.filter((c) => !c.fora_de_uso).map((c) => (
                   <CampoDeEntrada key={c.chave} campo={c} valor={valores[c.chave]} erro={erros[c.chave]}
                     mudar={(v) => {
                       setValores((atual) => ({ ...atual, [c.chave]: v }));

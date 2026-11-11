@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -28,6 +29,9 @@ class Transporte(Protocol):
     def enviar_imagem(self, imagem_id: str, jpeg: bytes) -> None:
         """Entrega a imagem fora do canal de eventos (arquivo local ou HTTPS)."""
 
+    def enviar_arquivo(self, caminho: Path, nome: str, item: str | None, tipo: str) -> None:
+        """Arquivo entregue pela automação (planilha, TXT...), fora do canal de eventos."""
+
     def fechar(self) -> None: ...
 
 
@@ -46,6 +50,9 @@ class TransporteDesligado:
         return []
 
     def enviar_imagem(self, imagem_id: str, jpeg: bytes) -> None:
+        return None
+
+    def enviar_arquivo(self, caminho: Path, nome: str, item: str | None, tipo: str) -> None:
         return None
 
     def fechar(self) -> None:

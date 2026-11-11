@@ -151,6 +151,12 @@ def importar(automation_id: int, corpo: dict[str, Any] = Body(...), db: Session 
     linhas = corpo.get("itens")
     if not isinstance(linhas, list) or not 1 <= len(linhas) <= 5000:
         raise HTTPException(status_code=422, detail="Envie de 1 a 5000 itens.")
+    resultado = _aplicar(db, user, automation_id, linhas)
+    db.commit()
+    return resultado
+
+
+def _aplicar(db: Session, user: Any, automation_id: int, linhas: list[Any]) -> dict[str, Any]:
     registro = SqlAlchemyItemRegistry(db)
     resultado = previa(registro.todos(automation_id), linhas, registro.spec(automation_id))
     if resultado["erros"]:
@@ -161,8 +167,58 @@ def importar(automation_id: int, corpo: dict[str, Any] = Body(...), db: Session 
         _, antes = registro.gravar(automation_id, item, por=por, agora=agora)
         _auditar(db, user, "automacao.item.importado", automation_id, item.chave, antes,
                  {"rotulo": item.rotulo, "grupo": item.grupo, "ativo": item.ativo})
-    db.commit()
     return {"criados": len(resultado["novos"]), "alterados": len(resultado["alterados"]), "iguais": resultado["iguais"]}
+
+
+# -- tabela que a automação mandou ao conectar (Fase 8): prévia para alguém aprovar ---------------
+@router.get("/proposta")
+def ver_proposta(automation_id: int, db: Session = Depends(get_db),
+                 user: Any = Depends(get_current_user)) -> dict[str, Any] | None:
+    """Calculada de novo a cada vez: o cadastro pode ter mudado desde que a tabela chegou."""
+    ensure_automation_grant(db, user, automation_id, EDITAR_ITENS)
+    registro = SqlAlchemyItemRegistry(db)
+    proposta = registro.proposta(automation_id)
+    if proposta is None:
+        return None
+    return {"recebida_em": proposta.recebida_em.isoformat(), "instancia_id": proposta.instancia_id,
+            "total": len(proposta.linhas),
+            **previa(registro.todos(automation_id), proposta.linhas, registro.spec(automation_id))}
+
+
+@router.post("/proposta/aprovar")
+def aprovar_proposta(automation_id: int, corpo: dict[str, Any] = Body(default_factory=dict), db: Session = Depends(get_db),
+                     user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """Grava as linhas escolhidas (``chaves``; sem a lista, todas). A prévia sai da fila depois."""
+    ensure_automation_grant(db, user, automation_id, EDITAR_ITENS)
+    registro = SqlAlchemyItemRegistry(db)
+    proposta = registro.proposta(automation_id)
+    if proposta is None:
+        raise HTTPException(status_code=404, detail="Não há tabela da automação esperando aprovação.")
+    chaves = corpo.get("chaves")
+    if chaves is not None and (not isinstance(chaves, list) or not all(isinstance(c, str) for c in chaves)):
+        raise HTTPException(status_code=422, detail="chaves: envie uma lista de textos.")
+    linhas = [l for l in proposta.linhas if isinstance(l, dict) and (chaves is None or str(l.get("chave") or "") in chaves)]
+    if not linhas:
+        raise HTTPException(status_code=422, detail="Nenhuma linha escolhida.")
+    resultado = _aplicar(db, user, automation_id, linhas)
+    registro.descartar_proposta(automation_id)
+    _auditar(db, user, "automacao.itens.proposta.aprovada", automation_id, "*", {"recebida_em": proposta.recebida_em.isoformat(),
+             "instancia_id": proposta.instancia_id}, {**resultado, "escolhidas": len(linhas)})
+    db.commit()
+    return resultado
+
+
+@router.delete("/proposta", status_code=204, response_model=None)
+def descartar_proposta(automation_id: int, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> None:
+    ensure_automation_grant(db, user, automation_id, EDITAR_ITENS)
+    registro = SqlAlchemyItemRegistry(db)
+    proposta = registro.proposta(automation_id)
+    if proposta is None:
+        raise HTTPException(status_code=404, detail="Não há tabela da automação esperando aprovação.")
+    antes = {"recebida_em": proposta.recebida_em.isoformat(), "instancia_id": proposta.instancia_id, "resumo": proposta.resumo}
+    registro.descartar_proposta(automation_id)
+    _auditar(db, user, "automacao.itens.proposta.descartada", automation_id, "*", antes, None)
+    db.commit()
 
 
 @router.post("/pedir-execucao", status_code=201)

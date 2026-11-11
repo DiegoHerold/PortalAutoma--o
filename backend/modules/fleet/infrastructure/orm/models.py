@@ -262,9 +262,10 @@ class MachineRecord(Base):
     __tablename__ = "machines"
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
-    name: Mapped[str] = mapped_column(String(180), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)  # único entre as não apagadas (índice parcial)
     hostname: Mapped[str | None] = mapped_column(String(180))
-    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ativa")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ativa")  # ativa | inativa | removida
+    removida_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     pool_capacity: Mapped[dict] = mapped_column(JSONB, nullable=False,
                                                 default=lambda: {"interactive": 1, "browser": 1, "background": 2})

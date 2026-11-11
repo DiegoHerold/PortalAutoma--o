@@ -11,6 +11,7 @@ import { apiRequest } from "@/lib/api";
 import { ErroComCampos, enviar, mostrarValor, valoresIniciais, type Formulario } from "@/lib/campos";
 import { cn } from "@/lib/utils";
 import { ExecutarAutomacao } from "@/components/automacao/executar-automacao";
+import { PropostaDaAutomacao } from "@/components/itens/proposta-da-automacao";
 import { CampoDeEntrada } from "@/components/campos/campo-de-entrada";
 import { ErrorState } from "@/components/shared/error-state";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,8 @@ export function ItensDaAutomacao({ id, embutido = false, nome = "Automação" }:
           </div>
         )}
       </div>
+
+      {dados?.pode_editar && <PropostaDaAutomacao id={id} nomeItem={nomeItem} aprovada={() => void lista.refetch()} />}
 
       <div className="flex flex-wrap gap-3">
         <label className="relative min-w-[16rem] flex-1">

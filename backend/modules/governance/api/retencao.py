@@ -1,4 +1,4 @@
-"""Retenção por automação (Fase 6): ver e definir os dias de imagens e de logs.
+"""Retenção por automação (Fase 6): ver e definir os dias de imagens, de logs e (Fase 8) de arquivos.
 
 Só quem tem ``admin.system``, como as políticas de retenção. Sem prazo, nada é apagado.
 """
@@ -27,6 +27,7 @@ router = APIRouter(tags=["retencao"])
 class PrazoDaAutomacao(BaseModel):
     imagens_dias: int | None = Field(default=None, ge=DIAS_MINIMO, le=DIAS_MAXIMO)
     logs_dias: int | None = Field(default=None, ge=DIAS_MINIMO, le=DIAS_MAXIMO)
+    arquivos_dias: int | None = Field(default=None, ge=DIAS_MINIMO, le=DIAS_MAXIMO)
 
 
 @router.get("/governance/retencao-por-automacao")
@@ -41,6 +42,7 @@ def listar(db: Session = Depends(get_db), user: Any = Depends(get_current_user))
         "automation_id": i, "automacao": nome,
         "imagens_dias": prazos[i].imagens_dias if i in prazos else None,
         "logs_dias": prazos[i].logs_dias if i in prazos else None,
+        "arquivos_dias": prazos[i].arquivos_dias if i in prazos else None,
     } for i, nome in automacoes]}
 
 
@@ -55,7 +57,8 @@ def definir(automation_id: int, corpo: PrazoDaAutomacao, db: Session = Depends(g
     g = build_governance_adapters(db)
     try:
         r = DefinirRetencao(SqlAlchemyRetencaoPorAutomacao(db), g.audit, g.transaction).execute(
-            user, automation_id, corpo.imagens_dias, corpo.logs_dias)
+            user, automation_id, corpo.imagens_dias, corpo.logs_dias, corpo.arquivos_dias)
     except PrazoInvalido as exc:
         raise http_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", str(exc)) from exc
-    return {"automation_id": r.automation_id, "imagens_dias": r.imagens_dias, "logs_dias": r.logs_dias}
+    return {"automation_id": r.automation_id, "imagens_dias": r.imagens_dias, "logs_dias": r.logs_dias,
+            "arquivos_dias": r.arquivos_dias}

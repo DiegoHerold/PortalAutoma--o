@@ -90,9 +90,9 @@ def test_campos_validos_com_padrao_convertido_e_opcoes_sem_repeticao() -> None:
 
 
 def test_publico() -> None:
-    assert Campo("m", "Modo", "lista", True, "a", ("a", "b"), "ajuda", True).publico() == {
+    assert Campo("m", "Modo", "lista", True, "a", ("a", "b"), "ajuda", True, "automacao", True).publico() == {
         "chave": "m", "rotulo": "Modo", "tipo": "lista", "obrigatorio": True, "padrao": "a", "opcoes": ["a", "b"],
-        "ajuda": "ajuda", "afeta_trabalho": True}
+        "ajuda": "ajuda", "afeta_trabalho": True, "origem": "automacao", "fora_de_uso": True}
 
 
 @pytest.mark.parametrize("brutos,erro", [
@@ -314,3 +314,81 @@ def test_chave_repetida_nao_esconde_os_erros_seguintes() -> None:
     with pytest.raises(FormularioInvalido) as exc:
         validar_campos([{"chave": "a", "rotulo": "A"}, {"chave": "a", "rotulo": "B"}, {"chave": "c", "rotulo": ""}])
     assert set(exc.value.campos) == {"campos[1].chave", "campos[2].rotulo"}
+
+
+
+# -- origem e junção (Fase 8) --------------------------------------------------------------------
+
+def test_origem_e_fora_de_uso_lidos_e_guardados() -> None:
+    campos = validar_campos([{"chave": "a", "rotulo": "A", "origem": "automacao", "fora_de_uso": True},
+                             {"chave": "b", "rotulo": "B", "origem": "qualquer"}, {"chave": "c", "rotulo": "C"}])
+    assert [(c.origem, c.fora_de_uso) for c in campos] == [("automacao", True), ("portal", False), ("portal", False)]
+    assert validar_campos([{"chave": "p", "rotulo": "P", "tipo": "inteiro", "padrao": "3", "origem": "automacao"}])[0] ==         Campo("p", "P", "inteiro", False, 3, (), None, False, "automacao", False)
+    assert (f.ORIGEM_AUTOMACAO, f.ORIGEM_PORTAL) == ("automacao", "portal")
+    assert [c.origem for c in f.de_esquema_json({"properties": {"a": {"type": "string"}}})] == ["automacao"]
+
+
+def test_fora_de_uso_nao_e_exigido_mas_e_conferido() -> None:
+    campo = Campo("velho", "Velho", "inteiro", True, fora_de_uso=True)
+    assert valores([campo], {}) == {}
+    with pytest.raises(FormularioInvalido):
+        valores([campo], {"velho": "x"})
+
+
+def test_da_automacao() -> None:
+    assert f.da_automacao([Campo("a", "A", fora_de_uso=True)]) == [Campo("a", "A", origem="automacao")]
+
+
+def test_juntar_so_acrescenta_e_marca_o_que_saiu() -> None:
+    atuais = [
+        Campo("competencia", "Competência (editado)", "mes_ano", True, origem="automacao"),
+        Campo("velho", "Velho", origem="automacao"),
+        Campo("responsavel", "Responsável", "email", origem="portal"),
+        Campo("voltou", "Voltou", origem="automacao", fora_de_uso=True),
+        Campo("ja_saiu", "Já saiu", origem="automacao", fora_de_uso=True),
+    ]
+    declarados = [Campo("competencia", "Competência", "mes_ano", True), Campo("modo", "Modo", "lista", opcoes=("a",)),
+                  Campo("voltou", "Voltou")]
+    campos, mudou = f.juntar(atuais, declarados)
+    assert [(c.chave, c.rotulo, c.origem, c.fora_de_uso) for c in campos] == [
+        ("competencia", "Competência (editado)", "automacao", False),  # o que o Portal editou vale
+        ("velho", "Velho", "automacao", True),                         # saiu da automação: fica, marcado
+        ("responsavel", "Responsável", "portal", False),               # criado no Portal: nunca tocado
+        ("voltou", "Voltou", "automacao", False),
+        ("ja_saiu", "Já saiu", "automacao", True),
+        ("modo", "Modo", "automacao", False),                          # novo: entra no fim
+    ]
+    assert mudou == {"novos": ["modo"], "fora_de_uso": ["velho"], "voltaram": ["voltou"]}
+
+
+def test_juntar_sem_mudanca() -> None:
+    atuais = [Campo("a", "A", origem="automacao")]
+    campos, mudou = f.juntar(atuais, [Campo("a", "Outro nome")])
+    assert campos == atuais and mudou == {"novos": [], "fora_de_uso": [], "voltaram": []}
+    assert f.juntar([], []) == ([], {"novos": [], "fora_de_uso": [], "voltaram": []})
+
+
+def test_juntar_campo_do_portal_com_a_mesma_chave_da_automacao() -> None:
+    campos, mudou = f.juntar([Campo("a", "A", origem="portal")], [Campo("a", "A")])
+    assert campos == [Campo("a", "A", origem="portal")] and mudou["novos"] == []
+
+
+def test_edicao_no_portal_mantem_as_marcas_gravadas() -> None:
+    atuais = [Campo("competencia", "Competência", "mes_ano", origem="automacao"),
+              Campo("modo", "Modo", "texto", origem="automacao", fora_de_uso=True)]
+    # O navegador manda tudo como "portal" (ou forja "automacao" num campo novo): não vale.
+    editados = [Campo("competencia", "Mês", "mes_ano"), Campo("modo", "Modo", "texto", fora_de_uso=False),
+                Campo("obs", "Obs", "texto", origem="automacao", fora_de_uso=True)]
+    saida = f.manter_marcas(atuais, editados)
+    assert [(x.chave, x.rotulo, x.origem, x.fora_de_uso) for x in saida] == [
+        ("competencia", "Mês", "automacao", False), ("modo", "Modo", "automacao", True), ("obs", "Obs", "portal", False)]
+    assert f.manter_marcas([], []) == []
+
+
+def test_origem_vinda_de_fora_vale_pelo_texto() -> None:
+    automacao = "".join(["auto", "macao"])  # montado em tempo de execução, como vem do JSON
+    (lido,) = validar_campos([{"chave": "x", "rotulo": "X", "tipo": "texto", "origem": automacao}])
+    assert lido.origem == "automacao"
+    campo = Campo("x", "X", "texto", origem=automacao)
+    saida, mudou = f.juntar([campo], [])
+    assert mudou["fora_de_uso"] == ["x"] and saida[0].fora_de_uso is True

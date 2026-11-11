@@ -18,6 +18,7 @@ from infrastructure.database import get_db
 from modules.access.api.authorization import ensure_automation_action
 from modules.access.api.dependencies import get_current_user
 from modules.access.application.use_cases import PermissionChecker
+from modules.access.domain.times import efetivas
 from modules.access.domain import AuthorizationDenied, RoleSlug
 from modules.access.infrastructure.adapters import build_access_adapters
 from modules.catalog.api.schemas import (
@@ -833,7 +834,8 @@ def _is_admin(user: Any) -> bool:
 def _allowed_category_ids(user: Any, action: str) -> set[int]:
     return {
         int(permission.category_id)
-        for permission in getattr(user, "category_permissions", []) or []
+        for permission in efetivas(getattr(user, "category_permissions", []) or [],
+                                   getattr(user, "team_category_permissions", []) or [])
         if bool(getattr(permission, action, False))
     }
 

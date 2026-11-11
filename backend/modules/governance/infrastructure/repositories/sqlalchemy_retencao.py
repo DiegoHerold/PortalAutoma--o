@@ -8,7 +8,7 @@ from modules.governance.infrastructure.orm.models import AutomationRetentionReco
 
 
 def _dominio(linha: AutomationRetentionRecord) -> RetencaoDaAutomacao:
-    return RetencaoDaAutomacao(linha.automation_id, linha.imagens_dias, linha.logs_dias)
+    return RetencaoDaAutomacao(linha.automation_id, linha.imagens_dias, linha.logs_dias, linha.arquivos_dias)
 
 
 class SqlAlchemyRetencaoPorAutomacao:
@@ -25,7 +25,8 @@ class SqlAlchemyRetencaoPorAutomacao:
     def com_prazo(self) -> list[RetencaoDaAutomacao]:
         return [_dominio(linha) for linha in self.db.scalars(
             select(AutomationRetentionRecord)
-            .where(or_(AutomationRetentionRecord.imagens_dias.is_not(None), AutomationRetentionRecord.logs_dias.is_not(None)))
+            .where(or_(AutomationRetentionRecord.imagens_dias.is_not(None), AutomationRetentionRecord.logs_dias.is_not(None),
+                       AutomationRetentionRecord.arquivos_dias.is_not(None)))
             .order_by(AutomationRetentionRecord.automation_id))]
 
     def gravar(self, retencao: RetencaoDaAutomacao, por: str | None) -> None:
@@ -35,5 +36,6 @@ class SqlAlchemyRetencaoPorAutomacao:
             self.db.add(linha)
         linha.imagens_dias = retencao.imagens_dias
         linha.logs_dias = retencao.logs_dias
+        linha.arquivos_dias = retencao.arquivos_dias
         linha.updated_by = por
         self.db.flush()

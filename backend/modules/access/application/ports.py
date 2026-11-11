@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from modules.access.application.dto import OrganizationDTO, RoleDTO, ServiceAccountDTO, TeamDTO, UserDTO
 
@@ -34,6 +34,10 @@ class AccessRepository(Protocol):
         raise NotImplementedError
 
     def get_user_record(self, user_id: int):
+        raise NotImplementedError
+
+    def categorias_pelos_times(self, user_id: int) -> list[Any]:
+        """Permissões por categoria que os times ativos da pessoa dão."""
         raise NotImplementedError
 
     def get_user_by_email(self, email: str) -> UserDTO | None:

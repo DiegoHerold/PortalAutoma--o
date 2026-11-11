@@ -63,6 +63,51 @@ Automações que já existem (como o `dfolha`) usam a forma sem bloco: `iniciar_
 - Credencial nunca vai na URL nem na linha de comando: o token do job vai por variável de ambiente
   do processo e no cabeçalho.
 
+## Ao conectar, a automação diz o que pede (Fase 8)
+
+Sem cadastro manual no Portal: assim que a instância pode receber jobs, ela manda a
+**declaração** (`POST /api/v1/direto/declaracao`, sessão da instância aprovada):
+
+```python
+trabalhar(instancia, executar, declaracao=lambda: {
+    "versao": "2.0.0",
+    "parametros": [{"chave": "competencia", "rotulo": "Competência", "tipo": "mes_ano", "obrigatorio": True}],
+    "itens": {"nome": "Empresa", "chave": "codigo", "grupo": "matriz_codigo",
+              "colunas": [{"chave": "caminho_saida", "rotulo": "Pasta de destino", "tipo": "pasta"}]},
+    "tabela": [{"chave": "5081", "rotulo": "Matriz", "atributos": {"caminho_saida": r"F:\Folha\5081"}}],
+})
+```
+
+Pela linha de comando: `portal-automacoes trabalhar --nome x --declaracao declaracao.json -- ...`.
+
+| Parte | O que o Portal faz |
+|---|---|
+| `parametros` | Junta com as **Entradas** da automação. **Só acrescenta**: campo novo entra marcado "da automação"; o que foi editado no Portal (nome, padrão, ajuda) continua valendo; o campo que a automação deixou de mandar fica **fora de uso** (não é pedido no Executar, mas não some). Campo criado no Portal nunca é tocado. |
+| `itens` | Nome, chave e grupo do item: valem só se o manifesto não define. `colunas` junta como os `parametros`. |
+| `tabela` | Vira uma **prévia** na aba Itens. Nada entra no cadastro até alguém com "editar itens" aprovar (tudo ou só algumas linhas) ou descartar. Tabela igual ao cadastro não deixa nada pendente. Até 5000 linhas. |
+
+Cada declaração que muda algo vai para a auditoria (`automacao.declarada`, autor: a instância).
+Declaração inválida volta 422 com o motivo de cada campo; o `trabalhar` avisa e continua
+pegando jobs (o Portal fica com o que já tinha).
+
+## Arquivos que a automação entrega (Fase 8)
+
+```python
+with a.item("5081", rotulo="Matriz"):
+    ...
+    a.arquivo(r"F:\Folha\5081\Resumo_Rubricas_Consolidado.xlsx")   # ligado ao item atual
+a.arquivo(pasta / "resultado.csv", item=None)                        # do lote
+```
+
+- Vai por fora dos eventos (`PUT /api/v1/direto/jobs/{job}/arquivos?nome=...&item=...`, token
+  do job no cabeçalho), até 100 MB, e vira artefato da execução no armazenamento do Portal.
+- Aparece na aba **Arquivos** da automação no Catálogo. Ver e baixar exige **ver telas e logs**
+  nesta automação; cada download vai para a auditoria (`automacao.arquivo.baixado`).
+- Com o Portal fora do ar, o arquivo espera e é tentado de novo até o `fechar()`; o que não sair
+  até lá é avisado no log local (o arquivo continua no disco). No modo agente, o SDK copia para a
+  pasta de artefatos da tentativa e o Agent envia.
+- Prazo: em Governança > Retenção, "Arquivos entregues" (sem prazo, nada sai).
+
 ## HTTP provisório
 
 Decisão de 11/11/2026: "não precisa usar https vindo da automação por enquanto". O SDK aceita

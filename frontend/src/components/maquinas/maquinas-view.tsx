@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Copy, Plus, PlugZap, Settings2 } from "lucide-react";
+import { AlertTriangle, Copy, Plus, PlugZap, Settings2, Trash2 } from "lucide-react";
 
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
@@ -77,7 +77,7 @@ export function MaquinasView() {
         </div>
       </div>
 
-      {opcoes && gestor && <Gerenciar />}
+      {opcoes && gestor && <Gerenciar mudou={() => void linha.refetch()} />}
 
       {linha.error && !linha.data ? (
         <ErrorState message={linha.error} onRetry={() => void linha.refetch()} />
@@ -198,10 +198,20 @@ function Legenda({ cor, texto }: { cor: string; texto: string }) {
   );
 }
 
-function Gerenciar() {
+type Vinculos = {
+  maquina: { id: string; nome: string };
+  automacoes: Array<{ instancia_id: string; automation_id: number; automacao: string | null; situacao: string }>;
+  agents: Array<{ id: string; nome: string }>;
+  fila: number;
+  rodando: number;
+};
+
+function Gerenciar({ mudou }: { mudou: () => void }) {
   const { token } = useAuth();
   const { toast } = useToast();
   const automacoes = useApi<Automation[]>("/automations");
+  const maquinas = useApi<{ maquinas: Array<{ id: string; nome: string; status: string }> }>("/maquinas");
+  const [apagando, setApagando] = useState<{ id: string; nome: string } | null>(null);
   const [nome, setNome] = useState("");
   const [automacao, setAutomacao] = useState("");
   const [codigo, setCodigo] = useState<{ codigo: string; expira_em: string } | null>(null);
@@ -211,6 +221,8 @@ function Gerenciar() {
       await apiRequest("/maquinas", { method: "POST", token, body: JSON.stringify({ nome }) });
       toast({ title: `Máquina ${nome} cadastrada`, kind: "success" });
       setNome("");
+      await maquinas.refetch();
+      mudou();
     } catch (err) {
       toast({ title: "Não foi possível cadastrar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     }
@@ -253,6 +265,28 @@ function Gerenciar() {
           </Button>
         </div>
       </div>
+      <div className="space-y-3 lg:col-span-2" data-testid="maquinas-cadastradas">
+        <p className="font-semibold text-titulo">Máquinas cadastradas</p>
+        {(maquinas.data?.maquinas ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma máquina cadastrada.</p>
+        ) : (
+          <ul className="divide-y divide-border rounded-lg border border-border">
+            {(maquinas.data?.maquinas ?? []).map((m) => (
+              <li key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+                <span className="min-w-0 flex-1 truncate font-medium">{m.nome}</span>
+                {m.status !== "ativa" && <span className="text-sm text-muted-foreground">{m.status}</span>}
+                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setApagando(m)} aria-label={`Apagar ${m.nome}`}>
+                  <Trash2 className="h-4 w-4" /> Apagar
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {apagando && (
+        <ApagarMaquina maquina={apagando} fechar={() => setApagando(null)}
+          apagada={() => { setApagando(null); void maquinas.refetch(); mudou(); }} />
+      )}
       <Modal open={codigo !== null} onClose={() => setCodigo(null)} title="Código de inscrição"
         description="Aparece só agora. Use na máquina, no comando de inscrição do SDK.">
         {codigo && (
@@ -266,6 +300,78 @@ function Gerenciar() {
         )}
       </Modal>
     </section>
+  );
+}
+
+/** Confirmação de apagar: mostra o que depende da máquina antes; com execução rodando, não deixa. */
+function ApagarMaquina({ maquina, fechar, apagada }: { maquina: { id: string; nome: string }; fechar: () => void; apagada: () => void }) {
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const vinculos = useApi<Vinculos>(`/maquinas/${maquina.id}/vinculos`);
+  const [apagando, setApagando] = useState(false);
+  const v = vinculos.data;
+  const temVinculo = !!v && (v.automacoes.length > 0 || v.agents.length > 0 || v.fila > 0);
+
+  async function apagar() {
+    setApagando(true);
+    try {
+      await apiRequest(`/maquinas/${maquina.id}${temVinculo ? "?confirmar=true" : ""}`, { method: "DELETE", token });
+      toast({ title: `Máquina ${maquina.nome} apagada`, kind: "success" });
+      apagada();
+    } catch (err) {
+      toast({ title: "Não foi possível apagar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      void vinculos.refetch();
+    } finally {
+      setApagando(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={fechar} title={`Apagar ${maquina.nome}`} className="max-w-xl"
+      description="A máquina sai do cadastro, das telas e da fila. O histórico das execuções que rodaram nela continua com o nome."
+      footer={<>
+        <Button variant="ghost" onClick={fechar}>Cancelar</Button>
+        <Button variant="destructive" onClick={() => void apagar()} disabled={!v || v.rodando > 0 || apagando}>
+          {apagando ? "Apagando…" : temVinculo ? "Apagar mesmo assim" : "Apagar"}
+        </Button>
+      </>}>
+      <div className="space-y-4" data-testid="apagar-maquina">
+        {!v ? <div className="skeleton h-24 rounded-lg" /> : v.rodando > 0 ? (
+          <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+            {v.rodando} execução(ões) rodando nesta máquina agora. Espere terminar (ou pare a execução) para apagar.
+          </p>
+        ) : !temVinculo ? (
+          <p className="text-sm">Nenhuma automação, Agent ou pedido da fila depende desta máquina.</p>
+        ) : (
+          <>
+            <p role="alert" className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <span>Isto depende desta máquina. Ao apagar, as automações ficam <strong>sem máquina</strong>: voltam a esperar
+                aprovação em Automações diretas, onde você escolhe outra máquina.</span>
+            </p>
+            {v.automacoes.length > 0 && (
+              <div>
+                <p className="text-sm font-medium">Automações ({v.automacoes.length})</p>
+                <ul className="mt-1 list-disc pl-5 text-sm">
+                  {v.automacoes.map((a) => <li key={a.instancia_id}>{a.automacao ?? `Automação ${a.automation_id}`} <span className="text-muted-foreground">({a.situacao})</span></li>)}
+                </ul>
+              </div>
+            )}
+            {v.agents.length > 0 && (
+              <div>
+                <p className="text-sm font-medium">Agents ({v.agents.length})</p>
+                <ul className="mt-1 list-disc pl-5 text-sm">{v.agents.map((a) => <li key={a.id}>{a.nome}</li>)}</ul>
+                <p className="mt-1 text-xs text-muted-foreground">O Agent fica sem máquina e não recebe trabalho até ser ligado a outra.</p>
+              </div>
+            )}
+            {v.fila > 0 && (
+              <p className="text-sm"><span className="font-medium">Na fila:</span> {v.fila} pedido(s) marcados para rodar só nesta
+                máquina. Passam a poder rodar em qualquer máquina que sirva.</p>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 

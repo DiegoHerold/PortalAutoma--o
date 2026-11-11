@@ -168,7 +168,7 @@ test("campos: criar, ordenar e salvar; o pedido seguinte usa o campo novo", asyn
   await editor.locator("[data-campo='enviar_email']").getByRole("button", { name: "Descer" }).click();
   await page.screenshot({ path: `${TELAS}/campos.png`, fullPage: true, animations: "disabled" });
   await editor.getByRole("button", { name: "Salvar campos" }).click();
-  await expect(editor.getByText("Editados no Portal.", { exact: false })).toBeVisible();
+  await expect(editor.getByText("o que você muda aqui continua valendo", { exact: false })).toBeVisible();
   const salvo = pedidos.find((p) => p.metodo === "PUT" && p.caminho.startsWith("/automations/7/formulario"))!.corpo as {
     entrada: Array<{ chave: string; tipo: string; obrigatorio: boolean }>; versao: number };
   expect(salvo.versao).toBe(0);

@@ -20,11 +20,12 @@ import { cn } from "@/lib/utils";
 import type { User } from "@/types/user";
 import type { Role } from "@/types/role";
 import type { Category } from "@/types/category";
+import type { TeamResponse } from "@/types/access";
 
 const PERMS = ["can_view", "can_execute", "can_create", "can_edit", "can_delete", "can_approve"] as const;
 type Perm = (typeof PERMS)[number];
 
-const emptyForm = { name: "", email: "", password: "", role_id: "", is_active: true };
+const emptyForm = { name: "", email: "", password: "", role_id: "", is_active: true, times: [] as number[] };
 
 export function UsersManager() {
   const { token } = useAuth();
@@ -32,6 +33,7 @@ export function UsersManager() {
   const users = useApi<User[]>("/users");
   const roles = useApi<Role[]>("/roles");
   const categories = useApi<Category[]>("/categories");
+  const teams = useApi<TeamResponse[]>("/teams");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -48,16 +50,21 @@ export function UsersManager() {
     setModalOpen(true);
   }
 
-  function openEdit(user: User) {
+  async function openEdit(user: User) {
     setEditing(user);
-    setForm({
-      name: user.name,
-      email: user.email,
-      password: "",
-      role_id: String(user.role.id),
-      is_active: user.is_active,
-    });
+    const base = { name: user.name, email: user.email, password: "", role_id: String(user.role.id), is_active: user.is_active };
+    setForm({ ...base, times: [] });
     setModalOpen(true);
+    try {
+      const r = await apiRequest<{ times: Array<{ id: number }> }>(`/users/${user.id}/times`, { token });
+      setForm((atual) => ({ ...atual, times: r.times.map((t) => t.id) }));
+    } catch {
+      // sem acesso aos times: o formulário segue sem eles
+    }
+  }
+
+  function alternarTime(id: number) {
+    setForm((atual) => ({ ...atual, times: atual.times.includes(id) ? atual.times.filter((t) => t !== id) : [...atual.times, id] }));
   }
 
   async function saveUser() {
@@ -71,11 +78,14 @@ export function UsersManager() {
         is_active: form.is_active,
         ...(editing || form.password ? { password: form.password || null } : { password: form.password }),
       };
-      await apiRequest<User>(editing ? `/users/${editing.id}` : "/users", {
+      const salvo = await apiRequest<User>(editing ? `/users/${editing.id}` : "/users", {
         method: editing ? "PUT" : "POST",
         token,
         body: JSON.stringify(body),
       });
+      if (teams.data) {
+        await apiRequest(`/users/${salvo.id ?? editing?.id}/times`, { method: "PUT", token, body: JSON.stringify({ times: form.times }) });
+      }
       toast({ title: editing ? "Usuário atualizado" : "Usuário criado", kind: "success" });
       setForm(emptyForm);
       setEditing(null);
@@ -213,7 +223,7 @@ export function UsersManager() {
                           <ShieldCheck className="h-4 w-4" />
                           <ChevronDown className={cn("h-3 w-3 transition-transform", expanded === user.id && "rotate-180")} />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(user)} title="Editar usuário">
+                        <Button variant="ghost" size="icon" onClick={() => void openEdit(user)} title="Editar usuário">
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => removeUser(user)} title="Apagar usuário">
@@ -305,6 +315,22 @@ export function UsersManager() {
               ))}
             </Select>
           </Field>
+          {(teams.data ?? []).length > 0 && (
+            <fieldset className="space-y-2" data-testid="times-do-usuario">
+              <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Times</legend>
+              <p className="text-xs text-muted-foreground">A pessoa ganha as permissões dos times ativos em que estiver.</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(teams.data ?? []).map((t) => (
+                  <label key={t.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                    <input type="checkbox" className="h-4 w-4 accent-primary" checked={form.times.includes(t.id)}
+                      onChange={() => alternarTime(t.id)} aria-label={`Time ${t.name}`} />
+                    <span className="truncate">{t.name}</span>
+                    {t.status !== "active" && <span className="ml-auto text-xs text-muted-foreground">inativo</span>}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

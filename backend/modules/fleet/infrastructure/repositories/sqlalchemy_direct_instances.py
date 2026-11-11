@@ -119,15 +119,58 @@ class SqlAlchemyMachineStore:
         self.db = db
 
     def listar(self) -> list[dict[str, Any]]:
+        """As máquinas do cadastro. A apagada não aparece mais (fica só no histórico)."""
         return [{"id": m.id, "nome": m.name, "status": m.status, "capacidade": m.pool_capacity}
-                for m in self.db.scalars(select(MachineRecord).order_by(MachineRecord.name))]
+                for m in self.db.scalars(select(MachineRecord).where(MachineRecord.status != "removida")
+                                         .order_by(MachineRecord.name))]
 
     def nome_em_uso(self, nome: str) -> bool:
+        """Inativa também segura o nome (o índice do banco só libera o das apagadas)."""
         return self.db.scalar(select(MachineRecord.id).where(MachineRecord.name == nome,
-                                                              MachineRecord.status == "ativa")) is not None
+                                                              MachineRecord.status != "removida")) is not None
 
     def adicionar(self, *, machine_id: str, nome: str) -> None:
         self.db.add(MachineRecord(id=machine_id, name=nome))
+        self.db.flush()
+
+    # -- apagar uma máquina do cadastro ---------------------------------------------------------
+    def obter(self, machine_id: str) -> MachineRecord | None:
+        maquina = self.db.get(MachineRecord, machine_id)
+        return None if maquina is None or maquina.status == "removida" else maquina
+
+    def instancias_na_maquina(self, machine_id: str) -> list[dict[str, Any]]:
+        from modules.catalog.infrastructure.orm.models import CatalogAutomationRecord
+
+        linhas = self.db.execute(
+            select(DirectInstanceRecord, CatalogAutomationRecord.name)
+            .outerjoin(CatalogAutomationRecord, CatalogAutomationRecord.id == DirectInstanceRecord.automation_id)
+            .where(DirectInstanceRecord.machine_id == machine_id, DirectInstanceRecord.status != "revogada")
+            .order_by(CatalogAutomationRecord.name)).all()
+        return [{"instancia_id": i.id, "automation_id": i.automation_id, "automacao": nome, "situacao": i.status}
+                for i, nome in linhas]
+
+    def agents_na_maquina(self, machine_id: str) -> list[dict[str, Any]]:
+        from modules.fleet.infrastructure.orm.models import AgentRecord
+
+        return [{"id": a.id, "nome": a.name}
+                for a in self.db.scalars(select(AgentRecord).where(AgentRecord.machine_id == machine_id))]
+
+    def desvincular(self, machine_id: str) -> None:
+        """Instância aprovada ou em quarentena volta a pendente (sem máquina); a revogada só perde a
+        máquina. Agent fica sem máquina. Ninguém recebe trabalho por uma máquina apagada."""
+        from modules.fleet.infrastructure.orm.models import AgentRecord
+
+        self.db.execute(update(DirectInstanceRecord).where(
+            DirectInstanceRecord.machine_id == machine_id, DirectInstanceRecord.status.in_(("aprovada", "quarentena")),
+        ).values(machine_id=None, status="pendente", approved_at=None, approved_by=None, quarantined_at=None))
+        self.db.execute(update(DirectInstanceRecord).where(DirectInstanceRecord.machine_id == machine_id)
+                        .values(machine_id=None))
+        self.db.execute(update(AgentRecord).where(AgentRecord.machine_id == machine_id).values(machine_id=None))
+        self.db.flush()
+
+    def marcar_removida(self, machine_id: str, agora: datetime) -> None:
+        maquina = self.db.get(MachineRecord, machine_id)
+        maquina.status, maquina.removida_em = "removida", agora
         self.db.flush()
 
 

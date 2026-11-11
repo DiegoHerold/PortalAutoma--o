@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Standalone desabilitado temporariamente para debugging (muito pesado)
-  output: process.env.NEXT_OUTPUT_STANDALONE ? "standalone" : undefined,
+  output: "standalone",
   // Os testes de tela (Playwright) usam outra pasta: um `next dev` em `.next`
   // apaga o build de produção (`.next/standalone`) de onde o portal roda.
   distDir: process.env.NEXT_DIST_DIR || ".next",

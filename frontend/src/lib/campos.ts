@@ -18,6 +18,10 @@ export type Campo = {
   opcoes: string[];
   ajuda: string | null;
   afeta_trabalho: boolean;
+  /** Fase 8: quem criou o campo. O da automação vem da declaração dela ao conectar. */
+  origem?: "automacao" | "portal";
+  /** A automação deixou de mandar: não é pedido ao executar, mas não some. */
+  fora_de_uso?: boolean;
 };
 
 export type Formulario = {

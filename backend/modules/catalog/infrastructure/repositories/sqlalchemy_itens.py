@@ -10,11 +10,20 @@ from uuid import uuid4
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from modules.catalog.domain.formulario import Campo, Formulario, de_esquema_json, de_guardados, para_esquema_json, validar_campos
+from modules.catalog.domain.formulario import (
+    Campo,
+    Formulario,
+    da_automacao,
+    de_esquema_json,
+    de_guardados,
+    para_esquema_json,
+    validar_campos,
+)
 from modules.catalog.domain.itens import Item
 from modules.catalog.domain.manifest import ItemSpec, parse_automation_manifest
 from modules.catalog.infrastructure.orm.models import (
     AutomationFormRecord,
+    AutomationItemProposalRecord,
     AutomationItemRecord,
     CatalogAutomationVersionRecord,
 )
@@ -35,8 +44,13 @@ class SqlAlchemyItemRegistry:
         do schema do manifesto; o nome do item, a chave e o grupo continuam do manifesto."""
         base = self.spec_do_manifesto(automation_id)
         form = self.db.get(AutomationFormRecord, automation_id)
-        if base is None or form is None:
+        if form is None:
             return base
+        if base is None:  # sem itens no manifesto: vale o que a automação declarou ao conectar (Fase 8)
+            if not form.item:
+                return None
+            base = ItemSpec(label=form.item.get("nome") or "Item", key=form.item.get("chave") or "chave",
+                            group_attribute=form.item.get("grupo"))
         colunas = de_guardados(form.colunas)
         return ItemSpec(label=base.label, key=base.key, label_attribute=base.label_attribute,
                         group_attribute=base.group_attribute, attributes_schema=para_esquema_json(colunas),
@@ -66,28 +80,57 @@ class SqlAlchemyItemRegistry:
             return Formulario(de_guardados(form.entrada), de_guardados(form.colunas), "portal")
         manifesto = self.manifesto(automation_id) or {}
         try:
-            entrada = validar_campos(manifesto.get("parameters") or [])
+            entrada = da_automacao(validar_campos(manifesto.get("parameters") or []))
         except ValueError:
             entrada = []
         spec = self.spec_do_manifesto(automation_id)
         colunas = de_esquema_json(spec.attributes_schema, spec.work_attributes) if spec is not None else []
         return Formulario(entrada, colunas, "manifesto")
 
+    def item_da_automacao(self, automation_id: int) -> dict[str, Any] | None:
+        """Nome, chave e grupo do item: do manifesto ou, sem ele, da declaração."""
+        spec = self.spec(automation_id)
+        return None if spec is None else {"nome": spec.label, "chave": spec.key, "grupo": spec.group_attribute}
+
     def versao_do_formulario(self, automation_id: int) -> int:
         form = self.db.get(AutomationFormRecord, automation_id)
         return form.versao if form is not None else 0
 
-    def gravar_formulario(self, automation_id: int, entrada: list[Campo], colunas: list[Campo], por: str) -> int:
+    def gravar_formulario(self, automation_id: int, entrada: list[Campo], colunas: list[Campo], por: str,
+                          item: dict[str, Any] | None = None) -> int:
         form = self.db.get(AutomationFormRecord, automation_id)
         if form is None:
             form = AutomationFormRecord(automation_id=automation_id, versao=0)
             self.db.add(form)
         form.entrada = [c.publico() for c in entrada]
         form.colunas = [c.publico() for c in colunas]
+        if item is not None:
+            form.item = item
         form.versao = (form.versao or 0) + 1
         form.updated_by = por
         self.db.flush()
         return form.versao
+
+    # -- tabela que a automação mandou (Fase 8) ---------------------------------------------------
+    def guardar_proposta(self, automation_id: int, linhas: list[dict[str, Any]], resumo: dict[str, Any],
+                         instancia_id: str | None, agora: datetime) -> None:
+        proposta = self.db.get(AutomationItemProposalRecord, automation_id)
+        if proposta is None:
+            proposta = AutomationItemProposalRecord(automation_id=automation_id)
+            self.db.add(proposta)
+        proposta.linhas, proposta.resumo, proposta.instancia_id, proposta.recebida_em = linhas, resumo, instancia_id, agora
+        self.db.flush()
+
+    def proposta(self, automation_id: int) -> AutomationItemProposalRecord | None:
+        return self.db.get(AutomationItemProposalRecord, automation_id)
+
+    def descartar_proposta(self, automation_id: int) -> bool:
+        proposta = self.db.get(AutomationItemProposalRecord, automation_id)
+        if proposta is None:
+            return False
+        self.db.delete(proposta)
+        self.db.flush()
+        return True
 
     def todos(self, automation_id: int) -> dict[str, Item]:
         return {r.chave: _item(r) for r in self.db.scalars(

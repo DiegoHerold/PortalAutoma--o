@@ -138,6 +138,20 @@ class TeamMembershipRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class TeamCategoryPermissionRecord(Base):
+    """Ver e executar por categoria, dados a um time: quem é membro de um time ativo ganha."""
+
+    __tablename__ = "access_team_category_permissions"
+    __table_args__ = (UniqueConstraint("team_id", "category_id", name="uq_team_category_permissions"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("access_teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True)
+    can_view: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    can_execute: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class TeamRoleRecord(Base):
     __tablename__ = "team_roles"
     __table_args__ = (UniqueConstraint("team_id", "role_id", name="uq_team_roles_team_role"),)

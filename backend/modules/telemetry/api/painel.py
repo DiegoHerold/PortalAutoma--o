@@ -6,6 +6,9 @@
 - ``GET /painel/linha-do-tempo``: por máquina, o que rodou, o que roda e o que a fila prevê.
 - ``GET /historico``: execuções terminadas, com o tempo real ao lado do previsto.
 - ``GET /painel/avisos``: SSE que avisa quando qualquer execução ou a fila muda.
+- ``GET /painel/recentes``: as últimas automações que a pessoa pode ver, com a última execução
+  de cada (para executar de novo dali), e o filtro por máquina.
+- ``GET /painel/executaveis``: as automações que a pessoa pode executar (busca rápida).
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from infrastructure.database import get_db, get_session_factory
 from modules.access.api.authorization import acesso_por_automacao
 from modules.access.api.dependencies import get_current_user
 from modules.access.application.use_cases import PermissionChecker
-from modules.access.domain.concessao import CENTRAL_DE_TELAS, VER_EXECUCOES, VER_TELAS_E_LOGS
+from modules.access.domain.concessao import CENTRAL_DE_TELAS, EXECUTAR, VER_EXECUCOES, VER_TELAS_E_LOGS
 from modules.access.infrastructure.adapters import build_access_adapters
 from modules.dispatch.domain.linha_do_tempo import FEITO, PREVISTO, RODANDO, Bloco, marcas, montar
 from modules.telemetry.api.acompanhar import fluxo_de_avisos, usuario_do_cabecalho
@@ -174,6 +177,33 @@ def historico(busca: str | None = Query(default=None, max_length=120), automacao
     linhas, cursor = SqlAlchemyPainelReader(db).historico(busca=busca, automation_id=automacao, situacao=situacao,
                                                           antes_de=antes_de, limite=limite)
     return {"execucoes": [l for l in linhas if permissoes.pode(l["automation_id"], VER_EXECUCOES)], "cursor": cursor}
+
+
+@router.get("/painel/recentes")
+def recentes(maquina: str | None = Query(default=None, max_length=80), limite: int = Query(default=3, ge=1, le=12),
+             db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """Uma linha por automação (a execução mais recente dela), só das que a pessoa vê."""
+    permissoes = _Permissoes(db, user)
+    leitor = SqlAlchemyPainelReader(db)
+    automacoes: list[dict[str, Any]] = []
+    vistas: set[int] = set()
+    for e in leitor.ultimas_execucoes(machine_id=maquina):
+        if e["automation_id"] in vistas or not permissoes.pode(e["automation_id"], VER_EXECUCOES):
+            continue
+        vistas.add(e["automation_id"])
+        automacoes.append({"automation_id": e["automation_id"], "automacao": e["automacao"],
+                           "pode_executar": permissoes.acesso.pode(user, e["automation_id"], EXECUTAR),
+                           "ultima": {k: e[k] for k in ("execucao_id", "status", "quando", "maquinas", "itens")}})
+        if len(automacoes) >= limite:
+            break
+    return {"automacoes": automacoes, "maquinas": [{"id": i, "nome": n} for i, n in leitor.maquinas()]}
+
+
+@router.get("/painel/executaveis")
+def executaveis(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """Para o botão "Executar automação" do Painel: só o que a pessoa pode executar."""
+    acesso = acesso_por_automacao(db)
+    return {"automacoes": [a for a in SqlAlchemyPainelReader(db).automacoes_ativas() if acesso.pode(user, a["id"], EXECUTAR)]}
 
 
 @router.get("/painel/avisos")

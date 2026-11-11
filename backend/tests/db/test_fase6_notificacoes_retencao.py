@@ -186,9 +186,9 @@ def test_retencao_apaga_imagens_pelo_storage_e_so_os_logs(cliente, sessao, tmp_p
         url = f"/api/v1/governance/retencao-por-automacao/{automation_id}"
         assert cliente.put(url, json={"imagens_dias": 0}).status_code == 422
         assert cliente.put(url, json={"imagens_dias": 30, "logs_dias": 30}).json() == {
-            "automation_id": automation_id, "imagens_dias": 30, "logs_dias": 30}
+            "automation_id": automation_id, "imagens_dias": 30, "logs_dias": 30, "arquivos_dias": None}
         lista = cliente.get("/api/v1/governance/retencao-por-automacao").json()
-        assert {"automation_id": automation_id, "imagens_dias": 30, "logs_dias": 30} == {
+        assert {"automation_id": automation_id, "imagens_dias": 30, "logs_dias": 30, "arquivos_dias": None} == {
             k: v for k, v in next(a for a in lista["automacoes"] if a["automation_id"] == automation_id).items() if k != "automacao"}
         assert lista["limites"] == {"minimo": 1, "maximo": 3650}
         with como(cliente, _usuario(sessao, "operator")[0], "operator"):

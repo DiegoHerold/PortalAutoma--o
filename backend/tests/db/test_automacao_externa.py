@@ -45,6 +45,9 @@ MANIFESTO = {
 }
 
 
+CONTEUDO = "rubrica;valor\n450;10,00\n"
+
+
 def _porta_livre() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -52,10 +55,10 @@ def _porta_livre() -> int:
 
 
 @pytest.fixture(scope="module")
-def portal_http(engine, tmp_path_factory):
-    pasta = tmp_path_factory.mktemp("externa")
+def portal_http(engine):
     porta = _porta_livre()
-    ambiente = {**os.environ, "POSTGRES_DB": NOME, "LOCAL_STORAGE_PATH": str(pasta / "storage"),
+    # mesma pasta temporária do cliente em processo (conftest): o arquivo gravado lá é lido aqui
+    ambiente = {**os.environ, "POSTGRES_DB": NOME, "LOCAL_STORAGE_PATH": os.environ["LOCAL_STORAGE_PATH"],
                 "STORAGE_BACKEND": "local", "PYTHONIOENCODING": "utf-8"}
     processo = subprocess.Popen([sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(porta)],
                                 cwd=BACKEND, env=ambiente, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -132,9 +135,26 @@ def test_automacao_externa_de_ponta_a_ponta_em_http(portal_http, cliente, sessao
             with a.item("5066", rotulo="Empresa 5066"):
                 with a.etapa("trocar_empresa"):
                     a.log("Empresa 5066 ativa")
+                resumo = tmp_path / "Resumo 5066.txt"
+                resumo.write_bytes(CONTEUDO.encode("utf-8"))
+                a.arquivo(resumo)  # Fase 8: vai para a aba Arquivos, ligado ao item 5066
 
-    trabalhar(recarregada, executar, parar=lambda: bool(vistos), avisar=lambda m: None)
+    # Fase 8: ao poder receber jobs, a instância declara o que pede e a tabela dela.
+    declaracao = {"versao": "0.1.0", "parametros": [{"chave": "competencia", "rotulo": "Competência",
+                                                     "tipo": "mes_ano", "obrigatorio": True}],
+                  "itens": {"nome": "Empresa", "chave": "codigo"},
+                  "tabela": [{"chave": "5066", "rotulo": "Empresa 5066"}]}
+    avisos: list[str] = []
+    trabalhar(recarregada, executar, parar=lambda: bool(vistos), avisar=avisos.append, declaracao=declaracao)
     assert vistos == [job_id]
+    assert any(m.startswith("declaração enviada: 1 campo(s) novo(s)") and "tabela: 1 novo(s)" in m for m in avisos), avisos
+    form = cliente.get(f"/api/v1/automations/{automacao['id']}/formulario").json()
+    assert [(c["chave"], c["origem"]) for c in form["entrada"]] == [("competencia", "automacao")]
+    assert cliente.get(f"/api/v1/automations/{automacao['id']}/itens/proposta").json()["total"] == 1
+    arquivos = cliente.get(f"/api/v1/automations/{automacao['id']}/arquivos").json()["arquivos"]
+    assert [(x["nome"], x["item"], x["tipo"]) for x in arquivos] == [("Resumo 5066.txt", "5066", "text/plain")]
+    baixado = cliente.get(f"/api/v1/automations/{automacao['id']}/arquivos/{arquivos[0]['id']}/baixar")
+    assert baixado.content.decode("utf-8") == CONTEUDO
 
     sessao.expire_all()
     execucao = sessao.execute(text("SELECT execution_id FROM task_executions WHERE id = :j"), {"j": job_id}).scalar_one()
@@ -143,4 +163,5 @@ def test_automacao_externa_de_ponta_a_ponta_em_http(portal_http, cliente, sessao
     logs = [l["texto"] for l in cliente.get(f"/api/v1/execucoes/{execucao}/logs").json()["logs"]]
     assert "Empresa 5066 ativa" in logs
     print(f"\nexterna em HTTP: publicada sem pacote; job {job_id} foi para a instância direta (Agent ignorado);"
-          f" eventos recebidos; {visao['jobs'][0]['status']}")
+          f" eventos recebidos; {visao['jobs'][0]['status']}; declarou competência + tabela (prévia);"
+          f" arquivo '{arquivos[0]['nome']}' na aba Arquivos e baixado")

@@ -21,7 +21,8 @@ from typing import Any, Callable
 
 LIMITE_CORPO = 1_000_000
 LIMITE_IMAGEM = 5_000_000
-ROTA = re.compile(r"^/api/v1/direto/jobs/(?P<job>[A-Za-z0-9_-]{1,80})/(?P<recurso>eventos/estado|eventos|comandos|imagens/(?P<imagem>[A-Za-z0-9_-]{1,80}))$")
+LIMITE_ARQUIVO = 100 * 1024 * 1024
+ROTA = re.compile(r"^/api/v1/direto/jobs/(?P<job>[A-Za-z0-9_-]{1,80})/(?P<recurso>eventos/estado|eventos|comandos|arquivos|imagens/(?P<imagem>[A-Za-z0-9_-]{1,80}))$")
 
 
 @dataclass
@@ -30,6 +31,7 @@ class JobSimulado:
     eventos: list[dict[str, Any]] = field(default_factory=list)
     recusados: list[dict[str, Any]] = field(default_factory=list)
     imagens: dict[str, bytes] = field(default_factory=dict)
+    arquivos: list[dict[str, Any]] = field(default_factory=list)  # nome, item, tipo, conteudo
     comandos: list[dict[str, Any]] = field(default_factory=list)
     ultima_sequencia: int = 0
 
@@ -39,6 +41,7 @@ class PortalSimulado:
         """Sem certificado: HTTP puro (só para testar o modo provisório sem TLS na rede interna)."""
         self.jobs: dict[str, JobSimulado] = {}
         self.recusas_autenticacao = 0
+        self.fora_do_ar = False  # arquivos: responde 503, como um Portal reiniciando
         self._validar = validar
         self._lock = threading.Lock()
         self._servidor = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -156,6 +159,8 @@ class PortalSimulado:
                 if achado is None:
                     return
                 job, rota = achado
+                if rota["recurso"] == "arquivos":
+                    return self._arquivo(job)
                 if not rota["imagem"]:
                     return self._responder(405, {"erro": "método não permitido"})
                 if self.headers.get("Content-Type") != "image/jpeg":
@@ -176,5 +181,23 @@ class PortalSimulado:
                     return self._responder(422, {"erro": "imagem vazia"})
                 job.imagens[rota["imagem"]] = corpo
                 self._responder(201, {"imagem_id": rota["imagem"]})
+
+            def _arquivo(self, job: JobSimulado) -> None:
+                from urllib.parse import parse_qs
+
+                consulta = parse_qs(self.path.partition("?")[2])
+                corpo = self._corpo(LIMITE_ARQUIVO)
+                if corpo is None:
+                    return
+                if portal.fora_do_ar:
+                    return self._responder(503, {"erro": "reiniciando"})
+                if not consulta.get("nome"):
+                    return self._responder(422, {"erro": "informe o nome"})
+                if not corpo:
+                    return self._responder(422, {"erro": "arquivo vazio"})
+                job.arquivos.append({"nome": consulta["nome"][0], "item": (consulta.get("item") or [None])[0],
+                                     "tipo": self.headers.get("Content-Type"), "conteudo": corpo})
+                self._responder(201, {"arquivo_id": f"art_{len(job.arquivos)}", "nome": consulta["nome"][0],
+                                      "bytes": len(corpo)})
 
         return Handler

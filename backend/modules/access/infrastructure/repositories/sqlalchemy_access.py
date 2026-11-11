@@ -49,6 +49,11 @@ class SqlAlchemyAccessRepository:
     def get_user_record_by_email(self, email: str) -> AccessUserRecord | None:
         return self.db.scalar(_user_query().where(AccessUserRecord.email == normalize_email(email)))
 
+    def categorias_pelos_times(self, user_id: int) -> list[CategoryPermissionDTO]:
+        from modules.access.infrastructure.repositories.sqlalchemy_times import SqlAlchemyTimes
+
+        return SqlAlchemyTimes(self.db).categorias_pelos_times(user_id)
+
     def get_user(self, user_id: int) -> UserDTO | None:
         row = self.get_user_record(user_id)
         return _user_to_dto(row, self.list_permissions_for_role(row.role_id)) if row else None

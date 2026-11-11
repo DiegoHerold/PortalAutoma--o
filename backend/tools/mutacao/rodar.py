@@ -36,6 +36,7 @@ ALVOS = {
     "retencao": ("modules/governance/domain/retencao_por_automacao.py",
                  "modules/governance/tests/test_retencao_por_automacao.py"),
     "formulario": ("modules/catalog/domain/formulario.py", "modules/catalog/tests/test_formulario.py"),
+    "declaracao": ("modules/catalog/domain/declaracao.py", "modules/catalog/tests/test_declaracao.py"),
 }
 # Operadores excluídos por alvo, sempre com o motivo. Mutante equivalente não é falha de teste.
 EXCLUIDOS = {
@@ -69,6 +70,9 @@ EXCLUIDOS = {
         "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
     },
     "formulario": {
+        "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
+    },
+    "declaracao": {
         "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
     },
 }

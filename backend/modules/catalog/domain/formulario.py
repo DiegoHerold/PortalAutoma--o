@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
@@ -25,6 +25,7 @@ LIMITE_CAMPOS = 60
 LIMITE_OPCOES = 100
 LIMITE_TEXTO = 2000
 LIMITE_TEXTO_LONGO = 20000
+ORIGEM_AUTOMACAO, ORIGEM_PORTAL = "automacao", "portal"
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 SIM = ("sim", "s", "true", "1", "yes", "verdadeiro")
 NAO = ("nao", "não", "n", "false", "0", "no", "falso")
@@ -46,11 +47,13 @@ class Campo:
     opcoes: tuple[str, ...] = ()
     ajuda: str | None = None
     afeta_trabalho: bool = False  # coluna de item que muda o tempo do trabalho (estimativa)
+    origem: str = "portal"  # "automacao": a automação declarou (Fase 8); "portal": alguém criou na tela
+    fora_de_uso: bool = False  # a automação declarou antes e deixou de mandar (não apaga: só avisa)
 
     def publico(self) -> dict[str, Any]:
         return {"chave": self.chave, "rotulo": self.rotulo, "tipo": self.tipo, "obrigatorio": self.obrigatorio,
                 "padrao": self.padrao, "opcoes": list(self.opcoes), "ajuda": self.ajuda,
-                "afeta_trabalho": self.afeta_trabalho}
+                "afeta_trabalho": self.afeta_trabalho, "origem": self.origem, "fora_de_uso": self.fora_de_uso}
 
 
 def _vazio(valor: Any) -> bool:
@@ -159,8 +162,9 @@ def _campo(bruto: Any, posicao: int, erros: dict[str, str]) -> Campo | None:
     ajuda = str(ajuda).strip()[:300] if not _vazio(ajuda) else None
     if falhou:
         return None
+    origem = ORIGEM_AUTOMACAO if bruto.get("origem") == ORIGEM_AUTOMACAO else ORIGEM_PORTAL
     campo = Campo(chave, rotulo, tipo, bool(bruto.get("obrigatorio")), None, opcoes, ajuda,
-                  bool(bruto.get("afeta_trabalho")))
+                  bool(bruto.get("afeta_trabalho")), origem, bool(bruto.get("fora_de_uso")))
     padrao = bruto.get("padrao")
     if not _vazio(padrao):
         try:
@@ -168,7 +172,7 @@ def _campo(bruto: Any, posicao: int, erros: dict[str, str]) -> Campo | None:
         except ValueError as exc:
             erros[f"{onde}.padrao"] = str(exc)
             return None
-        campo = Campo(chave, rotulo, tipo, campo.obrigatorio, padrao, opcoes, ajuda, campo.afeta_trabalho)
+        campo = replace(campo, padrao=padrao)
     return campo
 
 
@@ -219,7 +223,7 @@ def valores(campos: Iterable[Campo], recebidos: Any, *, manter_extras: bool = Fa
         if _vazio(valor):
             valor = campo.padrao
         if _vazio(valor):
-            if campo.obrigatorio:
+            if campo.obrigatorio and not campo.fora_de_uso:  # a automação não usa mais: não exige
                 erros[campo.chave] = "obrigatório"
             continue
         try:
@@ -259,7 +263,7 @@ def de_esquema_json(esquema: Any, afetam_trabalho: Iterable[str] = ()) -> list[C
             tipo = "json"
         campos.append(Campo(str(chave), str(prop.get("title") or chave), tipo, chave in obrigatorios,
                             prop.get("default"), tuple(str(o) for o in prop.get("enum") or ()),
-                            prop.get("description"), chave in trabalho))
+                            prop.get("description"), chave in trabalho, ORIGEM_AUTOMACAO))
     return campos
 
 
@@ -292,3 +296,52 @@ class Formulario:
     entrada: list[Campo] = field(default_factory=list)
     colunas: list[Campo] = field(default_factory=list)
     origem: str = "manifesto"  # manifesto | portal
+
+
+# -- junção com o que a automação declara (Fase 8) ----------------------------------------------
+
+def da_automacao(campos: Iterable[Campo]) -> list[Campo]:
+    """Os mesmos campos, marcados como declarados pela automação."""
+    return [replace(c, origem=ORIGEM_AUTOMACAO, fora_de_uso=False) for c in campos]
+
+
+def manter_marcas(atuais: Iterable[Campo], editados: Iterable[Campo]) -> list[Campo]:
+    """Edição no Portal: ``origem`` e ``fora_de_uso`` vêm do que está gravado, nunca do navegador.
+    Campo novo criado na tela é do Portal; a automação não o marca como fora de uso."""
+    gravados = {c.chave: c for c in atuais}
+    saida = []
+    for c in editados:
+        antes = gravados.get(c.chave)
+        saida.append(replace(c, origem=antes.origem if antes else ORIGEM_PORTAL,
+                             fora_de_uso=antes.fora_de_uso if antes else False))
+    return saida
+
+
+def juntar(atuais: Iterable[Campo], declarados: Iterable[Campo]) -> tuple[list[Campo], dict[str, list[str]]]:
+    """Campos depois que a automação se declara (decisão de 11/11/2026: só acrescenta).
+
+    - campo novo da automação entra no fim, marcado como dela;
+    - campo que já existe fica como está no Portal (nome, padrão, ajuda editados valem);
+    - campo da automação que ela deixou de mandar fica ``fora_de_uso`` (não apaga);
+    - campo criado no Portal nunca é tocado.
+    Devolve os campos e o que mudou (``novos``, ``fora_de_uso``, ``voltaram``)."""
+    lista = list(atuais)
+    vindos = {c.chave: c for c in declarados}
+    saida: list[Campo] = []
+    mudou: dict[str, list[str]] = {"novos": [], "fora_de_uso": [], "voltaram": []}
+    for c in lista:
+        if c.chave in vindos:
+            if c.fora_de_uso:
+                mudou["voltaram"].append(c.chave)
+            saida.append(replace(c, fora_de_uso=False))
+        elif c.origem == ORIGEM_AUTOMACAO and not c.fora_de_uso:
+            mudou["fora_de_uso"].append(c.chave)
+            saida.append(replace(c, fora_de_uso=True))
+        else:
+            saida.append(c)
+    conhecidas = {c.chave for c in lista}
+    for chave, c in vindos.items():
+        if chave not in conhecidas:
+            saida.append(replace(c, origem=ORIGEM_AUTOMACAO, fora_de_uso=False))
+            mudou["novos"].append(chave)
+    return saida, mudou

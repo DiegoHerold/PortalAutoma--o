@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -109,6 +109,51 @@ async def receber_imagem(job_id: str, imagem_id: str, request: Request, db: Sess
         db.rollback()
         return _erro(exc.status, exc.motivo)
     return JSONResponse(status_code=201, content={"imagem_id": resultado["imagem_id"]})
+
+
+LIMITE_ARQUIVO = 100 * 1024 * 1024
+
+
+@router.put("/{job_id}/arquivos", status_code=201)
+async def receber_arquivo(job_id: str, request: Request, nome: str = Query(..., min_length=1, max_length=255),
+                          item: str | None = Query(default=None, max_length=120), db: Session = Depends(get_db)) -> Any:
+    """Arquivo entregue pela automação (planilha, TXT...), até 100 MB: vira artefato da execução (Fase 8).
+    Só deste job, pelo token no cabeçalho; os bytes nunca passam pelos eventos."""
+    import hashlib
+    import tempfile
+    from pathlib import Path
+
+    from modules.orchestration.infrastructure.orm.models import TaskExecutionRecord
+    from modules.storage.application.use_cases.objetos import GuardarArquivoEntregue
+    from modules.storage.infrastructure.adapters import build_storage_adapters
+
+    grant = _autenticar(db, request, job_id)
+    if isinstance(grant, JSONResponse):
+        return grant
+    if int(request.headers.get("content-length") or 0) > LIMITE_ARQUIVO:
+        return _erro(413, f"arquivo acima de {LIMITE_ARQUIVO} bytes")
+    tipo = (request.headers.get("content-type") or "application/octet-stream").split(";")[0].strip()[:120]
+    resumo, tamanho = hashlib.sha256(), 0
+    with tempfile.TemporaryDirectory(prefix="arquivo_") as pasta:
+        caminho = Path(pasta) / "conteudo"
+        with caminho.open("wb") as destino:
+            async for parte in request.stream():
+                tamanho += len(parte)
+                if tamanho > LIMITE_ARQUIVO:  # Content-Length mentiroso não passa
+                    return _erro(413, f"arquivo acima de {LIMITE_ARQUIVO} bytes")
+                resumo.update(parte)
+                destino.write(parte)
+        if tamanho == 0:
+            return _erro(422, "arquivo vazio")
+        tarefa = db.get(TaskExecutionRecord, grant.task_execution_id)
+        storage = build_storage_adapters(db)
+        artefato = GuardarArquivoEntregue(storage.object_storage, storage.stored_objects, storage.artifacts).execute(
+            execution_id=tarefa.execution_id, task_execution_id=grant.task_execution_id,
+            execution_attempt_id=grant.execution_attempt_id, caminho=caminho, nome=nome,
+            content_type=tipo or "application/octet-stream", sha256=resumo.hexdigest(), tamanho=tamanho,
+            metadados={"item": item} if item else {})
+        db.commit()
+    return JSONResponse(status_code=201, content={"arquivo_id": artefato.id, "nome": artefato.name, "bytes": tamanho})
 
 
 @router.get("/{job_id}/eventos/estado")

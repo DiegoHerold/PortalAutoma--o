@@ -24,6 +24,7 @@ from modules.catalog.api.routes import router as catalog_module_router
 from modules.dispatch.api.routes import router as dispatch_module_router
 from gateway.direct_gateway.instancias import router as instancias_diretas_router
 from modules.access.api.concessoes import router as concessoes_router
+from modules.access.api.times import router as times_router
 from modules.fleet.api.instancias_diretas import router as admin_instancias_router
 from modules.dispatch.api.fila import router as fila_router
 from modules.fleet.api.routes import router as fleet_module_router
@@ -38,6 +39,7 @@ from modules.orchestration.scheduling.api.routes import (
 from modules.orchestration.triggers.api.routes import router as trigger_module_router
 from modules.orchestration.triggers.api.webhooks import router as webhook_module_router
 from modules.storage.api.routes import router as storage_module_router
+from modules.storage.api.arquivos_da_automacao import router as arquivos_da_automacao_router
 from modules.telemetry.api.acompanhar import router as acompanhar_router
 from modules.telemetry.api.painel import router as painel_router
 from modules.catalog.api.itens import router as itens_router
@@ -137,6 +139,7 @@ def register_execution_routes(router: APIRouter) -> None:
     router.include_router(dispatch_module_router, tags=["dispatch"])
     router.include_router(fila_router)
     router.include_router(concessoes_router)
+    router.include_router(times_router)
     router.include_router(instancias_diretas_router)
     router.include_router(admin_instancias_router)
     router.include_router(telemetry_module_router, tags=["telemetry"])
@@ -147,6 +150,7 @@ def register_execution_routes(router: APIRouter) -> None:
     router.include_router(notificacoes_router)
     router.include_router(telemetry_times_router, tags=["telemetry"])
     router.include_router(storage_module_router, tags=["storage"])
+    router.include_router(arquivos_da_automacao_router)
 
 
 def register_flow_routes(router: APIRouter) -> None:

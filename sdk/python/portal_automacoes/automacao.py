@@ -15,7 +15,7 @@ Falha de transporte nunca derruba a automação: o evento fica na fila local e �
 Evento fora do contrato é erro de programação e levanta EventoInvalido na hora.
 
 ``segundo_plano=True`` (ou PORTAL_ENVIO_EM_SEGUNDO_PLANO=1): uma thread do SDK envia os
-eventos, as imagens e consulta os comandos. Quem emite nunca espera a rede: com o Portal
+eventos, as imagens, os arquivos entregues (``arquivo()``) e consulta os comandos. Quem emite nunca espera a rede: com o Portal
 fora do ar, o robô segue no mesmo ritmo e tudo fica na fila local. Recomendado para
 automação de tela (RPA).
 """
@@ -23,6 +23,7 @@ automação de tela (RPA).
 from __future__ import annotations
 
 import hashlib
+import mimetypes
 import os
 import sys
 import tempfile
@@ -39,9 +40,10 @@ from .transporte_agente import TransporteAgente
 from .enderecos import ligado
 from .transporte_direto import TransporteDireto
 
-VERSAO_SDK = "0.2.0"
+VERSAO_SDK = "0.3.0"
 INTERVALO_COMANDOS_S = 2.0
 ESPERA_MAXIMA_S = 30.0  # segundo plano: maior intervalo entre tentativas com o Portal fora do ar
+LIMITE_ARQUIVO = 100 * 1024 * 1024  # o mesmo do Portal
 
 
 class ParadaSolicitada(Exception):
@@ -84,6 +86,8 @@ class Automacao:
         self._acordar = threading.Event()
         self._fim = threading.Event()
         self._fora_do_ar_ate = 0.0
+        self._arquivos: list[tuple[Path, str, str | None]] = []  # entregues e ainda não enviados
+        self._trava_arquivos = threading.Lock()  # só protege a lista; nunca segura outra trava
         self._enviador: threading.Thread | None = None
         if segundo_plano:
             self._enviador = threading.Thread(target=self._enviar_em_segundo_plano, name="portal-automacoes-envio",
@@ -129,6 +133,11 @@ class Automacao:
         return self._transporte.nome
 
     @property
+    def arquivos_pendentes(self) -> int:
+        with self._trava_arquivos:
+            return len(self._arquivos)
+
+    @property
     def pendentes(self) -> int:
         """Eventos ainda sem confirmação (depois de fechar, o que ficou no disco)."""
         return self._pendentes_ao_fechar if self._pendentes_ao_fechar is not None else self._fila.quantidade()
@@ -165,6 +174,13 @@ class Automacao:
                         break
                     continue
             time.sleep(0.5)
+        while self.arquivos_pendentes and time.monotonic() < limite:
+            if not self._enviar_arquivos():
+                time.sleep(0.5)
+        with self._trava_arquivos:
+            perdidos, self._arquivos = self._arquivos, []
+        for caminho, nome, _ in perdidos:
+            self._avisar(f"arquivo '{nome}' não foi enviado ao Portal (continua em {caminho})")
         with self._trava:
             if self._fila.quantidade():
                 self._avisar(f"{self._fila.quantidade()} evento(s) ainda na fila local; serão reenviados na próxima conexão")
@@ -289,6 +305,47 @@ class Automacao:
                     self._fora_do_ar_ate = time.monotonic() + ESPERA_MAXIMA_S
         self._emitir("passo", {"rotulo": rotulo[:200], "tipo": tipo, "imagem_id": imagem_id, "item": self._item})
 
+    def arquivo(self, caminho: str | os.PathLike[str], nome: str | None = None, item: Any = ...) -> None:
+        """Arquivo que a automação entregou (planilha, TXT...): aparece na aba Arquivos do
+        Catálogo, ligado à execução e ao item (por padrão, o item atual). Vai por fora do canal de
+        eventos, até 100 MB. Com o Portal fora do ar, fica pendente e é tentado de novo até
+        ``fechar()``; o que não sair até lá é avisado no log local (o arquivo continua no disco)."""
+        origem = Path(caminho)
+        if not origem.is_file():
+            raise FileNotFoundError(f"arquivo não encontrado: {origem}")
+        tamanho = origem.stat().st_size
+        if tamanho == 0:
+            raise ValueError(f"arquivo vazio: {origem}")
+        if tamanho > LIMITE_ARQUIVO:
+            raise ValueError(f"arquivo acima de 100 MB: {origem}")
+        dono = self._item if item is ... else (None if item is None else str(item))
+        with self._trava_arquivos:
+            self._arquivos.append((origem, (nome or origem.name)[:255], dono))
+        if self._segundo_plano:
+            self._acordar.set()
+        else:
+            self._enviar_arquivos()
+
+    def _enviar_arquivos(self) -> bool:
+        """Envia os pendentes em ordem. ``False``: Portal fora do ar (o resto fica para depois)."""
+        while True:
+            with self._trava_arquivos:
+                if not self._arquivos:
+                    return True
+                caminho, nome, item = self._arquivos[0]
+            try:
+                with self._trava_envio:
+                    tipo = mimetypes.guess_type(nome)[0] or "application/octet-stream"
+                    self._transporte.enviar_arquivo(caminho, nome, item, tipo)
+            except FalhaDeTransporte as exc:
+                self._avisar(f"arquivo '{nome}' não enviado agora: {exc}")
+                return False
+            except (Recusado, OSError) as exc:  # recusa definitiva ou arquivo sumiu: não insiste
+                self._avisar(f"arquivo '{nome}' não enviado: {exc}")
+            with self._trava_arquivos:
+                if self._arquivos and self._arquivos[0] == (caminho, nome, item):
+                    self._arquivos.pop(0)
+
     def espera(self, rotulo: str, desde: str) -> None:
         """Ainda na mesma tela, sem imagem nova. ``desde`` em ISO 8601 com fuso."""
         self._emitir("espera.atualizada", {"desde": desde, "rotulo": rotulo, "item": self._item})
@@ -380,6 +437,8 @@ class Automacao:
             if time.monotonic() < self._fora_do_ar_ate:
                 continue  # fora do ar: não insiste a cada evento novo
             ok = self._descarregar() if self._fila.quantidade() else True
+            if ok and self.arquivos_pendentes:
+                ok = self._enviar_arquivos()
             if ok:
                 espera = 1.0
                 self._consultar_comandos()

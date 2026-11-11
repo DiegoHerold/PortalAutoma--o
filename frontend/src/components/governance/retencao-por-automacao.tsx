@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ImageOff, ScrollText } from "lucide-react";
+import { FileDown, ImageOff, ScrollText } from "lucide-react";
 
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 
-type Linha = { automation_id: number; automacao: string; imagens_dias: number | null; logs_dias: number | null };
+type Linha = { automation_id: number; automacao: string; imagens_dias: number | null; logs_dias: number | null; arquivos_dias: number | null };
 type Resposta = { limites: { minimo: number; maximo: number }; automacoes: Linha[] };
 
 function prazo(dias: number | null): string {
@@ -19,7 +19,7 @@ function prazo(dias: number | null): string {
 }
 
 /**
- * Imagens e logs por automação (Fase 6). Sem prazo, nada é apagado. Com prazo, a limpeza
+ * Imagens, logs e (Fase 8) arquivos entregues por automação. Sem prazo, nada é apagado. Com prazo, a limpeza
  * roda a cada hora e não tem volta: por isso a confirmação mostra o que muda.
  */
 export function RetencaoPorAutomacao() {
@@ -29,15 +29,15 @@ export function RetencaoPorAutomacao() {
 
   if (lista.error) return <ErrorState message={lista.error} onRetry={lista.refetch} />;
   const linhas = (lista.data?.automacoes ?? []).filter((l) => l.automacao.toLowerCase().includes(busca.trim().toLowerCase()));
-  const comPrazo = (lista.data?.automacoes ?? []).filter((l) => l.imagens_dias != null || l.logs_dias != null).length;
+  const comPrazo = (lista.data?.automacoes ?? []).filter((l) => l.imagens_dias != null || l.logs_dias != null || l.arquivos_dias != null).length;
 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="titulo-condensado text-2xl">Imagens e logs por automação</h2>
+          <h2 className="titulo-condensado text-2xl">Imagens, logs e arquivos por automação</h2>
           <p className="max-w-3xl text-muted-foreground">
-            As telas mostram dados de folha e dados pessoais (LGPD). Defina por quantos dias guardar. Sem prazo, nada é
+            As telas e os arquivos entregues (planilhas, TXT) têm dados de folha e dados pessoais (LGPD). Defina por quantos dias guardar. Sem prazo, nada é
             apagado. Com prazo, a limpeza roda a cada hora, apaga de vez e fica na auditoria. Etapas, progresso e o
             histórico de tempos ficam: as estimativas não mudam.
           </p>
@@ -64,6 +64,8 @@ export function RetencaoPorAutomacao() {
                   <span className={l.imagens_dias == null ? "text-muted-foreground" : "font-medium"}>Imagens: {prazo(l.imagens_dias)}</span></p>
                 <p className="flex w-40 items-center gap-2 text-sm"><ScrollText className="h-4 w-4 text-muted-foreground" />
                   <span className={l.logs_dias == null ? "text-muted-foreground" : "font-medium"}>Logs: {prazo(l.logs_dias)}</span></p>
+                <p className="flex w-40 items-center gap-2 text-sm"><FileDown className="h-4 w-4 text-muted-foreground" />
+                  <span className={l.arquivos_dias == null ? "text-muted-foreground" : "font-medium"}>Arquivos: {prazo(l.arquivos_dias)}</span></p>
                 <Button variant="outline" size="sm" onClick={() => setEditando(l)} aria-label={`Definir prazos de ${l.automacao}`}>Definir prazos</Button>
               </li>
             ))}
@@ -82,14 +84,16 @@ function Editar({ linha, limites, onClose, onSaved }: { linha: Linha; limites: R
   const { toast } = useToast();
   const [imagens, setImagens] = useState(linha.imagens_dias?.toString() ?? "");
   const [logs, setLogs] = useState(linha.logs_dias?.toString() ?? "");
+  const [arquivos, setArquivos] = useState(linha.arquivos_dias?.toString() ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   const ler = (v: string) => (v.trim() === "" ? null : Number(v));
-  const novos = { imagens_dias: ler(imagens), logs_dias: ler(logs) };
-  const invalido = [novos.imagens_dias, novos.logs_dias].some((d) => d != null && (!Number.isInteger(d) || d < limites.minimo || d > limites.maximo));
+  const novos = { imagens_dias: ler(imagens), logs_dias: ler(logs), arquivos_dias: ler(arquivos) };
+  const invalido = [novos.imagens_dias, novos.logs_dias, novos.arquivos_dias].some((d) => d != null && (!Number.isInteger(d) || d < limites.minimo || d > limites.maximo));
   const encurta = (antes: number | null, depois: number | null) => depois != null && (antes == null || depois < antes);
-  const apagaMais = encurta(linha.imagens_dias, novos.imagens_dias) || encurta(linha.logs_dias, novos.logs_dias);
+  const apagaMais = encurta(linha.imagens_dias, novos.imagens_dias) || encurta(linha.logs_dias, novos.logs_dias)
+    || encurta(linha.arquivos_dias, novos.arquivos_dias);
 
   async function salvar() {
     setSalvando(true);
@@ -112,9 +116,10 @@ function Editar({ linha, limites, onClose, onSaved }: { linha: Linha; limites: R
         <Button variant={apagaMais ? "destructive" : "primary"} onClick={() => void salvar()} disabled={invalido || salvando}>
           {salvando ? "Salvando…" : apagaMais ? "Salvar e apagar o que passar do prazo" : "Salvar"}</Button></>}>
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {([["Imagens das telas", imagens, setImagens, "retencao-imagens"], ["Linhas de log", logs, setLogs, "retencao-logs"]] as const).map(([rotulo, valor, mudar, id]) => (
-            <label key={id} htmlFor={id} className="space-y-1">
+        <div className="space-y-3">
+          {([["Imagens das telas", imagens, setImagens, "retencao-imagens"], ["Linhas de log", logs, setLogs, "retencao-logs"],
+             ["Arquivos entregues", arquivos, setArquivos, "retencao-arquivos"]] as const).map(([rotulo, valor, mudar, id]) => (
+            <label key={id} htmlFor={id} className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm font-medium">{rotulo}: guardar por</span>
               <span className="flex items-center gap-2">
                 <input id={id} type="number" min={limites.minimo} max={limites.maximo} value={valor} placeholder="sem prazo"

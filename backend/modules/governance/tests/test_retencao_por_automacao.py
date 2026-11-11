@@ -87,8 +87,10 @@ def test_aplicar_so_o_que_tem_prazo_e_audita_o_que_apagou() -> None:
     feito = AplicarRetencao(repo, tele, audit, tx, agora=lambda: AGORA).execute()
     assert tele.chamadas == [("imagens", 7, AGORA - timedelta(days=30)), ("logs", 9, AGORA - timedelta(days=90))]
     assert feito == [
-        {"automation_id": 7, "imagens": 3, "linhas_de_log": 0, "imagens_antes_de": (AGORA - timedelta(days=30)).isoformat(), "logs_antes_de": None},
-        {"automation_id": 9, "imagens": 0, "linhas_de_log": 40, "imagens_antes_de": None, "logs_antes_de": (AGORA - timedelta(days=90)).isoformat()},
+        {"automation_id": 7, "imagens": 3, "linhas_de_log": 0, "arquivos": 0, "imagens_antes_de": (AGORA - timedelta(days=30)).isoformat(),
+         "logs_antes_de": None, "arquivos_antes_de": None},
+        {"automation_id": 9, "imagens": 0, "linhas_de_log": 40, "arquivos": 0, "imagens_antes_de": None,
+         "logs_antes_de": (AGORA - timedelta(days=90)).isoformat(), "arquivos_antes_de": None},
     ]
     assert [(e.action, e.actor_type, e.actor_id, e.resource_type, e.resource_id) for e in audit] == [
         ("retencao.aplicada", "system", None, "automation", "7"), ("retencao.aplicada", "system", None, "automation", "9")]
@@ -117,7 +119,8 @@ def test_definir_valida_grava_e_audita_o_antes() -> None:
     assert r == RetencaoDaAutomacao(7, 30, 90) and repo.gravado == [(r, "adm@x.com")] and tx.vezes == 1
     e = audit[0]
     assert (e.action, e.actor_type, e.actor_id, e.resource_id) == ("retencao.definida", "user", "5", "7")
-    assert e.after == {"imagens_dias": 30, "logs_dias": 90, "antes": {"imagens_dias": 10, "logs_dias": None}}
+    assert e.after == {"imagens_dias": 30, "logs_dias": 90, "arquivos_dias": None,
+                       "antes": {"imagens_dias": 10, "logs_dias": None, "arquivos_dias": None}}
     with pytest.raises(PrazoInvalido):
         DefinirRetencao(repo, audit, tx).execute(ator, 7, 0, None)
     assert len(repo.gravado) == 1 and tx.vezes == 1
@@ -130,3 +133,48 @@ def test_retencao_e_imutavel() -> None:
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         RetencaoDaAutomacao(7, 1, 1).imagens_dias = 2  # type: ignore[misc]
+
+
+# -- Fase 8: arquivos entregues ---------------------------------------------------------------
+class _Arquivos:
+    def __init__(self, apagados: int = 0) -> None:
+        self.chamadas: list[tuple[int, datetime]] = []
+        self.apagados = apagados
+
+    def apagar_arquivos(self, automation_id, antes_de):
+        self.chamadas.append((automation_id, antes_de))
+        return self.apagados
+
+
+def test_prazo_de_arquivos() -> None:
+    assert validar(7, None, None, 1) == RetencaoDaAutomacao(7, None, None, 1)
+    assert RetencaoDaAutomacao(7).arquivos_dias is None
+    for dias in (0, 3651):
+        with pytest.raises(PrazoInvalido, match="o prazo de arquivos vai de 1 a 3650 dias"):
+            validar(7, None, None, dias)
+
+
+def test_aplicar_apaga_arquivos_so_com_prazo_e_audita() -> None:
+    tele, arquivos, audit, tx = _Telemetria(), _Arquivos(apagados=4), _Lista(), _Commit()
+    repo = _Repo([RetencaoDaAutomacao(7, None, None, 15), RetencaoDaAutomacao(9, 30, None, None)])
+    feito = AplicarRetencao(repo, tele, audit, tx, agora=lambda: AGORA, arquivos=arquivos).execute()
+    assert arquivos.chamadas == [(7, AGORA - timedelta(days=15))]
+    assert feito == [{"automation_id": 7, "imagens": 0, "linhas_de_log": 0, "arquivos": 4, "imagens_antes_de": None,
+                      "logs_antes_de": None, "arquivos_antes_de": (AGORA - timedelta(days=15)).isoformat()}]
+    assert [e.resource_id for e in audit] == ["7"] and audit[0].after["arquivos"] == 4 and tx.vezes == 2
+
+
+def test_sem_adaptador_de_arquivos_o_prazo_nao_e_aplicado() -> None:
+    tele, audit = _Telemetria(), _Lista()
+    feito = AplicarRetencao(_Repo([RetencaoDaAutomacao(7, None, None, 15)]), tele, audit, _Commit(),
+                            agora=lambda: AGORA).execute()
+    assert feito == [] and list(audit) == []
+
+
+def test_definir_arquivos_audita() -> None:
+    from types import SimpleNamespace
+
+    repo, audit = _Repo([]), _Lista()
+    r = DefinirRetencao(repo, audit, _Commit()).execute(SimpleNamespace(id=5, email=None), 7, None, None, 60)
+    assert r == RetencaoDaAutomacao(7, None, None, 60) and repo.gravado == [(r, "5")]
+    assert audit[0].after == {"imagens_dias": None, "logs_dias": None, "arquivos_dias": 60, "antes": None}

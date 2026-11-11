@@ -250,6 +250,19 @@ class AutomationFormRecord(Base):
     automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), primary_key=True)
     entrada: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     colunas: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    item: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # nome, chave e grupo vindos da declaração
     versao: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     updated_by: Mapped[str | None] = mapped_column(String(120))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class AutomationItemProposalRecord(Base):
+    """Tabela de itens que a automação mandou ao conectar, à espera de aprovação (Fase 8)."""
+
+    __tablename__ = "automation_item_proposals"
+
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), primary_key=True)
+    linhas: Mapped[list] = mapped_column(JSONB, nullable=False)
+    resumo: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    instancia_id: Mapped[str | None] = mapped_column(String(80))
+    recebida_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

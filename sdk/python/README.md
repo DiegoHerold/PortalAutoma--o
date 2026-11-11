@@ -48,6 +48,7 @@ with Automacao.conectar(versao_automacao="2.3.0") as a:
 | `a.progresso(atual, total, rotulo)` | `progresso` |
 | `a.log(texto, nivel="info", espera=False)` | `log` |
 | `a.passo(rotulo, tipo="acao", imagem=)` | `passo`; a imagem vai por fora e o evento leva só o id |
+| `a.arquivo(caminho, nome=, item=)` | Sem evento: planilha, TXT etc. (até 100 MB) vão para a aba **Arquivos** do Catálogo, ligados à execução e ao item atual |
 | `a.espera(rotulo, desde)` | `espera.atualizada` |
 | `a.atencao(motivo, colunas, linhas, acoes)` | `atencao` (dentro de um item) |
 | `with a.pausa("reinicio", detalhe)` | `pausa.iniciada` / `pausa.concluida`: tempo fora da estimativa |
@@ -59,6 +60,9 @@ Garantias:
   disco e é reenviado na ordem, sem duplicar.
 - Evento fora do contrato é erro de programação e levanta `EventoInvalido` na hora.
 - Imagem vazia, de uma cor só ou corrompida nunca sai da máquina.
+- Arquivo entregue com o Portal fora do ar fica pendente e é tentado de novo até `fechar()`;
+  o que não sair até lá é avisado no log local (o arquivo continua no disco). No modo agente,
+  o arquivo é copiado para a pasta de artefatos da tentativa e o Agent o envia.
 
 ## Configuração
 
@@ -92,8 +96,27 @@ def executar(job, ambiente):
             with a.item(item["chave"], rotulo=item.get("rotulo")):
                 ...
 
-trabalhar(Instancia.carregar("integracao-contabil"), executar)
+trabalhar(Instancia.carregar("integracao-contabil"), executar, declaracao=montar_declaracao)
 ```
+
+`declaracao` (um dicionário ou uma função que o monta) é enviada assim que a instância pode
+receber jobs. Com ela, o Portal fica sabendo, sem cadastro manual:
+
+```python
+{
+  "versao": "2.0.0",
+  "parametros": [{"chave": "competencia", "rotulo": "Competência", "tipo": "mes_ano", "obrigatorio": True}],
+  "itens": {"nome": "Empresa", "chave": "codigo", "grupo": "matriz_codigo",
+            "colunas": [{"chave": "caminho_saida", "rotulo": "Pasta de destino", "tipo": "pasta"}]},
+  "tabela": [{"chave": "5081", "rotulo": "Matriz", "atributos": {"caminho_saida": r"F:\Folha\5081"}}]
+}
+```
+
+- `parametros`: o que o Portal pede ao executar. O Portal **só acrescenta**: campo novo entra,
+  o que foi editado lá continua como está, e o que a automação deixou de mandar fica
+  "fora de uso" (não some).
+- `tabela`: vira uma **prévia** na aba Itens; alguém com "editar itens" aprova ou descarta.
+- Pela linha de comando: `portal-automacoes trabalhar --nome folha --declaracao declaracao.json -- ...`
 
 - A chave privada é gerada na máquina e fica cifrada pelo DPAPI, no escopo do usuário que
   inscreveu: outro usuário ou outra máquina não a usa. O arquivo fica em

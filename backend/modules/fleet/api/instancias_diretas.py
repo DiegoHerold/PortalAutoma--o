@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from infrastructure.database import get_db
@@ -14,6 +14,7 @@ from modules.access.api.dependencies import get_current_user
 from modules.access.application.use_cases import PermissionChecker
 from modules.access.domain import AuthorizationDenied
 from modules.access.infrastructure.adapters import build_access_adapters
+from modules.fleet.application.remover_maquina import MaquinaNaoEncontrada, MaquinaOcupada, PrecisaConfirmar, RemoverMaquina
 from modules.fleet.application.use_cases.instancias_diretas import DecidirInstancia, GerarCodigoDeInscricao
 from modules.fleet.domain.instancia_direta import TransicaoInvalida
 from modules.fleet.infrastructure.repositories.sqlalchemy_direct_instances import (
@@ -88,7 +89,7 @@ def cadastrar_maquina(corpo: dict[str, Any] = Body(...), db: Session = Depends(g
         raise HTTPException(status_code=422, detail="Informe o nome da máquina (2 a 120 caracteres).")
     maquinas = SqlAlchemyMachineStore(db)
     if maquinas.nome_em_uso(nome):
-        raise HTTPException(status_code=409, detail="Já existe uma máquina ativa com esse nome.")
+        raise HTTPException(status_code=409, detail="Já existe uma máquina com esse nome.")
     machine_id = f"mch_{uuid4().hex[:12]}"
     maquinas.adicionar(machine_id=machine_id, nome=nome)
     build_governance_adapters(db).audit.append(AuditEvent(
@@ -96,3 +97,36 @@ def cadastrar_maquina(corpo: dict[str, Any] = Body(...), db: Session = Depends(g
         resource_id=machine_id, after={"nome": nome}, occurred_at=datetime.now(UTC)))
     db.commit()
     return {"id": machine_id, "nome": nome}
+
+
+def _remover(db: Session) -> RemoverMaquina:
+    from modules.orchestration.infrastructure.repositories.uso_da_maquina import SqlAlchemyUsoDaMaquina
+
+    return RemoverMaquina(SqlAlchemyMachineStore(db), SqlAlchemyUsoDaMaquina(db), build_governance_adapters(db).audit, db)
+
+
+@router.get("/maquinas/{machine_id}/vinculos")
+def vinculos_da_maquina(machine_id: str, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """O que depende da máquina: a tela mostra antes de pedir a confirmação para apagar."""
+    _gestor(db, user)
+    try:
+        return _remover(db).vinculos(machine_id)
+    except MaquinaNaoEncontrada as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/maquinas/{machine_id}")
+def apagar_maquina(machine_id: str, confirmar: bool = Query(default=False), db: Session = Depends(get_db),
+                   user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """Com vínculos, só com ``confirmar=true`` (409 com a lista); com execução rodando, nunca (409)."""
+    por = _gestor(db, user)
+    try:
+        return _remover(db).execute(por, machine_id, confirmar=confirmar)
+    except MaquinaNaoEncontrada as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MaquinaOcupada as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PrecisaConfirmar as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={"mensagem": str(exc), "vinculos": exc.vinculos}) from exc

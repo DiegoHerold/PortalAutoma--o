@@ -12,6 +12,7 @@ import type { ExecucaoAoVivo, MaquinaNoPainel, Painel } from "@/lib/painel";
 import { cn } from "@/lib/utils";
 import { ErrorState } from "@/components/shared/error-state";
 import { ImagemDoPasso } from "@/components/acompanhar/imagem-do-passo";
+import { BotaoExecutar, UltimasAutomacoes, useDisparo } from "@/components/painel/disparo-rapido";
 
 const GRADES = [1, 2, 4, 6, 9] as const;
 const COLUNAS: Record<number, string> = { 1: "grid-cols-1", 2: "lg:grid-cols-2", 4: "lg:grid-cols-2", 6: "lg:grid-cols-3", 9: "lg:grid-cols-3" };
@@ -32,6 +33,8 @@ export function PainelAoVivo() {
   const passou = useSegundosDesde(data?.gerado_em, Boolean(data?.execucoes.length));
   const [modo, setModo] = useState<"monitores" | "central">("monitores");
   const [grade, setGrade] = useState<number>(4);
+  const [pedidos, setPedidos] = useState(0);
+  const { disparar, janela } = useDisparo(() => { setPedidos((n) => n + 1); void refetch(); });
 
   useEffect(() => {
     try {
@@ -81,6 +84,7 @@ export function PainelAoVivo() {
               ))}
             </div>
           )}
+          <BotaoExecutar disparar={disparar} />
           {central && (
             <div className="flex rounded-lg border border-border bg-card p-1" aria-label="Telas por vez">
               {GRADES.map((g) => (
@@ -104,6 +108,8 @@ export function PainelAoVivo() {
 
       <Resumo rodando={data.execucoes.length} livres={livres} maquinas={data.maquinas.length} fila={data.fila} />
 
+      {!central && <UltimasAutomacoes disparar={disparar} atualizar={pedidos} />}
+
       {central ? (
         <Central data={data} grade={grade} passou={passou} />
       ) : data.execucoes.length === 0 ? (
@@ -117,6 +123,7 @@ export function PainelAoVivo() {
       )}
 
       {!central && data.maquinas.length > 0 && <Maquinas maquinas={data.maquinas} />}
+      {janela}
     </div>
   );
 }
@@ -317,12 +324,14 @@ function QuadroLivre({ m }: { m: MaquinaNoPainel }) {
 function NadaRodando({ maquinas }: { maquinas: MaquinaNoPainel[] }) {
   const proximo = maquinas.map((m) => m.proximo).find((p) => p?.inicio_previsto);
   return (
-    <div className="rounded-xl border border-dashed border-border bg-card/60 px-6 py-16 text-center">
-      <MonitorPlay className="mx-auto h-10 w-10 text-muted-foreground" />
-      <p className="titulo-condensado mt-3 text-2xl">Nada rodando agora</p>
-      <p className="mt-1 text-muted-foreground">
-        {proximo ? `O próximo job começa ${relativo(proximo.inicio_previsto)}, às ${horario(proximo.inicio_previsto)}.` : "A fila está vazia."}
-      </p>
+    <div className="flex items-center gap-4 rounded-xl border border-dashed border-border bg-card/60 px-6 py-5" data-testid="nada-rodando">
+      <MonitorPlay className="h-8 w-8 shrink-0 text-muted-foreground" />
+      <div>
+        <p className="titulo-condensado text-xl">Nada rodando agora</p>
+        <p className="text-muted-foreground">
+          {proximo ? `O próximo job começa ${relativo(proximo.inicio_previsto)}, às ${horario(proximo.inicio_previsto)}.` : "A fila está vazia."}
+        </p>
+      </div>
     </div>
   );
 }

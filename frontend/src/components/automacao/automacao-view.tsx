@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { History, LayoutDashboard, ListChecks, Play, Radio, Settings2, SlidersHorizontal, Wrench } from "lucide-react";
+import { FileDown, History, LayoutDashboard, ListChecks, Play, Radio, Settings2, SlidersHorizontal, Wrench } from "lucide-react";
 
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
 import { useAvisos, useSegundosDesde } from "@/hooks/use-avisos";
+import type { Formulario } from "@/lib/campos";
 import { duracao, horario, type VisaoFila } from "@/lib/fila";
 import type { ExecucaoNoHistorico, Painel } from "@/lib/painel";
 import { cn } from "@/lib/utils";
 import { AutomationDetail } from "@/components/automations/automation-detail";
+import { ArquivosDaAutomacao } from "@/components/automacao/arquivos-da-automacao";
 import { ExecutarAutomacao } from "@/components/automacao/executar-automacao";
 import { EditorDeCampos } from "@/components/campos/editor-de-campos";
 import { LinhaDoHistorico } from "@/components/historico/historico-view";
@@ -24,7 +26,8 @@ import type { Automation } from "@/types/automation";
 const ABAS = [
   { id: "geral", rotulo: "Visão geral", icone: LayoutDashboard },
   { id: "itens", rotulo: "Itens", icone: ListChecks },
-  { id: "campos", rotulo: "Campos", icone: SlidersHorizontal },
+  { id: "campos", rotulo: "Entradas", icone: SlidersHorizontal },
+  { id: "arquivos", rotulo: "Arquivos", icone: FileDown },
   { id: "historico", rotulo: "Histórico", icone: History },
   { id: "tecnico", rotulo: "Técnico", icone: Wrench },
 ] as const;
@@ -32,7 +35,7 @@ type Aba = (typeof ABAS)[number]["id"];
 
 type Historico = { cursor: string | null; execucoes: ExecucaoNoHistorico[] };
 
-/** A automação no Catálogo: o que roda agora, a fila, o histórico, os itens, os campos e o botão Executar. */
+/** A automação no Catálogo: o que roda agora, a fila, o histórico, os itens, as entradas, os arquivos e o botão Executar. */
 export function AutomacaoView({ id }: { id: string }) {
   const automacao = useApi<Automation>(`/automations/${id}`);
   const painel = useApi<Painel>("/painel", { pollMs: 30000 });
@@ -106,9 +109,10 @@ export function AutomacaoView({ id }: { id: string }) {
       </nav>
 
       {aba === "geral" && <VisaoGeral id={id} rodando={rodando} naFila={naFila} painel={painel.data} aoVivo={aoVivo}
-        executar={() => setExecutando(true)} verHistorico={() => abrir("historico")} />}
+        executar={() => setExecutando(true)} verHistorico={() => abrir("historico")} verEntradas={() => abrir("campos")} />}
       {aba === "itens" && <ItensDaAutomacao id={id} embutido nome={nome} />}
       {aba === "campos" && <EditorDeCampos id={id} />}
+      {aba === "arquivos" && <ArquivosDaAutomacao id={id} />}
       {aba === "historico" && <HistoricoDaAutomacao id={id} />}
       {aba === "tecnico" && (
         <div className="space-y-4">
@@ -125,7 +129,7 @@ export function AutomacaoView({ id }: { id: string }) {
   );
 }
 
-function VisaoGeral({ id, rodando, naFila, painel, aoVivo, executar, verHistorico }: {
+function VisaoGeral({ id, rodando, naFila, painel, aoVivo, executar, verHistorico, verEntradas }: {
   id: string;
   rodando: Painel["execucoes"];
   naFila: VisaoFila["jobs"];
@@ -133,9 +137,12 @@ function VisaoGeral({ id, rodando, naFila, painel, aoVivo, executar, verHistoric
   aoVivo: boolean;
   executar: () => void;
   verHistorico: () => void;
+  verEntradas: () => void;
 }) {
   const passou = useSegundosDesde(painel?.gerado_em, rodando.length > 0);
   const ultimas = useApi<Historico>(`/historico?automacao=${id}&limite=5`);
+  const form = useApi<Formulario>(`/automations/${id}/formulario`);
+  const pede = (form.data?.entrada ?? []).filter((c) => !c.fora_de_uso);
   return (
     <div className="space-y-8">
       <section className="space-y-3">
@@ -154,6 +161,22 @@ function VisaoGeral({ id, rodando, naFila, painel, aoVivo, executar, verHistoric
           </div>
         )}
       </section>
+
+      {form.data && (
+        <section className="space-y-2" data-testid="o-que-pede">
+          <div className="flex items-center justify-between">
+            <h2 className="titulo-condensado text-2xl">Para executar</h2>
+            <button onClick={verEntradas} className="text-sm font-medium text-primary hover:underline">Ver as entradas</button>
+          </div>
+          <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
+            {form.data.item && <span className="rounded-md border border-border bg-card px-2.5 py-1 font-medium text-foreground">{form.data.item.nome}s</span>}
+            {pede.map((c) => (
+              <span key={c.chave} className="rounded-md bg-secondary px-2.5 py-1 text-secondary-foreground">{c.rotulo}{c.obrigatorio ? " *" : ""}</span>
+            ))}
+            {!form.data.item && pede.length === 0 && <span>Não pede nenhuma informação.</span>}
+          </p>
+        </section>
+      )}
 
       {naFila.length > 0 && (
         <section className="space-y-3">

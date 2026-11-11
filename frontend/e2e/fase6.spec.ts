@@ -143,7 +143,7 @@ for (const tema of ["light", "dark"] as const) {
     await page.getByRole("button", { name: "Salvar e apagar o que passar do prazo" }).click();
     await expect(lista.getByText("Imagens: 30 dias")).toHaveCount(2);
     expect(pedidos.filter((p) => p.metodo === "PUT").map((p) => [p.caminho, p.corpo])).toEqual([
-      ["/governance/retencao-por-automacao/7", { imagens_dias: 30, logs_dias: null }]]);
+      ["/governance/retencao-por-automacao/7", { imagens_dias: 30, logs_dias: null, arquivos_dias: null }]]);
     expect(erros).toEqual([]);
   });
 }

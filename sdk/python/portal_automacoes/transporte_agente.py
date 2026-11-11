@@ -11,6 +11,7 @@ from __future__ import annotations
 import _winapi
 import json
 import msvcrt
+import shutil
 import time
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -88,6 +89,20 @@ class TransporteAgente:
         temporario = self._pasta_imagens / f"{imagem_id}.jpg.tmp"
         temporario.write_bytes(jpeg)
         temporario.replace(self._pasta_imagens / f"{imagem_id}.jpg")
+
+    def enviar_arquivo(self, caminho: Path, nome: str, item: str | None, tipo: str) -> None:
+        """Copia para a pasta de artefatos da tentativa; o Agent recolhe e envia ao Portal.
+        Nome repetido ganha um número, para um arquivo não apagar o outro."""
+        pasta = self._pasta_imagens.parent
+        pasta.mkdir(parents=True, exist_ok=True)
+        destino = pasta / nome
+        base, extensao, n = destino.stem, destino.suffix, 2
+        while destino.exists():
+            destino = pasta / f"{base} ({n}){extensao}"
+            n += 1
+        temporario = destino.with_name(destino.name + ".tmp")
+        shutil.copyfile(caminho, temporario)
+        temporario.replace(destino)
 
     # -- linhas -------------------------------------------------------------
     def _escrever(self, mensagem: dict[str, Any]) -> None:

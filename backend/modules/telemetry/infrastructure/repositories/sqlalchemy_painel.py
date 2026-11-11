@@ -97,6 +97,60 @@ class SqlAlchemyPainelReader:
             "itens": [i["chave"] for i in itens.get(t.id, [])], "ativa": a.completed_at is None,
         } for a, t, m, c in linhas]
 
+    def ultimas_execucoes(self, *, machine_id: str | None, varredura: int = 300) -> list[dict[str, Any]]:
+        """Execuções mais recentes (rodando ou terminadas), da mais nova, com a automação, as
+        máquinas e as chaves dos itens. ``machine_id``: só as que passaram por essa máquina.
+        Automação arquivada não entra (não dá para executar de novo)."""
+        from modules.catalog.infrastructure.orm.models import CatalogAutomationRecord, CatalogAutomationVersionRecord
+
+        maquina = func.coalesce(ExecutionAttemptRecord.machine_id, AgentRecord.machine_id)
+        quando = func.coalesce(OrchestrationExecutionRecord.completed_at, OrchestrationExecutionRecord.started_at,
+                               OrchestrationExecutionRecord.created_at)
+        consulta = (
+            select(OrchestrationExecutionRecord, TaskExecutionRecord.id, CatalogAutomationRecord.id, CatalogAutomationRecord.name)
+            .join(TaskExecutionRecord, TaskExecutionRecord.execution_id == OrchestrationExecutionRecord.id)
+            .join(CatalogAutomationVersionRecord, CatalogAutomationVersionRecord.id == TaskExecutionRecord.automation_version_id)
+            .join(CatalogAutomationRecord, CatalogAutomationRecord.id == CatalogAutomationVersionRecord.automation_id)
+            .where(CatalogAutomationRecord.status != "archived")
+            .order_by(quando.desc()).limit(varredura))
+        if machine_id:
+            consulta = consulta.where(TaskExecutionRecord.id.in_(
+                select(ExecutionAttemptRecord.task_execution_id)
+                .outerjoin(AgentRecord, AgentRecord.id == ExecutionAttemptRecord.agent_id)
+                .where(maquina == machine_id)))
+        linhas = self.db.execute(consulta).all()
+        if not linhas:
+            return []
+        tarefas = [t for _, t, _, _ in linhas]
+        itens = self._itens(tarefas)
+        nomes_de_maquina: dict[str, list[str]] = {}
+        for tarefa, nome in self.db.execute(
+            select(ExecutionAttemptRecord.task_execution_id, MachineRecord.name).distinct()
+            .outerjoin(AgentRecord, AgentRecord.id == ExecutionAttemptRecord.agent_id)
+            .join(MachineRecord, MachineRecord.id == maquina)
+            .where(ExecutionAttemptRecord.task_execution_id.in_(tarefas))
+        ):
+            nomes_de_maquina.setdefault(tarefa, []).append(nome)
+        saida: dict[str, dict[str, Any]] = {}
+        for e, tarefa, automation_id, nome in linhas:
+            atual = saida.get(e.id)
+            if atual is None:
+                momento = e.completed_at or e.started_at or e.created_at
+                atual = saida[e.id] = {"execucao_id": e.id, "status": e.status, "automation_id": automation_id,
+                                       "automacao": nome, "quando": momento.isoformat() if momento else None,
+                                       "itens": [], "maquinas": []}
+            atual["itens"] += [i["chave"] for i in itens.get(tarefa, []) if i["chave"] not in atual["itens"]]
+            atual["maquinas"] += [m for m in nomes_de_maquina.get(tarefa, []) if m not in atual["maquinas"]]
+        return list(saida.values())
+
+    def automacoes_ativas(self) -> list[dict[str, Any]]:
+        from modules.catalog.infrastructure.orm.models import CatalogAutomationRecord
+
+        return [{"id": a.id, "nome": a.name, "descricao": a.description} for a in self.db.scalars(
+            select(CatalogAutomationRecord).where(CatalogAutomationRecord.status != "archived",
+                                                  CatalogAutomationRecord.is_active.is_(True))
+            .order_by(CatalogAutomationRecord.name))]
+
     def historico(self, *, busca: str | None, automation_id: int | None, situacao: str | None,
                   antes_de: datetime | None, limite: int) -> tuple[list[dict[str, Any]], str | None]:
         """Execuções terminadas, da mais recente. O cursor é o horário da última linha lida

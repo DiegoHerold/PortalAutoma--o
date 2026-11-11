@@ -18,7 +18,7 @@ from infrastructure.database import get_db
 from modules.access.api.authorization import acesso_por_automacao, ensure_automation_grant
 from modules.access.api.dependencies import get_current_user
 from modules.access.domain.concessao import EDITAR_ITENS, EXECUTAR
-from modules.catalog.domain.formulario import TIPOS, FormularioInvalido, validar_campos
+from modules.catalog.domain.formulario import TIPOS, FormularioInvalido, manter_marcas, validar_campos
 from modules.catalog.infrastructure.repositories.sqlalchemy_itens import SqlAlchemyItemRegistry
 from modules.governance.domain.audit import AuditEvent
 from modules.governance.infrastructure.adapters import build_governance_adapters
@@ -71,6 +71,8 @@ def gravar(automation_id: int, corpo: dict[str, Any] = Body(...), db: Session = 
     if erros:
         raise HTTPException(status_code=422, detail={"campos": erros})
     antes = registro.formulario(automation_id)
+    listas = {"entrada": manter_marcas(antes.entrada, listas["entrada"]),
+              "colunas": manter_marcas(antes.colunas, listas["colunas"])}
     versao = registro.gravar_formulario(automation_id, listas["entrada"], listas["colunas"],
                                         str(getattr(user, "id", "")) or "desconhecido")
     build_governance_adapters(db).audit.append(AuditEvent(

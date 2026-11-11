@@ -56,9 +56,11 @@ def build_aplicar_retencao(db: Session):
     from modules.governance.infrastructure.repositories.sqlalchemy_retencao import SqlAlchemyRetencaoPorAutomacao
     from modules.storage.application.use_cases.objetos import ApagarObjeto
     from modules.storage.infrastructure.adapters import build_storage_adapters
+    from modules.storage.infrastructure.repositories.sqlalchemy_retencao_arquivos import SqlAlchemyRetencaoDosArquivos
     from modules.telemetry.infrastructure.repositories.sqlalchemy_retencao import SqlAlchemyRetencaoDaTelemetria
 
     storage = build_storage_adapters(db)
     governanca = build_governance_adapters(db)
-    telemetria = SqlAlchemyRetencaoDaTelemetria(db, ApagarObjeto(storage.object_storage, storage.stored_objects))
-    return AplicarRetencao(SqlAlchemyRetencaoPorAutomacao(db), telemetria, governanca.audit, _Transacao(db))
+    apagar = ApagarObjeto(storage.object_storage, storage.stored_objects)
+    return AplicarRetencao(SqlAlchemyRetencaoPorAutomacao(db), SqlAlchemyRetencaoDaTelemetria(db, apagar),
+                           governanca.audit, _Transacao(db), arquivos=SqlAlchemyRetencaoDosArquivos(db, apagar))

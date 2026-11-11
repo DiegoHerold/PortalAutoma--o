@@ -156,6 +156,44 @@ def status(request: Request, fabrica: Any = Depends(get_session_factory)) -> Any
                 "recebe_jobs": pode_receber_jobs(instancia.status)}
 
 
+LIMITE_DECLARACAO = 5 * 1024 * 1024
+
+
+@router.post("/declaracao")
+async def declaracao(request: Request, fabrica: Any = Depends(get_session_factory)) -> Any:
+    """A automação diz o que pede para executar, o que é um item e manda a tabela dela (Fase 8).
+    Só instância aprovada: a declaração muda os campos da automação no Portal."""
+    from modules.catalog.application.declaracao import ReceberDeclaracao
+    from modules.catalog.domain.formulario import FormularioInvalido
+    from modules.catalog.infrastructure.repositories.sqlalchemy_itens import SqlAlchemyItemRegistry
+
+    if not (request.headers.get("content-type") or "").startswith("application/json"):
+        return _erro(415, "envie Content-Type: application/json")
+    bruto = b""
+    async for parte in request.stream():
+        bruto += parte
+        if len(bruto) > LIMITE_DECLARACAO:
+            return _erro(413, "declaração acima de 5 MB")
+    try:
+        dados = json.loads(bruto or b"{}")
+    except ValueError:
+        return _erro(400, "JSON inválido")
+    with _Uso(fabrica) as uso:
+        instancia = _autenticar(uso, request)
+        if instancia is None:
+            return _erro(401, "sessão inválida")
+        if not pode_receber_jobs(instancia.status):
+            return _erro(403, "instância ainda não aprovada")
+        try:
+            resultado = ReceberDeclaracao(SqlAlchemyItemRegistry(uso.db), uso.audit).execute(
+                instancia.automation_id, instancia.id, dados)
+        except FormularioInvalido as exc:
+            uso.db.rollback()
+            return JSONResponse(status_code=422, content={"erro": "declaração inválida", "campos": exc.campos})
+        uso.db.commit()
+        return resultado
+
+
 @router.get("/jobs/proximo")
 async def proximo_job(request: Request, espera: int = 0, fabrica: Any = Depends(get_session_factory)) -> Any:
     """O próximo job reservado para esta instância. Com ``espera``, aguarda até N s (máx. 30)."""
