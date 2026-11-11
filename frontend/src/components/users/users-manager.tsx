@@ -76,7 +76,7 @@ export function UsersManager() {
         token,
         body: JSON.stringify(body),
       });
-      toast({ title: editing ? "Usuario atualizado" : "Usuario criado", kind: "success" });
+      toast({ title: editing ? "Usuário atualizado" : "Usuário criado", kind: "success" });
       setForm(emptyForm);
       setEditing(null);
       setModalOpen(false);
@@ -91,10 +91,10 @@ export function UsersManager() {
 
   async function removeUser(user: User) {
     if (!token) return;
-    if (!window.confirm(`Apagar o usuario "${user.name}"?`)) return;
+    if (!window.confirm(`Apagar o usuário "${user.name}"?`)) return;
     try {
       await apiRequest<void>(`/users/${user.id}`, { method: "DELETE", token });
-      toast({ title: "Usuario apagado", kind: "success" });
+      toast({ title: "Usuário apagado", kind: "success" });
       await users.refetch();
       setDraft(null);
     } catch (err) {
@@ -156,7 +156,7 @@ export function UsersManager() {
           }),
         }),
       });
-      toast({ title: "Permissoes salvas", kind: "success" });
+      toast({ title: "Permissões salvas", kind: "success" });
       await users.refetch();
       setDraft(null);
     } catch (err) {
@@ -177,9 +177,9 @@ export function UsersManager() {
       ) : users.loading ? (
         <Skeleton className="h-64 rounded-lg" />
       ) : list.length === 0 ? (
-        <EmptyState icon={UsersIcon} title="Sem usuarios" description="Crie o primeiro usuario." />
+        <EmptyState icon={UsersIcon} title="Sem usuários" description="Crie o primeiro usuário." />
       ) : (
-        <div className="rounded-lg border border-border bg-card">
+        <div className="rounded-xl border border-border bg-card">
           <Table>
             <THead>
               <TR className="hover:bg-transparent">
@@ -187,7 +187,7 @@ export function UsersManager() {
                 <TH>E-mail</TH>
                 <TH>Papel</TH>
                 <TH>Status</TH>
-                <TH className="text-right">Acoes</TH>
+                <TH className="text-right">Ações</TH>
               </TR>
             </THead>
             <TBody>
@@ -208,15 +208,15 @@ export function UsersManager() {
                           variant="ghost"
                           size="icon"
                           onClick={() => setExpanded(expanded === user.id ? null : user.id)}
-                          title="Permissoes"
+                          title="Permissões"
                         >
                           <ShieldCheck className="h-4 w-4" />
                           <ChevronDown className={cn("h-3 w-3 transition-transform", expanded === user.id && "rotate-180")} />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(user)} title="Editar usuario">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(user)} title="Editar usuário">
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => removeUser(user)} title="Apagar usuario">
+                        <Button variant="ghost" size="icon" onClick={() => removeUser(user)} title="Apagar usuário">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -249,7 +249,7 @@ export function UsersManager() {
                           })}
                           <div className="flex justify-end">
                             <Button size="sm" onClick={() => savePermissions(user)}>
-                              Salvar permissoes
+                              Salvar permissões
                             </Button>
                           </div>
                         </div>
@@ -266,7 +266,7 @@ export function UsersManager() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? "Editar usuario" : "Novo usuario"}
+        title={editing ? "Editar usuário" : "Novo usuário"}
         footer={
           <>
             <Button variant="ghost" onClick={() => setModalOpen(false)}>

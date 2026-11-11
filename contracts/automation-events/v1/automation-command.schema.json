@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/automation-events/v1/automation-command.schema.json",
+  "title": "AutomationCommand",
+  "description": "Comando do Portal para a automação. Chega pela conexão que a própria automação (modo direto) ou o Agent (modo agente) abriu.",
+  "type": "object",
+  "required": ["protocol_version", "command_id", "type", "issued_at"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "const": "automation-events/1" },
+    "command_id": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[A-Za-z0-9_-]+$" },
+    "type": {
+      "description": "parar_apos_item: termina o item atual e não começa outro. cancelar: interrompe o quanto antes.",
+      "enum": ["parar_apos_item", "cancelar"]
+    },
+    "issued_at": { "type": "string", "format": "date-time", "maxLength": 40 },
+    "motivo": { "type": "string", "maxLength": 300 }
+  }
+}

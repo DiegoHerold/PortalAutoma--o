@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from modules.storage.application.dto import ArtifactDTO, InitiateArtifactUploadCommand
 from modules.storage.application.use_cases.artifacts import InitiateArtifactUpload
@@ -29,7 +29,7 @@ def test_stored_object_rejects_unsafe_object_key() -> None:
 
 
 def test_initiate_artifact_upload_refreshes_expired_existing_session() -> None:
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     stored_object = StoredObject(
         id="obj-1",
         bucket="execution-artifacts",

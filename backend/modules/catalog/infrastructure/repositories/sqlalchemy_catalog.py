@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -165,6 +165,16 @@ class SqlAlchemyCatalogRepository:
         self.db.flush()
         return self._automation_to_dto(row)
 
+    def restore_automation(self, automation_id: int) -> AutomationDTO:
+        row = self.db.get(Automation, automation_id)
+        if row is None:
+            raise ValueError("Automation not found.")
+        row.status = "active"
+        row.is_active = True
+        self.db.add(row)
+        self.db.flush()
+        return self._automation_to_dto(row)
+
     def create_source(self, automation_id: int, payload: dict[str, Any]) -> AutomationSourceDTO:
         row = AutomationSource(automation_id=automation_id, **payload)
         self.db.add(row)
@@ -274,7 +284,7 @@ class SqlAlchemyCatalogRepository:
         for key, value in payload.items():
             if key == "status":
                 row.status = value
-                now = datetime.utcnow()
+                now = datetime.now(UTC)
                 if value == "published":
                     row.published_at = row.published_at or now
                 if value == "deprecated":
@@ -298,7 +308,7 @@ class SqlAlchemyCatalogRepository:
             validation_status="valid" if validation.is_valid else "invalid",
             validation_errors=validation.to_payload() or None,
             validator_version="catalog-v1",
-            validated_at=datetime.utcnow(),
+            validated_at=datetime.now(UTC),
         )
         self.db.add(record)
         self.db.flush()
@@ -342,11 +352,11 @@ class SqlAlchemyCatalogRepository:
         for key, value in payload.items():
             setattr(row, key, value)
         if payload.get("status") in {"valid", "invalid"}:
-            row.validated_at = row.validated_at or datetime.utcnow()
+            row.validated_at = row.validated_at or datetime.now(UTC)
         if payload.get("status") == "published":
-            row.published_at = row.published_at or datetime.utcnow()
+            row.published_at = row.published_at or datetime.now(UTC)
         if payload.get("status") == "blocked":
-            row.blocked_at = row.blocked_at or datetime.utcnow()
+            row.blocked_at = row.blocked_at or datetime.now(UTC)
         self.db.add(row)
         self.db.flush()
         return self._package_to_dto(row)
@@ -424,7 +434,7 @@ class SqlAlchemyCatalogRepository:
                 row.metadata_json = value
             elif key == "status":
                 row.status = value
-                now = datetime.utcnow()
+                now = datetime.now(UTC)
                 if value == "published":
                     row.published_at = row.published_at or now
                 if value == "deprecated":

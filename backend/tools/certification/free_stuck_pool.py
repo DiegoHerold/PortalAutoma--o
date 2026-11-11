@@ -27,8 +27,8 @@ Este script:
      created/offered/accepted (o caso mais provavel aqui), ou manda um
      comando de cancelamento gracioso pro Agent caso contrario.
 
-Uso (rode de dentro do container do backend):
-  docker compose exec -T backend python -u -m tools.certification.free_stuck_pool agt_CI0ZDEZtkhgWt1INDFEj7Bh
+Uso (rode a partir de backend/ com o virtualenv):
+  .venv/Scripts/python -u -m tools.certification.free_stuck_pool agt_CI0ZDEZtkhgWt1INDFEj7Bh
 """
 
 from __future__ import annotations

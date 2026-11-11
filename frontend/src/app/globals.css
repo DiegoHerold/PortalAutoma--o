@@ -3,96 +3,148 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * Identidade Biason (ADR-020): navy da marca, névoa como acento, Barlow no texto
+   * e Barlow Condensed em títulos e números. As cores ficam só aqui; as telas usam
+   * os nomes semânticos (primary, muted, success…) pelo Tailwind.
+   */
   :root {
-    --radius: 0.75rem;
-    --font-sans: "Segoe UI", Arial, Helvetica, sans-serif;
-    --font-display: "Trebuchet MS", "Segoe UI", Arial, Helvetica, sans-serif;
+    --radius: 0.625rem;
+    --font-sans: var(--fonte-barlow), "Segoe UI", Arial, Helvetica, sans-serif;
+    --font-display: var(--fonte-barlow-condensada), var(--fonte-barlow), "Segoe UI", Arial, sans-serif;
     --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 
-    /* Surfaces — warm paper */
-    --background: 40 24% 98%;
-    --foreground: 222 20% 14%;
+    /* Superfícies — fundo névoa-claro, cartões brancos */
+    --background: 210 31% 95%;
+    --foreground: 220 28% 25%;
+    --titulo: 223 47% 15%;
     --card: 0 0% 100%;
-    --card-foreground: 222 20% 14%;
+    --card-foreground: 220 28% 25%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 20% 14%;
+    --popover-foreground: 220 28% 25%;
 
-    --muted: 40 14% 94%;
-    --muted-foreground: 220 9% 42%;
-    --accent: 40 16% 92%;
-    --accent-foreground: 222 20% 14%;
-    --secondary: 40 14% 94%;
-    --secondary-foreground: 222 20% 14%;
+    --muted: 216 38% 97%;
+    --muted-foreground: 219 17% 44%;
+    --accent: 208 42% 91%;
+    --accent-foreground: 213 63% 17%;
+    --secondary: 213 33% 94%;
+    --secondary-foreground: 223 47% 15%;
 
-    --border: 220 14% 89%;
-    --input: 220 14% 86%;
-    --ring: 26 90% 48%;
+    --border: 212 31% 89%;
+    --input: 211 26% 81%;
+    --ring: 214 57% 25%;
 
-    /* Brand accent — marigold */
-    --primary: 26 90% 48%;
-    --primary-foreground: 40 30% 98%;
+    /* Marca — marinho Biason */
+    --primary: 214 57% 25%;
+    --primary-foreground: 0 0% 100%;
+    --nevoa: 206 38% 79%;
+    --areia: 39 47% 71%;
 
-    /* Semantic status */
-    --destructive: 0 72% 51%;
+    /* Estados */
+    --destructive: 4 76% 40%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 58% 38%;
+    --success: 150 62% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 48%;
-    --warning-foreground: 30 40% 12%;
-    --info: 205 85% 46%;
+    --warning: 36 90% 34%;
+    --warning-foreground: 0 0% 100%;
+    --info: 211 64% 40%;
     --info-foreground: 0 0% 100%;
 
-    /* Sidebar — graphite */
-    --sidebar: 224 24% 11%;
-    --sidebar-foreground: 220 16% 82%;
-    --sidebar-border: 224 18% 20%;
-    --sidebar-accent: 224 20% 17%;
+    /* Menu lateral — noite Biason */
+    --sidebar: 223 47% 15%;
+    --sidebar-foreground: 211 35% 84%;
+    --sidebar-border: 222 34% 23%;
+    --sidebar-accent: 220 40% 21%;
+    --sidebar-primary: 206 38% 79%;
+
+    /* Faixas de resumo e fundo das telas: claros no tema claro (pedido de 10/11/2026) */
+    --faixa-fundo: 0 0% 100%;
+    --faixa-texto: 223 47% 15%;
+    --faixa-rotulo: 214 57% 25%;
+    --faixa-apoio: 219 17% 44%;
+    --faixa-alerta: 36 90% 34%;
+    --faixa-divisao: 212 31% 89%;
+    --tela-fundo: 213 33% 94%;
   }
 
   .dark {
-    --background: 224 24% 8%;
-    --foreground: 40 22% 95%;
-    --card: 224 22% 11%;
-    --card-foreground: 40 22% 95%;
-    --popover: 224 22% 11%;
-    --popover-foreground: 40 22% 95%;
+    --background: 221 53% 9%;
+    --foreground: 211 41% 90%;
+    --titulo: 0 0% 100%;
+    --card: 221 50% 13%;
+    --card-foreground: 211 41% 90%;
+    --popover: 221 50% 13%;
+    --popover-foreground: 211 41% 90%;
 
-    --muted: 224 16% 16%;
-    --muted-foreground: 220 12% 62%;
-    --accent: 224 16% 18%;
-    --accent-foreground: 40 22% 95%;
-    --secondary: 224 16% 16%;
-    --secondary-foreground: 40 22% 95%;
+    --muted: 220 47% 17%;
+    --muted-foreground: 216 24% 66%;
+    --accent: 220 44% 20%;
+    --accent-foreground: 211 41% 92%;
+    --secondary: 220 47% 17%;
+    --secondary-foreground: 211 41% 90%;
 
-    --border: 224 14% 20%;
-    --input: 224 14% 24%;
-    --ring: 26 90% 55%;
+    --border: 222 43% 21%;
+    --input: 222 40% 27%;
+    --ring: 206 38% 79%;
 
-    --primary: 28 92% 55%;
-    --primary-foreground: 224 30% 9%;
+    /* No escuro o acento vira névoa com texto noite, como o botão principal do Comunica */
+    --primary: 206 38% 79%;
+    --primary-foreground: 223 47% 15%;
+    --nevoa: 206 38% 79%;
+    --areia: 39 47% 71%;
 
-    --destructive: 0 66% 55%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 152 52% 46%;
-    --success-foreground: 224 30% 9%;
-    --warning: 38 90% 55%;
-    --warning-foreground: 30 40% 10%;
-    --info: 205 82% 58%;
-    --info-foreground: 224 30% 9%;
+    --destructive: 4 82% 67%;
+    --destructive-foreground: 223 47% 12%;
+    --success: 151 49% 48%;
+    --success-foreground: 223 47% 12%;
+    --warning: 38 71% 58%;
+    --warning-foreground: 223 47% 12%;
+    --info: 209 61% 65%;
+    --info-foreground: 223 47% 12%;
 
-    --sidebar: 224 28% 7%;
-    --sidebar-foreground: 220 16% 78%;
-    --sidebar-border: 224 16% 16%;
-    --sidebar-accent: 224 22% 14%;
+    --sidebar: 220 49% 7%;
+    --sidebar-foreground: 211 30% 80%;
+    --sidebar-border: 222 40% 15%;
+    --sidebar-accent: 221 45% 14%;
+    --sidebar-primary: 206 38% 79%;
+
+    --faixa-fundo: 223 47% 15%;
+    --faixa-texto: 0 0% 100%;
+    --faixa-rotulo: 206 38% 79%;
+    --faixa-apoio: 213 22% 67%;
+    --faixa-alerta: 39 47% 71%;
+    --faixa-divisao: 222 34% 23%;
+    --tela-fundo: 221 53% 9%;
   }
 
   * {
     @apply border-border;
   }
 
+  /*
+   * O portal cresce com a tela (pedido de 10/11/2026: texto pequeno em telas grandes).
+   * Tudo no Tailwind é rem, então texto, ícones e espaços crescem juntos:
+   * ~14px até 1280px, ~14px em 1440px, ~16px em 1920px, no máximo 17,6px.
+   */
+  html {
+    /* 80% da escala anterior (pedido de 10/11/2026: "em 80% fica ótimo") */
+    font-size: clamp(13.6px, calc(0.36vw + 9px), 17.6px);
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: hsl(var(--titulo));
+  }
+
+  ::selection {
+    background: hsl(var(--nevoa) / 0.45);
   }
 
   a {
@@ -107,6 +159,47 @@
 }
 
 @layer components {
+  /* Eyebrow Biason: caixa alta espaçada com tracinho névoa antes */
+  .eyebrow {
+    @apply inline-flex items-center gap-2.5 text-xs font-bold uppercase text-primary;
+    letter-spacing: 0.14em;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 22px;
+    height: 2px;
+    border-radius: 2px;
+    background: hsl(var(--nevoa));
+  }
+  .titulo-condensado {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  /* Faixa de resumo: cartão claro no tema claro; noite em degradê no escuro (como o Comunica) */
+  .faixa-noite {
+    background: hsl(var(--faixa-fundo));
+    color: hsl(var(--faixa-texto));
+    border: 1px solid hsl(var(--border));
+    border-bottom: 3px solid hsl(var(--nevoa));
+  }
+  .dark .faixa-noite {
+    background: linear-gradient(100deg, #0e1729 0%, #141e37 55%, #17264a 100%);
+    border-color: transparent;
+    border-bottom-color: hsl(var(--nevoa));
+  }
+  .faixa-rotulo {
+    color: hsl(var(--faixa-rotulo));
+  }
+  .faixa-valor {
+    color: hsl(var(--faixa-texto));
+  }
+  .faixa-apoio {
+    color: hsl(var(--faixa-apoio));
+  }
+  .faixa-alerta {
+    color: hsl(var(--faixa-alerta));
+  }
   .skeleton {
     @apply relative overflow-hidden rounded-md bg-muted;
   }

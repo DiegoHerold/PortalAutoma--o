@@ -75,7 +75,7 @@ export function WebhookMappingEditor({
       onChange(Object.keys(normalized).length ? normalized : null);
       setAdvanced(false);
     } catch (err) {
-      setJsonError(err instanceof Error ? err.message : "JSON invalido.");
+      setJsonError(err instanceof Error ? err.message : "JSON inválido.");
     }
   }
 
@@ -91,9 +91,9 @@ export function WebhookMappingEditor({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <Label>Mapeamento de parametros</Label>
+          <Label>Mapeamento de parâmetros</Label>
           <p className="text-xs text-muted-foreground">
-            Sintaxe aceita pelo backend: body.campo, headers.nome, query_params.nome. Constantes ainda nao fazem parte deste contrato.
+            Sintaxe aceita pelo backend: body.campo, headers.nome, query_params.nome. Constantes ainda não fazem parte deste contrato.
           </p>
         </div>
         <button type="button" className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2" onClick={() => setAdvanced((value) => !value)}>
@@ -124,7 +124,7 @@ export function WebhookMappingEditor({
               <Button size="icon" variant="ghost" onClick={() => removeRow(row.id)}>
                 <Trash2 className="h-4 w-4" />
               </Button>
-              {invalidRows.has(row.id) && <p className="text-xs text-destructive md:col-span-4">Destino e path sao obrigatorios; destino nao deve conter espacos.</p>}
+              {invalidRows.has(row.id) && <p className="text-xs text-destructive md:col-span-4">Destino e path são obrigatórios; destino não deve conter espaços.</p>}
             </div>
           ))}
           <Button size="sm" variant="outline" onClick={addRow}>

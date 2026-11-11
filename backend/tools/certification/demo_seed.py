@@ -4,8 +4,8 @@ catalogo do Portal (via API HTTP real, os mesmos endpoints que o frontend
 usa), publica a versao, e dispara uma execucao real no Agent conectado -
 depois espera o resultado e mostra o que aconteceu.
 
-Roda de dentro do container do backend:
-  docker compose exec -T backend python -m tools.certification.demo_seed
+Roda a partir de backend/ com o virtualenv:
+  .venv/Scripts/python -m tools.certification.demo_seed
 """
 
 from __future__ import annotations
@@ -24,7 +24,11 @@ from tools.certification.execution import wait_until_terminal, ExecutionTimeoutE
 PORTAL_API_URL = os.environ.get("CERTIFICATION_PORTAL_API_URL", "http://localhost:8000/api/v1")
 ADMIN_EMAIL = os.environ.get("CERTIFICATION_ADMIN_EMAIL", "admin@portal.local")
 ADMIN_PASSWORD = os.environ.get("CERTIFICATION_ADMIN_PASSWORD", "admin123")
-PACKAGE_SOURCE_DIR = "/certification-packages/demo_fiscal"
+PACKAGES_ROOT = os.environ.get(
+    "CERTIFICATION_PACKAGES_ROOT",
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "automation-agent", "certification"),
+)
+PACKAGE_SOURCE_DIR = os.path.join(PACKAGES_ROOT, "demo_fiscal")
 
 CATEGORY_NAME = "Biason Demo"
 CATEGORY_SLUG = "biason-demo"

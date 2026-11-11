@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -70,7 +70,7 @@ class InitiatePackageUpload:
             expected_size_bytes=expected_size_bytes,
             expected_sha256=expected_sha256,
             created_by=actor.actor_id or actor.actor_email,
-            expires_at=datetime.utcnow() + timedelta(minutes=30),
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
         )
         upload_url = self.temporary_urls.create_upload_url(upload_session, expires_in_seconds=1800)
         upload_session = UploadSession(
@@ -187,7 +187,7 @@ class CompletePackageUpload:
             provider=self.object_storage.provider_name,
             status=StoredObjectStatus.VERIFIED if status == "valid" else StoredObjectStatus.INVALID,
             created_at=stored_object.created_at,
-            verified_at=datetime.utcnow(),
+            verified_at=datetime.now(UTC),
         )
         self.stored_objects.update(updated_object)
         completed = UploadSession(
@@ -200,7 +200,7 @@ class CompletePackageUpload:
             created_by=upload_session.created_by,
             created_at=upload_session.created_at,
             expires_at=upload_session.expires_at,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(UTC),
         )
         self.upload_sessions.update(completed)
         package = self.catalog.update_package(
@@ -267,7 +267,7 @@ class AbortPackageUpload:
             created_by=upload_session.created_by,
             created_at=upload_session.created_at,
             expires_at=upload_session.expires_at,
-            aborted_at=datetime.utcnow(),
+            aborted_at=datetime.now(UTC),
         )
         self.upload_sessions.update(aborted)
         self.audit.append(

@@ -42,6 +42,8 @@ class TaskExecutionStatus(StrEnum):
     CANCELLED = "cancelled"
     TIMED_OUT = "timed_out"
     SKIPPED = "skipped"
+    # Máquina sem sinal: espera uma pessoa escolher continuar ou recomeçar (nunca volta sozinho).
+    LOST = "lost"
 
 
 class ExecutionAttemptStatus(StrEnum):

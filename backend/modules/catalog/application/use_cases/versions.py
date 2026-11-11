@@ -13,7 +13,7 @@ from modules.catalog.domain.errors import (
     RuntimeCompatibilityError,
 )
 from modules.catalog.domain.events import automation_version_event
-from modules.catalog.domain.manifest import parse_automation_manifest
+from modules.catalog.domain.manifest import ENTRYPOINT_EXTERNA, parse_automation_manifest
 from modules.catalog.domain.states import AutomationPackageStatus, RuntimeVersionStatus
 from modules.catalog.domain.value_objects import SemVer
 from modules.governance.domain.audit import AuditEvent
@@ -163,16 +163,20 @@ class PublishAutomationVersion:
             raise ImmutablePublishedVersionError("Deprecated or blocked versions cannot be published.")
         if not version.manifest_id:
             raise CatalogValidationError("Version requires a valid manifest before publication.")
-        if not version.package_id:
-            raise CatalogValidationError("Version requires a valid package before publication.")
-        package = self.catalog.get_package(version.package_id)
-        if package is None or package.status not in {AutomationPackageStatus.VALID, AutomationPackageStatus.PUBLISHED, "valid", "published"}:
-            raise CatalogValidationError("Version requires a valid package before publication.")
-        runtime_version = self.catalog.find_runtime_version(version.runtime_id, version.runtime_version)
-        if runtime_version is None and version.runtime_version_id:
-            runtime_version = self.catalog.get_runtime_version(version.runtime_version_id)
-        if runtime_version is None or runtime_version.status != RuntimeVersionStatus.PUBLISHED:
-            raise RuntimeCompatibilityError("RuntimeVersion must exist and be published before publishing an AutomationVersion.")
+        # Automação externa roda instalada na máquina dela (modo direto): sem pacote nem runtime do Portal.
+        externa = version.entrypoint_type == ENTRYPOINT_EXTERNA
+        package = runtime_version = None
+        if not externa:
+            if not version.package_id:
+                raise CatalogValidationError("Version requires a valid package before publication.")
+            package = self.catalog.get_package(version.package_id)
+            if package is None or package.status not in {AutomationPackageStatus.VALID, AutomationPackageStatus.PUBLISHED, "valid", "published"}:
+                raise CatalogValidationError("Version requires a valid package before publication.")
+            runtime_version = self.catalog.find_runtime_version(version.runtime_id, version.runtime_version)
+            if runtime_version is None and version.runtime_version_id:
+                runtime_version = self.catalog.get_runtime_version(version.runtime_version_id)
+            if runtime_version is None or runtime_version.status != RuntimeVersionStatus.PUBLISHED:
+                raise RuntimeCompatibilityError("RuntimeVersion must exist and be published before publishing an AutomationVersion.")
 
         current = self.catalog.get_latest_published_version(automation_id)
         if current is not None and current.id != version.id:
@@ -181,11 +185,12 @@ class PublishAutomationVersion:
             version_id,
             {
                 "status": "published",
-                "runtime_version_id": runtime_version.id,
+                "runtime_version_id": runtime_version.id if runtime_version else version.runtime_version_id,
                 "published_by": actor.actor_id or actor.actor_email,
             },
         )
-        self.catalog.update_package(package.id, {"status": "published"})
+        if package is not None:
+            self.catalog.update_package(package.id, {"status": "published"})
         self.audit.append(
             AuditEvent(
                 id=str(uuid4()),

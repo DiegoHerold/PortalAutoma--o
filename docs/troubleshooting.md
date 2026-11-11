@@ -70,5 +70,5 @@ python3 -m pytest tests/domain -q
 Cobre manifesto, empacotamento, storage local e autenticação/assinatura do
 GitHub App — 39 testes, sem precisar de Postgres/Redis rodando. Testes de
 endpoint/serviço que dependem de banco de dados real precisam de
-`docker compose up` (ver `docs/deployment.md`); não foram automatizados nesta
+o Portal em execucao (ver `docs/deployment.md`); não foram automatizados nesta
 sessão por não haver Postgres disponível no ambiente de execução.

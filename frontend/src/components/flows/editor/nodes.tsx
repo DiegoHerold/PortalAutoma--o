@@ -89,7 +89,7 @@ function BranchOutputHandle({ id, leftPercent, label, dotClassName }: { id: stri
   return (
     <>
       <span
-        className="pointer-events-none absolute -bottom-5 max-w-[90px] truncate whitespace-nowrap text-center text-[10px] font-medium text-muted-foreground"
+        className="pointer-events-none absolute -bottom-5 max-w-[90px] truncate whitespace-nowrap text-center text-xs font-medium text-muted-foreground"
         style={{ left: `${leftPercent}%`, transform: "translateX(-50%)" }}
         title={label}
       >
@@ -141,7 +141,7 @@ function OutputHandles({ node }: { node: FlowNode }) {
   const label = node.node_type === "join" || node.node_type === "merge" ? "Continuar" : "Próxima etapa";
   return (
     <>
-      <span className="pointer-events-none absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-muted-foreground">{label}</span>
+      <span className="pointer-events-none absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-medium text-muted-foreground">{label}</span>
       <Handle type="source" position={Position.Bottom} className="!h-2.5 !w-2.5 !border-border !bg-muted-foreground" />
     </>
   );
@@ -172,7 +172,7 @@ function BaseFlowNode({ data, selected }: NodeProps<FlowCanvasNode>) {
       )}
     >
       {isMultiInput && <ConvergingInputMarks />}
-      <span className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-medium text-muted-foreground">
+      <span className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-medium text-muted-foreground">
         {isMultiInput ? "Entradas" : "Entrada"}
       </span>
       <Handle type="target" position={Position.Top} className="!h-2.5 !w-2.5 !border-border !bg-muted-foreground" />
@@ -185,7 +185,7 @@ function BaseFlowNode({ data, selected }: NodeProps<FlowCanvasNode>) {
       </div>
 
       <div className="space-y-1.5 px-3 py-2.5 text-xs text-muted-foreground">
-        <p className="truncate font-mono text-[11px]">{flowNode.key}</p>
+        <p className="truncate font-mono text-xs">{flowNode.key}</p>
 
         {flowNode.node_type === "automation" && (
           <p className="truncate">
@@ -197,14 +197,14 @@ function BaseFlowNode({ data, selected }: NodeProps<FlowCanvasNode>) {
         {summary && <p className="leading-4 text-muted-foreground">{summary}</p>}
 
         {flowNode.failure_policy !== "fail_flow" && (
-          <p className="truncate text-[11px] text-muted-foreground/80">on fail: {failurePolicyLabel(flowNode.failure_policy)}</p>
+          <p className="truncate text-xs text-muted-foreground/80">on fail: {failurePolicyLabel(flowNode.failure_policy)}</p>
         )}
 
         {runtimeStatus ? (
           <div className="flex items-center justify-between pt-1">
             <span
               className={cn(
-                "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                "rounded-full px-2 py-0.5 text-xs font-medium",
                 statusMeta?.tone === "success" && "bg-success/15 text-success",
                 statusMeta?.tone === "destructive" && "bg-destructive/15 text-destructive",
                 statusMeta?.tone === "info" && "bg-info/15 text-info",
@@ -214,13 +214,13 @@ function BaseFlowNode({ data, selected }: NodeProps<FlowCanvasNode>) {
             >
               {statusMeta?.label}
             </span>
-            {runtimeMeta?.attemptNumber ? <span className="text-[10px]">tentativa {runtimeMeta.attemptNumber}</span> : null}
+            {runtimeMeta?.attemptNumber ? <span className="text-xs">tentativa {runtimeMeta.attemptNumber}</span> : null}
           </div>
         ) : (
-          hasIssues && <p className="truncate text-[11px] font-medium text-destructive">{issues.length} problema(s)</p>
+          hasIssues && <p className="truncate text-xs font-medium text-destructive">{issues.length} problema(s)</p>
         )}
 
-        {runtimeMeta?.agentLabel && <p className="truncate text-[11px]">{runtimeMeta.agentLabel}</p>}
+        {runtimeMeta?.agentLabel && <p className="truncate text-xs">{runtimeMeta.agentLabel}</p>}
       </div>
 
       <OutputHandles node={flowNode} />

@@ -4,7 +4,7 @@ using Biason.AutomationAgent.Certification.Core.Processes;
 namespace Biason.AutomationAgent.Certification.Cli;
 
 /// <summary>
-/// Shells out to `docker compose exec backend python -m
+/// Shells out to `backend/.venv/Scripts/python -m
 /// tools.certification.cli ...` — the Portal-side half of the harness
 /// (backend/tools/certification/cli.py). Keeping the Portal HTTP contract
 /// implemented once, in Python, next to the modules it calls, instead of
@@ -22,9 +22,13 @@ public sealed class BackendCli
     private async Task<JsonDocument> RunAsync(string subcommand, TimeSpan timeout, CancellationToken ct)
     {
         var result = await ShellRunner.RunAsync(
-            "docker",
-            $"compose exec -T -e CERTIFICATION_PACKAGES_ROOT=/certification-packages backend python -m tools.certification.cli {subcommand}",
-            workingDirectory: _repoRoot,
+            Path.Combine(_repoRoot, "backend", ".venv", "Scripts", "python.exe"),
+            $"-m tools.certification.cli {subcommand}",
+            workingDirectory: Path.Combine(_repoRoot, "backend"),
+            environment: new Dictionary<string, string?>
+            {
+                ["CERTIFICATION_PACKAGES_ROOT"] = Path.Combine(_repoRoot, "automation-agent", "certification"),
+            },
             timeout: timeout,
             ct: ct);
 

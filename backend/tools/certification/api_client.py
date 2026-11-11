@@ -6,8 +6,8 @@ Every method maps 1:1 to a route in `backend/modules/*/api/routes.py`. No
 endpoint here is certification-specific — this is the same public API a
 human operator or the frontend would call.
 
-Deliberately dependency-light (httpx only) so it can run either inside the
-backend container (`docker compose exec backend python -m
+Deliberately dependency-light (httpx only) so it can run either from the
+backend virtualenv (`.venv/Scripts/python -m
 tools.certification.cli ...`) or from the harness's own environment.
 """
 
@@ -38,8 +38,7 @@ class PortalApiClient:
     """Synchronous Portal API client.
 
     `base_url` should point at the `/api/v1` prefix, e.g.
-    ``http://localhost:8000/api/v1`` from the host or
-    ``http://backend:8000/api/v1`` from inside the compose network.
+    ``http://localhost:8000/api/v1``.
     """
 
     base_url: str

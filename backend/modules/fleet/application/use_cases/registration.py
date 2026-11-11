@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from modules.fleet.application.dto import ActorDTO, AgentCredentialDTO, AgentDTO, RegistrationResultDTO, RegistrationTokenDTO
@@ -238,4 +238,4 @@ def _issue_credential(credentials: AgentCredentialRepository, agent_id: str, now
 
 
 def _naive(value: datetime) -> datetime:
-    return value.replace(tzinfo=None) if value.tzinfo is not None else value
+    return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)

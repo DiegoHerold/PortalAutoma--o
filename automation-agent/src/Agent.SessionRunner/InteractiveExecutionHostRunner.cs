@@ -212,6 +212,7 @@ public sealed class InteractiveExecutionHostRunner
             "execution.failed" => LocalMessageTypes.InteractiveExecutionFailed,
             "execution.cancelled" => LocalMessageTypes.InteractiveExecutionCancelled,
             "execution.heartbeat" => LocalMessageTypes.InteractiveExecutionHeartbeat,
+            "automation.event" => LocalMessageTypes.InteractiveAutomationEvent,
             _ => LocalMessageTypes.InteractiveExecutionLog
         };
 

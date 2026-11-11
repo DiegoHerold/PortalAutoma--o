@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -13,7 +13,7 @@ from modules.governance.domain.audit import AuditEvent
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)
 
 
 def new_id(prefix: str) -> str:
@@ -121,7 +121,7 @@ def parse_datetime(value: Any, fallback: datetime | None = None) -> datetime:
         return value
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+            return _em_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
         except ValueError:
             pass
     return fallback or utcnow()
@@ -134,3 +134,8 @@ def _int_or_none(value: Any) -> int | None:
         return max(0, int(value))
     except (TypeError, ValueError):
         return None
+
+
+def _em_utc(valor: datetime) -> datetime:
+    """Texto sem fuso é UTC; com fuso, convertido para UTC (o banco guarda timestamptz)."""
+    return valor.astimezone(UTC) if valor.tzinfo is not None else valor.replace(tzinfo=UTC)

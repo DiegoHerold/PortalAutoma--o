@@ -29,7 +29,7 @@ export function ValidationSummary({
           return (
             <li key={i} className="flex items-start justify-between gap-2 text-xs text-muted-foreground">
               <span>
-                <Badge tone="destructive" className="mr-1.5 text-[10px]">
+                <Badge tone="destructive" className="mr-1.5 text-xs">
                   {issue.code}
                 </Badge>
                 {issue.message}

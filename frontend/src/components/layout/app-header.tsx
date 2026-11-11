@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { RealtimeIndicator } from "@/components/layout/realtime-indicator";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { SinoDeAvisos } from "@/components/layout/sino-de-avisos";
 
 export function AppHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const router = useRouter();
@@ -46,18 +47,19 @@ export function AppHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       >
         <Search className="h-4 w-4" />
         <span className="flex-1 text-left">Buscar…</span>
-        <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px]">⌘K</kbd>
+        <kbd className="rounded border border-border px-1.5 py-0.5 text-xs">⌘K</kbd>
       </button>
 
       <div className="flex flex-1 items-center justify-end gap-2">
         <RealtimeIndicator />
+        <SinoDeAvisos />
         <ThemeToggle />
         <div className="relative">
           <button
             onClick={() => setMenuOpen((o) => !o)}
             className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-3 text-sm transition-colors hover:bg-accent"
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+            <span className="titulo-condensado flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#2b4a73] to-[#1b3a63] text-sm text-white ring-1 ring-inset ring-nevoa/40">
               {initials}
             </span>
             <span className="hidden max-w-[120px] truncate font-medium sm:inline">{user?.name ?? "Usuário"}</span>

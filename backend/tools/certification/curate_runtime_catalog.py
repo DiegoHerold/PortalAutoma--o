@@ -43,8 +43,8 @@ python-background, standalone-executable, playwright-browser duplicado,
 etc.) nao corresponde a nenhum caso de RuntimeLauncher.BuildStartInfo (ou
 duplica um dos 5 acima com outro nome) - e deprecado.
 
-Roda de dentro do container do backend:
-  docker compose exec -T backend python -m tools.certification.curate_runtime_catalog
+Roda a partir de backend/ com o virtualenv:
+  .venv/Scripts/python -m tools.certification.curate_runtime_catalog
 """
 
 from __future__ import annotations

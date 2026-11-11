@@ -52,7 +52,7 @@ export function WeekView({
             type="button"
             onClick={() => setRangeKey(key)}
             className={cn(
-              "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+              "rounded px-2 py-0.5 text-xs font-medium transition-colors",
               rangeKey === key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -82,7 +82,7 @@ export function WeekView({
         <div className="grid grid-cols-[56px_repeat(7,1fr)]" style={{ height: totalHeight }}>
           <div className="relative border-r border-border">
             {hours.map((hour) => (
-              <div key={hour} className="tabular absolute left-0 right-1 -translate-y-1/2 text-right text-[11px] text-muted-foreground" style={{ top: (hour - range.start) * HOUR_PX }}>
+              <div key={hour} className="tabular absolute left-0 right-1 -translate-y-1/2 text-right text-xs text-muted-foreground" style={{ top: (hour - range.start) * HOUR_PX }}>
                 {hourLabel(hour)}
               </div>
             ))}
@@ -110,7 +110,7 @@ export function WeekView({
                         key={groupKey}
                         type="button"
                         onClick={() => setCluster({ title: `${groupItems.length} execuções simultâneas`, items: groupItems })}
-                        className="absolute overflow-hidden rounded-md border border-warning/40 bg-warning/10 px-1.5 py-1 text-left text-[11px] font-medium text-warning shadow-sm"
+                        className="absolute overflow-hidden rounded-md border border-warning/40 bg-warning/10 px-1.5 py-1 text-left text-xs font-medium text-warning shadow-sm"
                         style={{ top: block.topPx, height: Math.max(block.heightPx, 20), left: "2%", width: "96%" }}
                       >
                         {groupItems.length} execuções — ver todas

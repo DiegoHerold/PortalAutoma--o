@@ -70,14 +70,14 @@ export function DayView({
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
       <div className="flex items-center justify-end gap-1 border-b border-border bg-muted/20 px-2 py-1.5">
-        <span className="mr-1 text-[11px] text-muted-foreground">Agrupar por:</span>
+        <span className="mr-1 text-xs text-muted-foreground">Agrupar por:</span>
         {GROUP_OPTIONS.map((opt) => (
           <button
             key={opt.value}
             type="button"
             onClick={() => onGroupByChange(opt.value)}
             className={cn(
-              "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+              "rounded px-2 py-0.5 text-xs font-medium transition-colors",
               groupBy === opt.value ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -99,7 +99,7 @@ export function DayView({
         <div className="grid" style={{ gridTemplateColumns: `56px repeat(${columns.length}, 1fr)`, height: totalHeight }}>
           <div className="relative border-r border-border">
             {Array.from({ length: 24 }, (_, hour) => (
-              <div key={hour} className="tabular absolute left-0 right-1 -translate-y-1/2 text-right text-[11px] text-muted-foreground" style={{ top: hour * HOUR_PX }}>
+              <div key={hour} className="tabular absolute left-0 right-1 -translate-y-1/2 text-right text-xs text-muted-foreground" style={{ top: hour * HOUR_PX }}>
                 {hourLabel(hour)}
               </div>
             ))}
@@ -133,7 +133,7 @@ export function DayView({
                         key={groupKey}
                         type="button"
                         onClick={() => setCluster({ title: `${groupItems.length} execuções simultâneas`, items: groupItems })}
-                        className="absolute overflow-hidden rounded-md border border-warning/40 bg-warning/10 px-1.5 py-1 text-left text-[11px] font-medium text-warning shadow-sm"
+                        className="absolute overflow-hidden rounded-md border border-warning/40 bg-warning/10 px-1.5 py-1 text-left text-xs font-medium text-warning shadow-sm"
                         style={{ top: block.top, height: block.height, left: "2%", width: "96%" }}
                       >
                         {groupItems.length} execuções — ver todas

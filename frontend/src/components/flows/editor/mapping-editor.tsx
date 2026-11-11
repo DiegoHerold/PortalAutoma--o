@@ -188,7 +188,7 @@ export function MappingEditor({
               </Select>
             )}
 
-            {fieldErrors[row.id] && <p className="text-[11px] text-destructive">{fieldErrors[row.id]}</p>}
+            {fieldErrors[row.id] && <p className="text-xs text-destructive">{fieldErrors[row.id]}</p>}
           </div>
         ))}
         {!readOnly && (

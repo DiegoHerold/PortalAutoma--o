@@ -17,7 +17,7 @@ export function AppShell({ children }: PropsWithChildren) {
         <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <AppHeader onOpenSidebar={() => setMobileOpen(true)} />
-          <main className="mx-auto w-full max-w-[1400px] flex-1 space-y-6 px-4 py-6 sm:px-6 lg:py-8">{children}</main>
+          <main className="mx-auto w-full max-w-[110rem] flex-1 space-y-6 px-4 py-6 sm:px-6 lg:py-8">{children}</main>
         </div>
       </div>
     </RealtimeStatusProvider>

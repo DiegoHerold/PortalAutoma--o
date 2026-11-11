@@ -52,8 +52,8 @@ export function LegacyChainedTriggers({
             <TH>Destino</TH>
             <TH>Condicao</TH>
             <TH>Status</TH>
-            <TH>Ultima utilizacao</TH>
-            <TH className="text-right">Acoes</TH>
+            <TH>Última utilizacao</TH>
+            <TH className="text-right">Ações</TH>
           </TR>
         </THead>
         <TBody>
@@ -81,7 +81,7 @@ export function LegacyChainedTriggers({
                         Desativar
                       </Button>
                     )}
-                    <Button size="icon" variant="ghost" onClick={() => onDelete(trigger)} title="Excluir apos validacao">
+                    <Button size="icon" variant="ghost" onClick={() => onDelete(trigger)} title="Excluir após validação">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

@@ -99,6 +99,15 @@ class TaskExecutionRecord(Base):
     last_scheduling_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     next_scheduling_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_scheduling_failure: Mapped[dict | None] = mapped_column(JSONB)
+    # Fila (Fase 3): grupo de itens, duplicata, posição manual, lote, pool e máquina obrigatória.
+    group_key: Mapped[str | None] = mapped_column(String(120))
+    dedup_key: Mapped[str | None] = mapped_column(String(64))
+    manual_position: Mapped[int | None] = mapped_column(Integer)
+    enqueue_batch_id: Mapped[str | None] = mapped_column(String(80))
+    enqueued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pool: Mapped[str | None] = mapped_column(String(20))
+    required_machine_id: Mapped[str | None] = mapped_column(ForeignKey("machines.id"), nullable=True)
+    lost_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ExecutionAttemptRecord(Base):
@@ -108,8 +117,12 @@ class ExecutionAttemptRecord(Base):
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     task_execution_id: Mapped[str] = mapped_column(ForeignKey("task_executions.id", ondelete="CASCADE"), nullable=False, index=True)
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
-    agent_instance_id: Mapped[str] = mapped_column(ForeignKey("agent_instances.id"), nullable=False, index=True)
+    # Modo agente: agent_id + agent_instance_id. Modo direto: executor_id = instância direta (ADR-018).
+    agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    agent_instance_id: Mapped[str | None] = mapped_column(ForeignKey("agent_instances.id"), nullable=True, index=True)
+    executor_type: Mapped[str] = mapped_column(String(20), nullable=False, default="agent", server_default="agent")
+    executor_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    machine_id: Mapped[str | None] = mapped_column(ForeignKey("machines.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     runtime_version_id: Mapped[str | None] = mapped_column(ForeignKey("runtime_versions.id"), nullable=True, index=True)
     package_id: Mapped[str | None] = mapped_column(ForeignKey("automation_packages.id"), nullable=True, index=True)
@@ -127,3 +140,39 @@ class ExecutionAttemptRecord(Base):
     output: Mapped[dict | None] = mapped_column(JSONB)
     result: Mapped[dict | None] = mapped_column(JSONB)
     resource_usage: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class ExecutionItemRecord(Base):
+    """Item da execução (Empresa, Nota, Cliente) dentro de um job."""
+
+    __tablename__ = "execution_items"
+    __table_args__ = (UniqueConstraint("task_execution_id", "item_key", name="uq_execution_items_task_item"),)
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    execution_id: Mapped[str] = mapped_column(ForeignKey("orchestration_executions.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_execution_id: Mapped[str] = mapped_column(ForeignKey("task_executions.id", ondelete="CASCADE"), nullable=False)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id"), nullable=False)
+    item_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(200))
+    group_key: Mapped[str | None] = mapped_column(String(120))
+    configuration: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    work_signature: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pendente")
+    summary: Mapped[str | None] = mapped_column(Text)
+    attention: Mapped[dict | None] = mapped_column(JSONB)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class StepPlanRecord(Base):
+    """Tarefas previstas e feitas por item e etapa no job (somadas entre tentativas)."""
+
+    __tablename__ = "step_plans"
+
+    task_execution_id: Mapped[str] = mapped_column(ForeignKey("task_executions.id", ondelete="CASCADE"), primary_key=True)
+    item_key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    step_key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    planned_tasks: Mapped[int | None] = mapped_column(Integer)
+    completed_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

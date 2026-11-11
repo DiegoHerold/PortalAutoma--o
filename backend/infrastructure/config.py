@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,14 +20,14 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     algorithm: str = "HS256"
 
-    postgres_server: str = "postgres"
+    postgres_server: str = "127.0.0.1"
     postgres_port: int = 5432
     postgres_user: str = "portal"
     postgres_password: str = "portal"
     postgres_db: str = "portal_automacoes"
 
-    redis_url: str = "redis://redis:6379/0"
-    celery_result_backend: str = "redis://redis:6379/1"
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    celery_result_backend: str = "redis://127.0.0.1:6379/1"
 
     frontend_url: str = "http://localhost:3000"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
@@ -51,8 +51,16 @@ class Settings(BaseSettings):
 
     backend_public_url: str = "http://localhost:8000"
 
+    # Notificações por e-mail pelo Microsoft Graph (Fase 6). Desligado até alguém ligar:
+    # os avisos ficam no portal e o e-mail espera. O segredo só vem do .env, nunca do código.
+    notificacoes_email_ligado: bool = False
+    graph_tenant_id: str = ""
+    graph_client_id: str = ""
+    graph_client_secret: SecretStr = SecretStr("")
+    graph_remetente: str = ""
+
     storage_backend: Literal["local", "s3"] = "local"
-    local_storage_path: str = "/data/packages"
+    local_storage_path: str = "data/packages"
     s3_endpoint_url: str | None = None
     s3_public_endpoint_url: str | None = None
     s3_region: str = "us-east-1"

@@ -78,7 +78,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             placeholder="Buscar telas e ações…"
             className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
-          <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">ESC</kbd>
+          <kbd className="rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground">ESC</kbd>
         </div>
         <div className="max-h-80 overflow-y-auto p-2">
           {results.length === 0 && (

@@ -9,7 +9,7 @@ public sealed record ShellResult(int ExitCode, string Stdout, string Stderr)
 
 /// <summary>
 /// Runs a one-shot command to completion and captures its output — for
-/// short-lived orchestration steps (docker compose, the Python backend
+/// short-lived orchestration steps (scripts/portal.ps1, the Python backend
 /// certification CLI), not for the long-lived, gracefully-stoppable
 /// Agent.Service process (see <see cref="CertificationProcessSupervisor"/>
 /// for that).

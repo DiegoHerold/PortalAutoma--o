@@ -14,6 +14,8 @@ import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
+import { useAvisos } from "@/hooks/use-avisos";
+import type { Painel } from "@/lib/painel";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
 import { syncExecutionConfig } from "@/lib/automation-config";
@@ -56,6 +58,12 @@ export function AutomationsManager() {
   const { token } = useAuth();
   const { toast } = useToast();
   const automations = useApi<Automation[]>("/automations");
+  const painel = useApi<Painel>("/painel", { pollMs: 30000 });
+  useAvisos("/painel/avisos", () => void painel.refetch(), 1500);
+  const rodandoPor = new Map<number, number>();
+  for (const e of painel.data?.execucoes ?? []) {
+    if (e.automation_id != null) rodandoPor.set(e.automation_id, (rodandoPor.get(e.automation_id) ?? 0) + 1);
+  }
   const categories = useApi<Category[]>("/categories");
   const workers = useApi<Worker[]>("/workers");
   const triggers = useApi<Trigger[]>("/triggers");
@@ -63,6 +71,7 @@ export function AutomationsManager() {
 
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [verArquivadas, setVerArquivadas] = useState(false);
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -93,9 +102,11 @@ export function AutomationsManager() {
     return list.filter((a) => {
       const matchesQuery = !q || a.name.toLowerCase().includes(q) || a.slug.toLowerCase().includes(q);
       const matchesCategory = !categoryFilter || String(a.category_id) === categoryFilter;
-      return matchesQuery && matchesCategory;
+      const arquivada = a.status === "archived";
+      return matchesQuery && matchesCategory && arquivada === verArquivadas;
     });
-  }, [automations.data, query, categoryFilter]);
+  }, [automations.data, query, categoryFilter, verArquivadas]);
+  const arquivadas = (automations.data ?? []).filter((a) => a.status === "archived").length;
 
   function openCreate() {
     setNewDialogOpen(true);
@@ -151,21 +162,32 @@ export function AutomationsManager() {
 
   async function deleteAutomation(automation: Automation) {
     if (!token) return;
-    if (!window.confirm(`Apagar a automacao "${automation.name}"? Esta ação não pode ser desfeita.`)) return;
+    if (!window.confirm(`Arquivar "${automation.name}"?\n\nEla sai do Catálogo e não pode mais ser executada. O histórico, os itens e a auditoria continuam guardados, e dá para restaurar em "Arquivadas".`)) return;
     try {
       await apiRequest<void>(`/automations/${automation.id}`, { method: "DELETE", token });
-      toast({ title: "Automacao apagada", kind: "success" });
+      toast({ title: "Automação arquivada", description: "Para voltar, use Arquivadas > Restaurar.", kind: "success" });
       await automations.refetch();
     } catch (err) {
       const message = err instanceof Error ? err.message : undefined;
       const blocked = message?.toLowerCase().includes("cancele");
       toast({
-        title: blocked ? "Automação tem execuções ativas" : "Falha ao apagar",
+        title: blocked ? "Automação tem execuções ativas" : "Não foi possível arquivar",
         description: blocked
-          ? "Cancele as execuções em andamento ou aguardando na página de Execuções antes de apagar esta automação."
+          ? "Cancele as execuções em andamento ou aguardando na página de Execuções antes de arquivar esta automação."
           : message,
         kind: "error",
       });
+    }
+  }
+
+  async function restaurar(automation: Automation) {
+    if (!token) return;
+    try {
+      await apiRequest(`/automations/${automation.id}/restaurar`, { method: "POST", token });
+      toast({ title: `${automation.name} de volta ao Catálogo`, kind: "success" });
+      await automations.refetch();
+    } catch (err) {
+      toast({ title: "Não foi possível restaurar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     }
   }
 
@@ -189,6 +211,9 @@ export function AutomationsManager() {
             </option>
           ))}
         </Select>
+        <Button variant={verArquivadas ? "primary" : "outline"} onClick={() => setVerArquivadas((v) => !v)} aria-pressed={verArquivadas}>
+          {verArquivadas ? "Voltar ao Catálogo" : `Arquivadas${arquivadas ? ` (${arquivadas})` : ""}`}
+        </Button>
         <Button onClick={openCreate} disabled={creationDependenciesLoading}>
           <Plus className="h-4 w-4" /> Nova automacao
         </Button>
@@ -222,8 +247,10 @@ export function AutomationsManager() {
               key={a.id}
               automation={a}
               categoryName={categoryName.get(a.category_id)}
-              onEdit={openEdit}
-              onDelete={deleteAutomation}
+              rodando={rodandoPor.get(a.id) ?? 0}
+              onEdit={a.status === "archived" ? undefined : openEdit}
+              onDelete={a.status === "archived" ? undefined : deleteAutomation}
+              onRestore={a.status === "archived" ? restaurar : undefined}
             />
           ))}
         </div>

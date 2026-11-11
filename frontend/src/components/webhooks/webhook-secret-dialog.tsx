@@ -31,7 +31,7 @@ export function WebhookSecretDialog({
       open
       onClose={onClose}
       title={title}
-      description="Guarde este valor agora. Depois desta janela o Portal mostrara apenas os ultimos caracteres."
+      description="Guarde este valor agora. Depois desta janela o Portal mostrara apenas os últimos caracteres."
       className="max-w-xl"
       footer={
         <>
@@ -44,7 +44,7 @@ export function WebhookSecretDialog({
     >
       <div className="space-y-3">
         <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-          O secret anterior nao fica disponivel para consulta. Em rotacao, o valor antigo deixa de autenticar novas chamadas.
+          O secret anterior não fica disponível para consulta. Em rotação, o valor antigo deixa de autenticar novas chamadas.
         </div>
         <div className="rounded-md border border-border bg-muted/40 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">

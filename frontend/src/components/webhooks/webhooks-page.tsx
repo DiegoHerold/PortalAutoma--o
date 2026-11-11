@@ -326,7 +326,7 @@ export function WebhooksPage() {
         <MetricButton icon={Power} label="Inativos" value={summary.inactive} hint="Bloqueados para chamada" onClick={() => setQuery({ status: "inactive" })} />
       </div>
 
-      <section className="grid gap-4 rounded-lg border border-border bg-card p-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
+      <section className="grid gap-4 rounded-xl border border-border bg-card p-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
         <div className="space-y-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">Como conectar</p>
@@ -371,7 +371,7 @@ export function WebhooksPage() {
       </section>
 
       <section className="space-y-3">
-        <div className="grid gap-2 rounded-lg border border-border bg-card p-3 lg:grid-cols-[minmax(220px,1.2fr)_160px_220px_145px_165px_150px_150px]">
+        <div className="grid gap-2 rounded-xl border border-border bg-card p-3 lg:grid-cols-[minmax(220px,1.2fr)_160px_220px_145px_165px_150px_150px]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input className="pl-9" placeholder="Buscar nome, route path ou automação" value={queryDraft} onChange={(event) => setQueryDraft(event.target.value)} />
@@ -514,7 +514,7 @@ function MetricButton({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className="rounded-lg border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/50">
+    <button type="button" onClick={onClick} className="rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/50">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
         <Icon className="h-4 w-4 text-muted-foreground" />

@@ -27,7 +27,7 @@ function DiffLine({ row }: { row: DiffRow }) {
   const label = row.kind === "added" ? "Adicionado" : row.kind === "removed" ? "Removido" : "Alterado";
   return (
     <div className="grid gap-1 border-b border-border px-3 py-2.5 last:border-b-0 sm:grid-cols-[minmax(10rem,1fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-3">
-      <div><p className="tabular text-xs font-medium">{row.path}</p><span className={cn("text-[11px] font-medium", tone)}>{label}</span></div>
+      <div><p className="tabular text-xs font-medium">{row.path}</p><span className={cn("text-xs font-medium", tone)}>{label}</span></div>
       <pre className="overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 text-xs text-muted-foreground">{row.kind === "added" ? "—" : stringify(row.before)}</pre>
       <pre className="overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 text-xs">{row.kind === "removed" ? "—" : stringify(row.after)}</pre>
     </div>

@@ -99,3 +99,15 @@ class RetentionPolicyRecord(Base):
     legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class AutomationRetentionRecord(Base):
+    """Dias de imagens e de logs por automação (Fase 6). Sem linha ou com ``None``: nada sai."""
+
+    __tablename__ = "automation_retention"
+
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), primary_key=True)
+    imagens_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    logs_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -2,19 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import queue
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from infrastructure.database import get_db
+from infrastructure.database import get_db, get_session_factory
 from modules.access.api.authorization import ensure_automation_action
 from modules.access.api.dependencies import get_current_user
-from modules.access.application.use_cases import AuthenticateToken
-from modules.access.domain import AuthenticationFailed
-from modules.access.infrastructure.adapters import build_access_adapters
 from modules.orchestration.application.use_cases import GetExecutionDetails
 from modules.orchestration.domain.errors import OrchestrationError
 from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
@@ -27,8 +23,12 @@ from modules.telemetry.application.use_cases import (
     GetExecutionProgress,
     GetExecutionTimeline,
 )
+from modules.telemetry.application.use_cases.estimates import GetExecutionEstimate, GetItemStepTimes
 from modules.telemetry.infrastructure.adapters import build_telemetry_adapters
-from modules.telemetry.infrastructure.realtime import execution_realtime_publisher
+from modules.telemetry.infrastructure.repositories.sqlalchemy_steps import (
+    SqlAlchemyExecutionJobsReader,
+    latest_manifest_for_automation,
+)
 
 router = APIRouter(prefix="/executions")
 
@@ -121,31 +121,66 @@ def get_execution_processes(
 async def stream_execution(
     execution_id: str,
     request: Request,
-    db: Session = Depends(get_db),
-    token: str = Query(...),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    fabrica: Any = Depends(get_session_factory),
 ) -> StreamingResponse:
-    user = _user_from_token(db, token)
-    _ensure_execution_view(db, user, execution_id)
-    adapters = build_telemetry_adapters(db)
+    """Eventos ao vivo de uma execução (SSE).
+
+    O token vai no cabeçalho ``Authorization`` (nunca na URL). Avisos chegam por
+    ``LISTEN/NOTIFY`` e cada aviso relê o banco a partir do último evento enviado, então
+    funciona com vários processos e nada se perde numa reconexão (``Last-Event-ID``).
+    Logs e passos só vão para quem tem ``ver_telas_e_logs`` na automação.
+    """
+    from modules.access.api.authorization import acesso_por_automacao
+    from modules.access.domain.concessao import VER_TELAS_E_LOGS
+    from modules.telemetry.api.acompanhar import usuario_do_cabecalho
+    from modules.telemetry.infrastructure.realtime.postgres import CANAL_EXECUCAO, esperar_aviso, ouvinte
+    from modules.telemetry.infrastructure.repositories.sqlalchemy_images import SqlAlchemyStepImageRepository
+
+    with fabrica() as db:
+        user = usuario_do_cabecalho(db, request)
+        details = _ensure_execution_view(db, user, execution_id)
+        from modules.telemetry.api.acompanhar import _automation_id
+        automation_id = _automation_id(details, db)
+        pode_logs = automation_id is not None and acesso_por_automacao(db).pode(user, automation_id, VER_TELAS_E_LOGS)
+        cursor = last_event_id or SqlAlchemyStepImageRepository(db).ultimo_evento(execution_id)
+
+    def ler(desde: str | None) -> tuple[list[Any], Any]:
+        with fabrica() as sessao:
+            adapters = build_telemetry_adapters(sessao)
+            if desde:
+                novos = adapters.events.list_events_after_id(execution_id, desde, limit=500)
+            else:
+                novos, _ = adapters.events.list_events(execution_id, limit=500)
+            return novos, GetExecutionProgress(adapters.events).execute(execution_id)
 
     async def event_stream():
-        for missed in adapters.events.list_events_after_id(execution_id, last_event_id, limit=500):
-            yield _sse("execution.event", {"type": "execution.event", "event": to_payload(missed)}, event_id=missed.id)
-        progress = GetExecutionProgress(adapters.events).execute(execution_id)
-        yield _sse("execution.progress", {"type": "execution.progress", "progress": to_payload(progress)})
-        with execution_realtime_publisher.subscribe(execution_id) as subscription:
+        nonlocal cursor
+        async with ouvinte.assinar(CANAL_EXECUCAO, execution_id) as sinal:
+            primeira = True
             while not await request.is_disconnected():
-                try:
-                    payload = await asyncio.to_thread(subscription.get, True, 15)
-                except queue.Empty:
-                    yield ": keepalive\n\n"
-                    continue
-                event = payload.get("event") if isinstance(payload, dict) else None
-                event_id = event.get("id") if isinstance(event, dict) else None
-                yield _sse(str(payload.get("type") or "execution.update"), payload, event_id=event_id)
+                if not primeira:
+                    chegou = await esperar_aviso(sinal, 15.0)
+                    if not chegou and ouvinte.conectado:
+                        yield ": keepalive\n\n"
+                        continue
+                novos, progresso = await asyncio.to_thread(ler, cursor)
+                for evento in novos:
+                    cursor = evento.id
+                    if pode_logs or not _evento_de_tela_ou_log(evento):
+                        yield _sse("execution.event", {"type": "execution.event", "event": to_payload(evento)}, event_id=evento.id)
+                yield _sse("execution.progress", {"type": "execution.progress", "progress": to_payload(progresso)})
+                primeira = False
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+def _evento_de_tela_ou_log(evento: Any) -> bool:
+    if evento.event_type in {"log", "warning", "error"}:
+        return True
+    tipo = (evento.payload or {}).get("type") if evento.event_type == "automation.event" else None
+    return tipo in {"log", "passo", "espera.atualizada", "atencao"}
 
 
 def _ensure_execution_view(db: Session, user: Any, execution_id: str):
@@ -166,15 +201,6 @@ def _ensure_execution_view(db: Session, user: Any, execution_id: str):
     return details
 
 
-def _user_from_token(db: Session, token: str) -> Any:
-    credentials_exception = HTTPException(status_code=401, detail="Could not validate credentials.")
-    try:
-        adapters = build_access_adapters(db)
-        return AuthenticateToken(adapters.access, adapters.tokens).execute(token)
-    except (AuthenticationFailed, ValueError) as exc:
-        raise credentials_exception from exc
-
-
 def _sse(event: str, payload: dict[str, Any], event_id: str | None = None) -> str:
     lines = []
     if event_id:
@@ -182,3 +208,35 @@ def _sse(event: str, payload: dict[str, Any], event_id: str | None = None) -> st
     lines.append(f"event: {event}")
     lines.append(f"data: {json.dumps(payload, ensure_ascii=False, default=str)}")
     return "\n".join(lines) + "\n\n"
+
+
+@router.get("/{execution_id}/estimativa")
+def get_execution_estimate(
+    execution_id: str,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Estimativa por etapa, item, job e execução, com o tempo real ao lado e a base de cada número."""
+    _ensure_execution_view(db, user, execution_id)
+    adapters = build_telemetry_adapters(db)
+    return GetExecutionEstimate(SqlAlchemyExecutionJobsReader(db), adapters.manifests, adapters.steps, adapters.items).execute(execution_id)
+
+
+automation_times_router = APIRouter(prefix="/automations")
+
+
+@automation_times_router.get("/{automation_id}/tempos")
+def get_item_step_times(
+    automation_id: int,
+    item: str = Query(..., min_length=1, max_length=120),
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Tempo por etapa de UM item: execuções, típico, por tarefa, último e quando."""
+    ensure_automation_action(db, user, automation_id, "can_view")
+    manifesto = latest_manifest_for_automation(db, automation_id)
+    if manifesto is None:
+        raise HTTPException(status_code=404, detail="Automação sem versão com etapas declaradas.")
+    adapters = build_telemetry_adapters(db)
+    return {"automation_id": automation_id, "item": item,
+            "etapas": GetItemStepTimes(adapters.steps).execute(automation_id, item, manifesto.steps)}

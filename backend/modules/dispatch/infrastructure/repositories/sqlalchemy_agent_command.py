@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from modules.dispatch.application.ports import AgentCommand, AgentCommandStatus
@@ -40,6 +40,15 @@ class SqlAlchemyAgentCommandStore:
             .with_for_update(skip_locked=True)
         )
         return _to_domain(row) if row else None
+
+    def count_pending_or_sent(self) -> int:
+        """Comandos ainda nao confirmados pelo Agent (readiness do gateway)."""
+        return int(
+            self.db.scalar(
+                select(func.count(AgentCommandRecord.id)).where(AgentCommandRecord.status.in_(["pending", "sent"]))
+            )
+            or 0
+        )
 
 
 def _to_domain(row: AgentCommandRecord) -> AgentCommand:

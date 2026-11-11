@@ -26,7 +26,7 @@ import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
-import { API_BASE_URL } from "@/lib/constants";
+import { abrirStream } from "@/lib/stream";
 import { EVENT_TYPE_LABELS, eventTypeLabel, executionLifecycleStatus, executionOriginLabel, executionTypeLabel, isExecutionActiveStatus } from "@/lib/status";
 import { formatDateTime, formatDuration } from "@/lib/utils";
 import type {
@@ -145,16 +145,15 @@ export function ExecutionDetail({ id }: { id: string }) {
 
   useEffect(() => {
     if (!token || terminal) return;
-    const source = new EventSource(`${API_BASE_URL}/executions/${id}/stream?token=${encodeURIComponent(token)}`);
-    const refresh = () => refetchAll();
-    source.onopen = () => setSseConnected(true);
-    source.addEventListener("execution.event", refresh);
-    source.addEventListener("execution.summary", refresh);
-    source.addEventListener("execution.progress", refresh);
-    source.addEventListener("execution.update", refresh);
-    source.onerror = () => setSseConnected(false);
+    // Token no cabeçalho, nunca na URL (lib/stream.ts).
+    const fechar = abrirStream(
+      `/executions/${id}/stream`,
+      token,
+      () => refetchAll(),
+      { aoMudarConexao: setSseConnected },
+    );
     return () => {
-      source.close();
+      fechar();
       setSseConnected(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,7 +161,7 @@ export function ExecutionDetail({ id }: { id: string }) {
 
   async function cancelExecution() {
     if (!token || !execution) return;
-    if (!window.confirm(`Cancelar a execucao #${execution.id}?`)) return;
+    if (!window.confirm(`Cancelar a execução #${execution.id}?`)) return;
     setCancelling(true);
     try {
       await apiRequest(`/executions/${execution.id}/cancel`, {
@@ -249,8 +248,8 @@ export function ExecutionDetail({ id }: { id: string }) {
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="Progresso" value={progressLabel(progress.data, telemetry?.progress_percentage)} hint={progress.data?.message ?? "Telemetria estruturada"} />
         <Metric label="Eventos" value={telemetry?.event_count ?? timeline.data?.items.length ?? 0} hint={`${telemetry?.log_count ?? logItems.length} logs`} />
-        <Metric label="Artefatos" value={telemetry?.artifact_count ?? artifacts.data?.length ?? 0} hint={`${telemetry?.metric_count ?? metrics.data?.length ?? 0} metricas`} />
-        <Metric label="Duracao" value={duration} hint={`Atualizado ${lastRefreshedAt ? formatDateTime(new Date(lastRefreshedAt).toISOString()) : "-"}`} />
+        <Metric label="Artefatos" value={telemetry?.artifact_count ?? artifacts.data?.length ?? 0} hint={`${telemetry?.metric_count ?? metrics.data?.length ?? 0} métricas`} />
+        <Metric label="Duração" value={duration} hint={`Atualizado ${lastRefreshedAt ? formatDateTime(new Date(lastRefreshedAt).toISOString()) : "-"}`} />
       </div>
 
       <Tabs
@@ -261,7 +260,7 @@ export function ExecutionDetail({ id }: { id: string }) {
           { value: "timeline", label: "Timeline", count: timeline.data?.items.length || undefined },
           { value: "eventos", label: "Eventos", count: events.data?.items.length || undefined },
           { value: "logs", label: "Logs", count: logItems.length || undefined },
-          { value: "metricas", label: "Metricas" },
+          { value: "metricas", label: "Métricas" },
           { value: "processos", label: "Processos", count: processes.data?.length || undefined },
           { value: "progresso", label: "Progresso" },
           { value: "tentativas", label: "Tasks" },
@@ -395,7 +394,7 @@ function OverviewTab({
       </div>
 
       <div className="space-y-5">
-        <SectionCard title="Execucao">
+        <SectionCard title="Execução">
           <div className="space-y-3">
             <InfoRow label="Status" value={<StatusBadge status={executionLifecycleStatus(execution)} />} />
             <InfoRow label="Tipo" value={<span className="text-sm">{executionTypeLabel(execution.type)}</span>} />
@@ -403,7 +402,7 @@ function OverviewTab({
             <InfoRow label="Criada" value={<span className="tabular text-sm">{formatDateTime(execution.created_at)}</span>} />
             <InfoRow label="Inicio" value={<span className="tabular text-sm">{formatDateTime(execution.started_at)}</span>} />
             <InfoRow label="Termino" value={<span className="tabular text-sm">{formatDateTime(executionFinishedAt(execution))}</span>} />
-            <InfoRow label="Duracao" value={<span className="tabular text-sm">{duration}</span>} />
+            <InfoRow label="Duração" value={<span className="tabular text-sm">{duration}</span>} />
           </div>
         </SectionCard>
 
@@ -511,7 +510,7 @@ function EventsTab({
             <THead>
               <TR>
                 <TH>Evento</TH>
-                <TH>Nivel</TH>
+                <TH>Nível</TH>
                 <TH>Task</TH>
                 <TH>Agent</TH>
                 <TH>Quando</TH>
@@ -565,7 +564,7 @@ function LogsTab({
         <option value="ERROR">Error</option>
         <option value="CRITICAL">Critical</option>
       </Select>
-      {logs.length === 0 ? <EmptyState title="Sem logs" description="Esta execucao ainda nao registrou logs estruturados." /> : <ExecutionLogViewer logs={logs} />}
+      {logs.length === 0 ? <EmptyState title="Sem logs" description="Esta execução ainda não registrou logs estruturados." /> : <ExecutionLogViewer logs={logs} />}
     </div>
   );
 }
@@ -636,7 +635,7 @@ function ProgressTab({
     <section className="space-y-4 rounded-lg border border-border bg-card p-5">
       <div>
         <h2 className="font-display text-base font-semibold tracking-tight">Progresso estruturado</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">Ultimo evento task.progress recebido para esta execucao.</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">Último evento task.progress recebido para esta execução.</p>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-muted">
         <div className="h-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, progress.percentage ?? 0))}%` }} />

@@ -370,7 +370,7 @@ export function NodePanel({
         {node.data.issues.length > 0 && (
           <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
             {node.data.issues.map((issue, i) => (
-              <Badge key={i} tone="destructive" className="text-[10px]">
+              <Badge key={i} tone="destructive" className="text-xs">
                 {issue.code}
               </Badge>
             ))}

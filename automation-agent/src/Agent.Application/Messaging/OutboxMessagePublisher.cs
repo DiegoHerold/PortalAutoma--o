@@ -109,6 +109,7 @@ public sealed class OutboxMessagePublisher
         PortalMessageTypes.ExecutionLog => true,
         PortalMessageTypes.ExecutionProgress => true,
         PortalMessageTypes.ExecutionMetric => true,
+        PortalMessageTypes.AutomationEvent => true,
         PortalMessageTypes.ExecutionPreparing => true,
         PortalMessageTypes.ExecutionCancelling => true,
         PortalMessageTypes.LeaseLost => true,
@@ -154,6 +155,15 @@ public sealed class OutboxMessagePublisher
                 messageId,
                 executionAttemptId,
                 "metric",
+                payloadJson,
+                sequence,
+                nowUtc),
+
+            // O evento da automacao vai intacto: o Portal valida pelo contrato automation-events/v1.
+            PortalMessageTypes.AutomationEvent => ToEventBatch(
+                messageId,
+                executionAttemptId,
+                "automation.event",
                 payloadJson,
                 sequence,
                 nowUtc),

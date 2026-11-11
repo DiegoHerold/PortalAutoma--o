@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -451,7 +451,7 @@ class SqlAlchemyAgentConfigurationRepository:
         row.maintenance = configuration.maintenance
         row.desired_version = configuration.desired_version
         row.restrictions = configuration.restrictions
-        row.updated_at = configuration.updated_at or datetime.utcnow()
+        row.updated_at = configuration.updated_at or datetime.now(UTC)
         self.db.add(row)
         self.db.flush()
         return _configuration_to_dto(row)
@@ -583,7 +583,7 @@ class SqlAlchemyAgentCommandRepository:
     def create(self, agent_id: str, message_type: str, payload: dict[str, Any], expires_at: datetime | None = None, agent_instance_id: str | None = None) -> AgentCommandDTO:
         self.db.scalar(select(AgentRecord).where(AgentRecord.id == agent_id).with_for_update())
         current_sequence = self.db.scalar(select(func.max(AgentCommandRecord.command_sequence)).where(AgentCommandRecord.agent_id == agent_id)) or 0
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         row = AgentCommandRecord(
             id=f"cmd_{uuid4().hex}",
             agent_id=agent_id,
@@ -602,7 +602,7 @@ class SqlAlchemyAgentCommandRepository:
         return _command_to_dto(row)
 
     def pending_for_agent(self, agent_id: str, limit: int) -> list[AgentCommandDTO]:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         rows = self.db.scalars(
             select(AgentCommandRecord)
             .where(
@@ -682,7 +682,7 @@ def _copy_agent(agent: AgentDTO, row: AgentRecord) -> None:
     row.protocol_version = agent.protocol_version
     row.local_identity = agent.local_identity
     row.machine_fingerprint = agent.machine_fingerprint
-    row.updated_at = agent.updated_at or datetime.utcnow()
+    row.updated_at = agent.updated_at or datetime.now(UTC)
     row.last_seen_at = agent.last_seen_at
     row.disabled_at = agent.disabled_at
 
@@ -743,7 +743,7 @@ def _instance_dict(instance: AgentInstanceDTO) -> dict[str, Any]:
 
 
 def _instance_to_dto(row: AgentInstanceRecord) -> AgentInstanceDTO:
-    return AgentInstanceDTO(**{key: getattr(row, key) for key in _instance_dict(AgentInstanceDTO("", "", datetime.utcnow(), None, None, None, None, None, None, None, None)).keys()})
+    return AgentInstanceDTO(**{key: getattr(row, key) for key in _instance_dict(AgentInstanceDTO("", "", datetime.now(UTC), None, None, None, None, None, None, None, None)).keys()})
 
 
 def _token_to_dto(row: AgentRegistrationTokenRecord) -> RegistrationTokenDTO:
@@ -787,4 +787,4 @@ def _command_to_dto(row: AgentCommandRecord) -> AgentCommandDTO:
 
 
 def _naive(value: datetime) -> datetime:
-    return value.replace(tzinfo=None) if value.tzinfo is not None else value
+    return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)

@@ -314,7 +314,7 @@ export function ConditionEditor({
                 <span className="text-xs font-semibold">Condição {index + 1}</span>
                 {!readOnly && (
                   <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <label className="flex items-center gap-1 text-xs text-muted-foreground">
                       <input type="checkbox" checked={rule.negate} onChange={(e) => updateRule(rule.id, { negate: e.target.checked })} />
                       negar (NÃO)
                     </label>

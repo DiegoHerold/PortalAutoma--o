@@ -17,10 +17,8 @@ Isso prova de fato o que foi corrigido nesta sessao:
   - "powershell-core"/"dotnet-runtime" (runtime.id invalidos nos exemplos)
     viraram "powershell"/"executable" (os IDs que o ManifestValidator aceita).
 
-Roda de dentro do container do backend:
-  docker compose exec -T backend python -m tools.certification.demo_all_runtimes 2>/dev/null \
-  || docker compose cp demo_all_runtimes.py <backend_container>:/app/demo_all_runtimes.py \
-  && docker compose exec -T backend python /app/demo_all_runtimes.py
+Roda a partir de backend/ com o virtualenv:
+  .venv/Scripts/python -m tools.certification.demo_all_runtimes 2>/dev/null \
 """
 
 from __future__ import annotations
@@ -40,6 +38,10 @@ from tools.certification.execution import wait_until_terminal, ExecutionTimeoutE
 PORTAL_API_URL = os.environ.get("CERTIFICATION_PORTAL_API_URL", "http://localhost:8000/api/v1")
 ADMIN_EMAIL = os.environ.get("CERTIFICATION_ADMIN_EMAIL", "admin@portal.local")
 ADMIN_PASSWORD = os.environ.get("CERTIFICATION_ADMIN_PASSWORD", "admin123")
+PACKAGES_ROOT = os.environ.get(
+    "CERTIFICATION_PACKAGES_ROOT",
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "automation-agent", "certification"),
+)
 
 CATEGORY_NAME = "Biason Demo"
 CATEGORY_SLUG = "biason-demo"
@@ -58,7 +60,7 @@ RUNTIME_SPECS = [
         "key": "demo.biason_fiscal",
         "name": "Biason - Demo Processamento Fiscal (python_function)",
         "slug": "biason-demo-processamento-fiscal",
-        "package_source_dir": "/certification-packages/demo_fiscal",
+        "package_source_dir": os.path.join(PACKAGES_ROOT, "demo_fiscal"),
         "runtime": {"id": "python-core", "version": "3.13"},
         "runtime_name": "Python Core",
         "entrypoint": {"type": "python-function", "module": "automation.main", "function": "run"},
@@ -77,7 +79,7 @@ RUNTIME_SPECS = [
         "key": "demo.biason_powershell",
         "name": "Biason - Demo PowerShell (powershell_script)",
         "slug": "biason-demo-powershell",
-        "package_source_dir": "/certification-packages/demo_powershell",
+        "package_source_dir": os.path.join(PACKAGES_ROOT, "demo_powershell"),
         "runtime": {"id": "powershell", "version": "system"},
         "runtime_name": "PowerShell (instalado na maquina)",
         "entrypoint": {"type": "powershell-script", "script": "automation/main.ps1"},
@@ -96,7 +98,7 @@ RUNTIME_SPECS = [
         "key": "demo.biason_executable",
         "name": "Biason - Demo Executavel (executable)",
         "slug": "biason-demo-executavel",
-        "package_source_dir": "/certification-packages/demo_executable",
+        "package_source_dir": os.path.join(PACKAGES_ROOT, "demo_executable"),
         "runtime": {"id": "executable", "version": "1.0"},
         "runtime_name": "Executavel empacotado (.NET)",
         "entrypoint": {"type": "executable", "path": "automation/ExampleTool.exe"},
@@ -123,7 +125,7 @@ RUNTIME_SPECS = [
         "key": "demo.biason_browser",
         "name": "Biason - Demo Navegador (browser_playwright)",
         "slug": "biason-demo-navegador",
-        "package_source_dir": "/certification-packages/demo_browser",
+        "package_source_dir": os.path.join(PACKAGES_ROOT, "demo_browser"),
         "runtime": {"id": "python-browser", "version": "3.13-playwright"},
         "runtime_name": "Python + Playwright (Chromium)",
         "entrypoint": {"type": "browser-playwright", "module": "automation.main", "function": "run"},
@@ -319,7 +321,7 @@ def main() -> int:
         package_dir = spec["package_source_dir"]
         if not os.path.isdir(package_dir):
             print(f"\n=== {spec['entrypoint']['type']}: {spec['name']} ===")
-            print(f"PULADO: pacote nao encontrado em {package_dir} (ainda nao foi copiado para o certification-packages).")
+            print(f"PULADO: pacote nao encontrado em {package_dir} (ainda nao foi copiado para automation-agent/certification).")
             results.append({"entrypoint": spec["entrypoint"]["type"], "automation": spec["name"], "status": "skipped_no_package"})
             continue
         try:

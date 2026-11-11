@@ -46,7 +46,7 @@ export function ScheduleStatusLegend() {
                     <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                     <span>
                       <span className="block font-medium text-foreground">{meta.label}</span>
-                      {meta.description && <span className="block text-[11px] text-muted-foreground">{meta.description}</span>}
+                      {meta.description && <span className="block text-xs text-muted-foreground">{meta.description}</span>}
                     </span>
                   </span>
                 );

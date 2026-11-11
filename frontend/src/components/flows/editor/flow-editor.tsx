@@ -946,7 +946,7 @@ export function FlowEditor({
               <Background gap={20} />
               <Controls showInteractive={false} />
               <MiniMap pannable zoomable className="!bg-card" />
-              <Panel position="top-right" className="rounded-md border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
+              <Panel position="top-right" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm">
                 {nodes.length} nó(s) · {edges.length} conexão(ões) · arraste entre conectores para ligar
               </Panel>
             </ReactFlow>
@@ -1084,7 +1084,7 @@ export function FlowEditor({
                             </span>
                             <span className="mt-1 block text-xs leading-5 text-muted-foreground">{block.description}</span>
                             {!available && block.unavailableReason && (
-                              <span className="mt-1 block text-[11px] leading-4 text-muted-foreground/80">{block.unavailableReason}</span>
+                              <span className="mt-1 block text-xs leading-4 text-muted-foreground/80">{block.unavailableReason}</span>
                             )}
                           </span>
                         </div>

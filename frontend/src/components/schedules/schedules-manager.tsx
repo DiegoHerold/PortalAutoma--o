@@ -195,7 +195,7 @@ export function SchedulesManager() {
 
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
         <SchedulesFilterBar state={quickFilterState} onChange={updateQuickFilters} />
-        <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
           <RefreshCw className={cnAnim(calendarQuery.loading)} />
           {calendarQuery.loading && lastUpdatedAt == null ? "Carregando…" : lastUpdatedAt ? `Atualizado ${relativeFromNow(new Date(lastUpdatedAt).toISOString())}` : ""}
         </span>
@@ -225,7 +225,7 @@ export function SchedulesManager() {
         <button
           type="button"
           onClick={() => changeDensity(density === "comfortable" ? "compact" : "comfortable")}
-          className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+          className="text-xs text-muted-foreground underline-offset-2 hover:underline"
         >
           Densidade: {density === "comfortable" ? "Confortável" : "Compacta"} — alternar
         </button>

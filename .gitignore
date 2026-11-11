@@ -7,6 +7,7 @@ node_modules/
 .env
 *.pyc
 dist/
+backend/data/
 coverage/
 
 # Certification harness runtime data (docs/certification-harness.md).
@@ -15,3 +16,8 @@ coverage/
 # transiently contain machine-local paths. Never contains committed
 # credentials by design (item 21/78), but is still not source.
 automation-agent/certification-runs/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/.next-e2e/

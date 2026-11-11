@@ -18,11 +18,21 @@ do ecossistema; o Automation Agent e o Execution Plane.
 - A arquitetura do Portal e um monolito modular.
 - Nao criar microsservicos prematuramente.
 - Nao implementar etapas futuras sem instrucao explicita.
-- Preservar o design atual do frontend. Nao reconstruir, redesenhar ou apagar
-  telas sem solicitacao explicita.
+- Nao apagar telas sem solicitacao explicita. O redesenho autorizado e o do
+  ADR-020, feito por fase.
 - Reutilizar backend existente quando compativel; mover/refatorar antes de
   substituir.
 - Nao criar mocks para esconder integracoes ausentes.
+- O frontend esta sendo refeito com a identidade Biason (ADR-020, que substitui o
+  ADR-017). Siga `docs/design-system.md` e a fase vigente; nao misture o visual antigo
+  com o novo na mesma tela.
+- Ha dois modos de conexao (ADR-018): modo agente (a automacao fala so com o Agent
+  local) e modo direto (a automacao fala direto com o Portal). Nos dois, nenhuma
+  maquina abre porta de entrada, e o contrato de eventos e o mesmo.
+- Maquina e entidade propria (ADR-019). Automacao de tela ocupa a maquina sozinha,
+  somando os dois modos.
+- "Worker" designa apenas processos internos do Portal (Celery). Na interface, use
+  "Maquina" e "Agent".
 
 ## Contextos oficiais
 
@@ -45,6 +55,10 @@ uso, comandos internos ou contratos.
 
 Contratos versionados ficam em `contracts/`. Nao duplique manualmente schemas
 divergentes no Portal e no Agent.
+
+Eventos emitidos pela automacao (etapa, item, progresso, log, passo, atencao,
+espera, pausa) seguem `contracts/automation-events/v1/` e sao os mesmos nos dois
+modos. O SDK Python fica em `sdk/python/`.
 
 Mensagens Portal-Agent devem possuir `protocol_version`, `message_id`,
 `message_type`, `sent_at`, `agent_id`, `agent_instance_id` e `payload`.
@@ -70,4 +84,5 @@ chamem a nova camada de aplicacao e nao dupliquem regra de dominio.
 ## Frontend
 
 Consulte `docs/frontend-integration.md` antes de alterar qualquer chamada de
-API do frontend. Ajustes visuais estao fora do escopo desta etapa.
+API do frontend. O redesenho segue o ADR-020 e o plano de fases em
+`docs/fase-0-diagnostico-orquestracao.md`.

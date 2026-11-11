@@ -221,3 +221,35 @@ class RuntimeArtifactRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AutomationItemRecord(Base):
+    """Item do cadastro de uma automação (Fase 5): empresa, nota, cliente..."""
+
+    __tablename__ = "automation_items"
+    __table_args__ = (UniqueConstraint("automation_id", "chave", name="uq_automation_items_chave"),)
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), nullable=False)
+    chave: Mapped[str] = mapped_column(String(120), nullable=False)
+    rotulo: Mapped[str] = mapped_column(String(255), nullable=False)
+    grupo_chave: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    atributos: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(120))
+    updated_by: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AutomationFormRecord(Base):
+    """Campos da automação editados no Portal (Fase 7). Sem linha: vale o que o manifesto sugere."""
+
+    __tablename__ = "automation_forms"
+
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), primary_key=True)
+    entrada: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    colunas: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    versao: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_by: Mapped[str | None] = mapped_column(String(120))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -43,7 +43,7 @@ class SqlAlchemyInboxRepository:
         if row is None:
             return
         row.status = "processed"
-        row.processed_at = datetime.utcnow()
+        row.processed_at = datetime.now(UTC)
         self.db.add(row)
         self.db.flush()
 

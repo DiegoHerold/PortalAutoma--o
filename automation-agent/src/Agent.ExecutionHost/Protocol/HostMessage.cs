@@ -45,4 +45,5 @@ public static class MessageTypes
     public const string CancellationRequested = "execution.cancellation_requested";
     public const string Cancelled = "execution.cancelled";
     public const string Heartbeat = "execution.heartbeat";
+    public const string AutomationEvent = "automation.event";
 }

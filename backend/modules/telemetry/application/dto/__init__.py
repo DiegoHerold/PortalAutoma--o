@@ -10,11 +10,16 @@ class AttemptTelemetryContextDTO:
     execution_id: str
     task_execution_id: str
     execution_attempt_id: str
-    agent_id: str
-    agent_instance_id: str
+    agent_id: str | None
+    agent_instance_id: str | None
     attempt_status: str
     task_status: str
     execution_status: str
+    executor_type: str = "agent"
+    executor_id: str | None = None
+    machine_id: str | None = None
+    automation_version_id: int | None = None
+    execution_created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -23,8 +28,8 @@ class ExecutionEventDTO:
     execution_id: str
     task_execution_id: str
     execution_attempt_id: str
-    agent_id: str
-    agent_instance_id: str
+    agent_id: str | None
+    agent_instance_id: str | None
     event_sequence: int
     event_type: str
     level: str | None
@@ -35,6 +40,8 @@ class ExecutionEventDTO:
     message_id: str | None = None
     correlation_id: str | None = None
     causation_id: str | None = None
+    executor_type: str = "agent"
+    executor_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,11 +75,14 @@ class EventAcknowledgementDTO:
 class EventBatchCommand:
     execution_attempt_id: str
     events: list[dict[str, Any]]
-    agent_id: str
-    agent_instance_id: str
+    agent_id: str | None
+    agent_instance_id: str | None
     message_id: str | None = None
     correlation_id: str | None = None
     causation_id: str | None = None
+    # Modo direto: a instância direta autenticada pelo token do job (ADR-018).
+    executor_type: str = "agent"
+    executor_id: str | None = None
 
 
 @dataclass(frozen=True)

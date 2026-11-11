@@ -10,10 +10,11 @@ oficial de estado.
 
 ## Rodando localmente
 
-1. Copie `.env.example` para `.env`.
-2. Instale os requisitos de `requirements/dev.txt`.
-3. Rode `alembic upgrade head`.
-4. Inicie `uvicorn main:app --reload`.
+Para o Portal completo, use `..\scripts\portal.ps1` (ver
+`../docs/deployment.md`). Para desenvolver so a API, depois do `setup`:
+
+1. Pare a API gerenciada se ela estiver no ar.
+2. Rode `.venv\Scripts\python -m uvicorn main:app --reload`.
 
 ## Arquitetura
 

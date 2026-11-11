@@ -29,3 +29,7 @@ class PackageStorage(ABC):
     @abstractmethod
     def open_local_path(self, bucket: str, object_key: str) -> Path: ...
 
+    def read_bytes(self, bucket: str, object_key: str) -> bytes:
+        """Conteúdo do objeto (imagens dos passos, servidas pela API com permissão)."""
+        return self.open_local_path(bucket, object_key).read_bytes()
+

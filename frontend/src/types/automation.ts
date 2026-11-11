@@ -12,4 +12,6 @@ export type Automation = {
   timeout_seconds: number;
   max_retries: number;
   is_active: boolean;
+  /** "archived": fora do Catálogo e sem executar; o histórico continua guardado. */
+  status?: string | null;
 };

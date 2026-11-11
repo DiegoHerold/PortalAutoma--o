@@ -73,6 +73,7 @@ def test_resource_reservation_can_convert_or_release() -> None:
     now = datetime.utcnow()
     reservation = ResourceReservation.create(
         id="res_1",
+        task_execution_id="tsk_1",
         execution_offer_id="off_1",
         execution_attempt_id="att_1",
         agent_id="agt_1",

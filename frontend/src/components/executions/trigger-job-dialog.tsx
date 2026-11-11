@@ -34,6 +34,10 @@ export function TriggerJobDialog({
   const [payload, setPayload] = useState('{\n  "source": "portal-ui"\n}');
   const [submitting, setSubmitting] = useState(false);
   const [payloadError, setPayloadError] = useState<string | null>(null);
+  const [competencia, setCompetencia] = useState("");
+
+  const selectedAutomation = automations.find((a) => a.id.toString() === automationId);
+  const needsCompetencia = selectedAutomation?.name?.includes("Folha") || selectedAutomation?.key?.includes("folha");
 
   async function dispatch() {
     if (!token || !automationId || submitting) return;
@@ -45,6 +49,11 @@ export function TriggerJobDialog({
         setPayloadError("JSON inválido");
         return;
       }
+    }
+
+    // Se a automação precisa de competência, adiciona ao payload
+    if (needsCompetencia && competencia) {
+      parsed.competencia = competencia;
     }
 
     setPayloadError(null);
@@ -109,6 +118,21 @@ export function TriggerJobDialog({
             ))}
           </Select>
         </Field>
+
+        {needsCompetencia && (
+          <Field>
+            <Label htmlFor="execution-competencia">Competência (MM/AAAA)</Label>
+            <input
+              id="execution-competencia"
+              type="text"
+              className="w-full rounded-md border px-3 py-2"
+              placeholder="Ex: 11/2026"
+              value={competencia}
+              onChange={(event) => setCompetencia(event.target.value)}
+              pattern="\d{2}/\d{4}"
+            />
+          </Field>
+        )}
 
         <Field>
           <Label htmlFor="execution-priority">Prioridade</Label>

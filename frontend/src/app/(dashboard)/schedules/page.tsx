@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Agendamentos" };
 export default function SchedulesPage() {
   return (
     <div className="space-y-6">
-      <PageTitle eyebrow="Agenda" title="Agendamentos" description="Execuções recorrentes por expressão cron." />
+      <PageTitle eyebrow="Operação" title="Agendamentos" description="Execuções recorrentes por expressão cron." />
       <SchedulesManager />
     </div>
   );

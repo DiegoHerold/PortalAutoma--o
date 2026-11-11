@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -100,7 +100,7 @@ def callback(
                 account_login=account.get("login", "unknown"),
                 account_type=account.get("type", "User"),
                 connected_by_user_id=connected_by_user_id,
-                connected_at=datetime.utcnow(),
+                connected_at=datetime.now(UTC),
             )
         )
     db.commit()

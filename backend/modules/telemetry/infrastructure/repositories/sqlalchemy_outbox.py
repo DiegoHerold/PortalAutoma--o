@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -34,7 +34,7 @@ class SqlAlchemyOutboxRepository:
         rows = list(
             self.db.scalars(
                 select(OutboxMessageRecord)
-                .where(OutboxMessageRecord.status == "pending", OutboxMessageRecord.available_at <= datetime.utcnow())
+                .where(OutboxMessageRecord.status == "pending", OutboxMessageRecord.available_at <= datetime.now(UTC))
                 .order_by(OutboxMessageRecord.created_at)
                 .limit(limit)
                 .with_for_update(skip_locked=True)
@@ -42,7 +42,7 @@ class SqlAlchemyOutboxRepository:
         )
         for row in rows:
             row.status = "processing"
-            row.processing_started_at = datetime.utcnow()
+            row.processing_started_at = datetime.now(UTC)
             row.attempts += 1
         self.db.flush()
         return rows
@@ -52,7 +52,7 @@ class SqlAlchemyOutboxRepository:
         if row is None:
             return
         row.status = "published"
-        row.published_at = datetime.utcnow()
+        row.published_at = datetime.now(UTC)
         self.db.add(row)
         self.db.flush()
 
@@ -65,6 +65,6 @@ class SqlAlchemyOutboxRepository:
             row.status = "dead_letter"
         else:
             row.status = "failed"
-            row.available_at = datetime.utcnow() + timedelta(seconds=min(300, 2 ** row.attempts))
+            row.available_at = datetime.now(UTC) + timedelta(seconds=min(300, 2 ** row.attempts))
         self.db.add(row)
         self.db.flush()

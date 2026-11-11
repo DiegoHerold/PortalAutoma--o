@@ -23,19 +23,22 @@ public sealed class ExecutionHostPipePump
     private readonly ExecutionAttemptSequenceTracker _sequences;
     private readonly IClock _clock;
     private readonly ILogger<ExecutionHostPipePump> _logger;
+    private readonly StepImageRegistrar? _stepImages;
 
     public ExecutionHostPipePump(
         IExecutionEventRepository events,
         OutboxMessagePublisher outbox,
         ExecutionAttemptSequenceTracker sequences,
         IClock clock,
-        ILogger<ExecutionHostPipePump> logger)
+        ILogger<ExecutionHostPipePump> logger,
+        StepImageRegistrar? stepImages = null)
     {
         _events = events;
         _outbox = outbox;
         _sequences = sequences;
         _clock = clock;
         _logger = logger;
+        _stepImages = stepImages;
     }
 
     public IAsyncDisposable Start(ExecutionContext context, string pipeName, CancellationToken ct = default)
@@ -124,6 +127,19 @@ public sealed class ExecutionHostPipePump
             executionAttemptId: context.AttemptId,
             sequence: sequence,
             ct: ct);
+
+        if (portalType == PortalMessageTypes.AutomationEvent && _stepImages is not null)
+        {
+            try
+            {
+                await _stepImages.TryRegisterAsync(context, payload, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A imagem nao pode derrubar o canal de eventos: o passo ja foi entregue.
+                _logger.LogWarning(ex, "Falha ao registrar a imagem do passo de {AttemptId}.", context.AttemptId);
+            }
+        }
     }
 
     private static JsonElement EmptyPayload()
@@ -137,6 +153,7 @@ public sealed class ExecutionHostPipePump
         PortalMessageTypes.ExecutionLog => PortalMessageTypes.ExecutionLog,
         PortalMessageTypes.ExecutionProgress => PortalMessageTypes.ExecutionProgress,
         PortalMessageTypes.ExecutionMetric => PortalMessageTypes.ExecutionMetric,
+        PortalMessageTypes.AutomationEvent => PortalMessageTypes.AutomationEvent,
         _ => null
     };
 

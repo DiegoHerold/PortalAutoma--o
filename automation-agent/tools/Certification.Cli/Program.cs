@@ -48,7 +48,7 @@ namespace Biason.AutomationAgent.Certification.Cli
                 Usage: certification <command>
 
                 Commands:
-                  prepare   Start/reuse Portal (docker compose), seed certification
+                  prepare   Start/reuse Portal (scripts/portal.ps1), seed certification
                             automations/packages, ensure the certification runtime is
                             available.
                   start     Launch Agent.Service under the isolated certification
@@ -78,13 +78,13 @@ namespace Biason.AutomationAgent.Certification.Cli
         internal static async Task<int> PrepareAsync(ILoggerFactory loggerFactory, ILogger logger)
         {
             var (options, repoRoot) = Setup();
-            var compose = new ComposeOrchestrator(repoRoot);
+            var stack = new PortalStackOrchestrator(repoRoot);
 
-            logger.LogInformation("Checking Docker Compose stack...");
-            if (!await compose.IsStackRunningAsync())
+            logger.LogInformation("Checking Portal stack...");
+            if (!await stack.IsStackRunningAsync())
             {
-                logger.LogInformation("Stack not fully healthy yet; running 'docker compose up -d'.");
-                await compose.UpAsync();
+                logger.LogInformation("Stack not fully healthy yet; running 'portal.ps1 start'.");
+                await stack.UpAsync();
             }
             else
             {
@@ -102,14 +102,11 @@ namespace Biason.AutomationAgent.Certification.Cli
                 health.CheckGatewayHealthAsync, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(2));
             logger.LogInformation("Gateway health: {Status}", gatewayReady ? "READY" : "NOT READY");
 
-            var storageStates = await compose.PsAsync();
-            var storageReady = storageStates.TryGetValue("minio", out var minioState) &&
-                (minioState is "healthy" or "running");
-            logger.LogInformation("Storage (MinIO) health: {Status}", storageReady ? "READY" : "NOT READY");
-
-            if (!portalReady || !storageReady)
+            // Storage is the Portal's own local filesystem, so a healthy Portal
+            // covers it; there is no separate storage service to probe.
+            if (!portalReady)
             {
-                logger.LogError("BLOCKED: Portal or Storage not ready — refusing to seed or continue (item 52).");
+                logger.LogError("BLOCKED: Portal not ready — refusing to seed or continue (item 52).");
                 return 3;
             }
 
@@ -148,9 +145,9 @@ namespace Biason.AutomationAgent.Certification.Cli
             }
             logger.LogInformation("Runtime: {Status}", runtimeAvailable ? "READY" : "NOT READY (see warning above)");
 
-            logger.LogInformation("prepare finished. Portal={Portal} Gateway={Gateway} Storage={Storage} Runtime={Runtime}",
-                portalReady, gatewayReady, storageReady, runtimeAvailable);
-            return portalReady && gatewayReady && storageReady && runtimeAvailable ? 0 : 3;
+            logger.LogInformation("prepare finished. Portal={Portal} Gateway={Gateway} Runtime={Runtime}",
+                portalReady, gatewayReady, runtimeAvailable);
+            return portalReady && gatewayReady && runtimeAvailable ? 0 : 3;
         }
 
         // -- start ---------------------------------------------------------

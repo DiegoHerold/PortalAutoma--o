@@ -114,8 +114,13 @@ public sealed class ResultCollector : IResultCollector
                 var info = new FileInfo(file);
                 if (!info.Exists) continue;
 
-                var sha256 = await ComputeSha256Async(file, ct);
                 var relativePath = Path.GetRelativePath(artifactsDir, file);
+                // Imagens dos passos ja subiram durante a execucao (StepImageRegistrar).
+                if (relativePath.StartsWith(StepImageRegistrar.Folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                    relativePath.StartsWith(StepImageRegistrar.Folder + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var sha256 = await ComputeSha256Async(file, ct);
 
                 artifacts.Add(new ExecutionArtifactRef
                 {

@@ -78,7 +78,7 @@ export function AutomationVersionsPanel({ automation }: { automation: Automation
       versions.mutate((previous) => (previous ?? []).map((item) => (item.id === updated.id ? updated : item)));
       await refetch();
     } catch (err) {
-      toast({ title: "Falha na acao", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha na ação", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setBusyVersionId(null);
     }
@@ -87,7 +87,7 @@ export function AutomationVersionsPanel({ automation }: { automation: Automation
   async function handleValidate(version: AutomationVersionResponse) {
     if (!window.confirm(`Validar v${version.version}?`)) return;
     setPollWhileValidating(true);
-    await runAction(version, "Validacao solicitada", (t) => validateAutomationVersion(t, version.id));
+    await runAction(version, "Validação solicitada", (t) => validateAutomationVersion(t, version.id));
   }
 
   async function handlePublish(version: AutomationVersionResponse) {
@@ -96,26 +96,26 @@ export function AutomationVersionsPanel({ automation }: { automation: Automation
       return;
     }
     const validationText = version.validation_errors?.length ? `${version.validation_errors.length} erro(s) conhecidos` : "sem erros conhecidos";
-    if (!window.confirm(`Publicar v${version.version}? Ultima validacao: ${validationText}. A versao ficara disponivel para Flows.`)) return;
-    await runAction(version, "Versao publicada", (t) => publishAutomationVersion(t, version.id));
+    if (!window.confirm(`Publicar v${version.version}? Última validação: ${validationText}. A versão ficara disponível para Flows.`)) return;
+    await runAction(version, "Versão publicada", (t) => publishAutomationVersion(t, version.id));
   }
 
   async function handleDeprecate(version: AutomationVersionResponse) {
-    if (!window.confirm("Depreciar esta versao? Ela deixa de ser recomendada para novos usos, mas nao e necessariamente bloqueada.")) return;
-    await runAction(version, "Versao depreciada", (t) => deprecateAutomationVersion(t, version.id));
+    if (!window.confirm("Depreciar esta versão? Ela deixa de ser recomendada para novos usos, mas não e necessariamente bloqueada.")) return;
+    await runAction(version, "Versão depreciada", (t) => deprecateAutomationVersion(t, version.id));
   }
 
   async function handleBlock(version: AutomationVersionResponse) {
-    if (!window.confirm("Bloquear esta versao? O impacto final segue as regras do backend.")) return;
+    if (!window.confirm("Bloquear esta versão? O impacto final segue as regras do backend.")) return;
     const reason = window.prompt("Motivo do bloqueio (opcional):") ?? "";
-    await runAction(version, "Versao bloqueada", (t) => blockAutomationVersion(t, version.id, { reason: reason || null }));
+    await runAction(version, "Versão bloqueada", (t) => blockAutomationVersion(t, version.id, { reason: reason || null }));
   }
 
   return (
     <>
       <SectionCard
-        title="Versoes"
-        description="Manifesto, pacote, validacao e publicacao de AutomationVersion"
+        title="Versões"
+        description="Manifesto, pacote, validação e publicação de AutomationVersion"
         bodyClassName="p-0"
         actions={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -129,7 +129,7 @@ export function AutomationVersionsPanel({ automation }: { automation: Automation
           </div>
         ) : (versions.data ?? []).length === 0 ? (
           <div className="p-5">
-            <EmptyState icon={Package} title="Sem versoes" description="Crie uma versao com manifesto YAML e depois envie um pacote ZIP." />
+            <EmptyState icon={Package} title="Sem versões" description="Crie uma versão com manifesto YAML e depois envie um pacote ZIP." />
           </div>
         ) : (
           <ul className="divide-y divide-border">
@@ -299,11 +299,11 @@ function AutomationVersionCreateModal({
         },
         idempotencyKey.current,
       );
-      toast({ title: "Versao criada", kind: "success" });
+      toast({ title: "Versão criada", kind: "success" });
       idempotencyKey.current = createIdempotencyKey("automation-version:create");
       onCreated(version);
     } catch (err) {
-      toast({ title: "Falha ao criar versao", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha ao criar versão", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -314,12 +314,12 @@ function AutomationVersionCreateModal({
       open={open}
       onClose={onClose}
       title="Nova AutomationVersion"
-      description="O backend espera automation.yaml; JSON so e aceito se o parser YAML nao estiver disponivel."
+      description="O backend espera automation.yaml; JSON só e aceito se o parser YAML não estiver disponível."
       className="max-w-4xl"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button onClick={submit} disabled={submitting}>Criar versao</Button>
+          <Button onClick={submit} disabled={submitting}>Criar versão</Button>
         </>
       }
     >
@@ -428,7 +428,7 @@ function AutomationPackageUploadModal({
       setPhase("completing");
       const pkg = await completePackageUpload(token, uploadSession.id);
       setPhase("done");
-      toast({ title: pkg.status === "valid" ? "Pacote valido" : "Pacote enviado com problemas", kind: pkg.status === "valid" ? "success" : "warning" });
+      toast({ title: pkg.status === "valid" ? "Pacote válido" : "Pacote enviado com problemas", kind: pkg.status === "valid" ? "success" : "warning" });
       idempotencyKey.current = createIdempotencyKey("package-upload:initiate");
       onCompleted(pkg);
     } catch (err) {
@@ -468,7 +468,7 @@ function AutomationPackageUploadModal({
       open={open}
       onClose={active ? cancel : onClose}
       title={`Enviar pacote para v${version.version}`}
-      description="Envio em uma unica requisicao. A conclusao so ocorre apos o endpoint /complete responder."
+      description="Envio em uma única requisicao. A conclusao só ocorre após o endpoint /complete responder."
       className="max-w-2xl"
       footer={
         <>
@@ -487,7 +487,7 @@ function AutomationPackageUploadModal({
         >
           <FileArchive className="h-8 w-8 text-muted-foreground" />
           <span className="mt-2 text-sm font-medium">{file ? file.name : "Selecione ou arraste um ZIP"}</span>
-          <span className="mt-1 text-xs text-muted-foreground">{file ? formatBytes(file.size) : "Pacotes grandes sao enviados por PUT unico."}</span>
+          <span className="mt-1 text-xs text-muted-foreground">{file ? formatBytes(file.size) : "Pacotes grandes sao enviados por PUT único."}</span>
           <input type="file" className="hidden" onChange={(event) => setFile(event.target.files?.item(0) ?? null)} />
         </label>
         {progress && (
@@ -520,19 +520,19 @@ function AutomationVersionDetails({ version }: { version: AutomationVersionRespo
         items={[
           { value: "summary", label: "Resumo" },
           { value: "package", label: "Pacote" },
-          { value: "validation", label: "Validacao", count: validationErrors.length || undefined },
+          { value: "validation", label: "Validação", count: validationErrors.length || undefined },
           { value: "source", label: "Origem" },
-          { value: "technical", label: "Tecnico" },
+          { value: "technical", label: "Técnico" },
         ]}
       />
       {tab === "summary" && (
         <div className="grid gap-4 sm:grid-cols-2">
-          <Meta label="Versao" value={`v${version.version}`} />
+          <Meta label="Versão" value={`v${version.version}`} />
           <Meta label="Status" value={<AutomationVersionStatusBadge status={version.status} />} />
           <Meta label="Runtime" value={`${version.runtime_id}${version.runtime_version ? `@${version.runtime_version}` : ""}`} />
           <Meta label="RuntimeVersion ID" value={version.runtime_version_id ?? "-"} />
           <Meta label="Entrypoint" value={version.entrypoint_type} />
-          <Meta label="Aplicacao" value={version.application_type} />
+          <Meta label="Aplicação" value={version.application_type} />
           <Meta label="Criada em" value={formatDateTime(version.created_at)} />
           <Meta label="Publicada em" value={formatDateTime(version.published_at)} />
         </div>
@@ -561,7 +561,7 @@ function AutomationVersionDetails({ version }: { version: AutomationVersionRespo
 
 function AutomationValidationErrors({ errors }: { errors: ReturnType<typeof normalizeValidationErrors> }) {
   if (errors.length === 0) {
-    return <EmptyState icon={ShieldCheck} title="Sem erros de validacao" description="A ultima resposta conhecida nao trouxe erros." />;
+    return <EmptyState icon={ShieldCheck} title="Sem erros de validação" description="A última resposta conhecida não trouxe erros." />;
   }
   return (
     <div className="space-y-3">
@@ -588,7 +588,7 @@ function AutomationValidationErrors({ errors }: { errors: ReturnType<typeof norm
             </>
           )}
           <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-muted-foreground">Detalhes tecnicos</summary>
+            <summary className="cursor-pointer text-xs text-muted-foreground">Detalhes técnicos</summary>
             <pre className="mt-2 max-h-56 overflow-auto rounded-md bg-muted p-3 text-xs">{error.technical}</pre>
           </details>
         </div>

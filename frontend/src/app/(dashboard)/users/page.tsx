@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Usuários" };
 export default function UsersPage() {
   return (
     <div className="space-y-6">
-      <PageTitle eyebrow="Acesso" title="Usuários" description="Gestão de usuários, papéis e permissões por categoria." />
+      <PageTitle eyebrow="Pessoas e acesso" title="Usuários" description="Gestão de usuários, papéis e permissões por categoria." />
       <UsersManager />
     </div>
   );

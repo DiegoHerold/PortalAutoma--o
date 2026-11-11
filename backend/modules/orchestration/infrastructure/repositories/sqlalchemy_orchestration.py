@@ -250,6 +250,14 @@ def _task_to_dto(row: TaskExecutionRecord) -> TaskExecutionDTO:
         last_scheduling_attempt_at=row.last_scheduling_attempt_at,
         next_scheduling_attempt_at=row.next_scheduling_attempt_at,
         last_scheduling_failure=row.last_scheduling_failure,
+        group_key=row.group_key,
+        dedup_key=row.dedup_key,
+        manual_position=row.manual_position,
+        enqueue_batch_id=row.enqueue_batch_id,
+        enqueued_at=row.enqueued_at,
+        pool=row.pool,
+        required_machine_id=row.required_machine_id,
+        lost_at=row.lost_at,
     )
 
 
@@ -277,4 +285,7 @@ def _attempt_to_dto(row: ExecutionAttemptRecord) -> ExecutionAttemptDTO:
         output=row.output,
         result=row.result,
         resource_usage=row.resource_usage,
+        executor_type=row.executor_type,
+        executor_id=row.executor_id,
+        machine_id=row.machine_id,
     )

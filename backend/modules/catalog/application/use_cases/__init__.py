@@ -1,5 +1,6 @@
 from modules.catalog.application.use_cases.automations import (
     ArchiveAutomation,
+    RestoreAutomation,
     CreateAutomation,
     GetAutomation,
     ListAutomations,
@@ -44,6 +45,7 @@ from modules.catalog.application.use_cases.versions import (
 __all__ = [
     "AbortPackageUpload",
     "ArchiveAutomation",
+    "RestoreAutomation",
     "ArchiveCategory",
     "BlockAutomationVersion",
     "BlockRuntimeVersion",

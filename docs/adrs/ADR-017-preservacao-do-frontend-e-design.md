@@ -1,5 +1,7 @@
 # ADR-017 - Preservacao do frontend e do design
 
+Status: substituido pelo ADR-020 em 09/11/2026.
+
 ## Contexto
 
 O foco desta etapa e a arquitetura do backend. O frontend atual possui layout,
