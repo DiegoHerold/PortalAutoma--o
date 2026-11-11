@@ -35,6 +35,9 @@ class PackageStorageObjectAdapter:
     def read_bytes(self, bucket: str, object_key: str) -> bytes:
         return self.storage.read_bytes(bucket, object_key)
 
+    def delete_object(self, bucket: str, object_key: str) -> None:
+        self.storage.delete(bucket, object_key)
+
     def get_download_url(self, bucket: str, object_key: str, expires_in_seconds: int = 300) -> str:
         return self.storage.get_download_url(bucket, object_key, expires_in_seconds)
 

@@ -33,7 +33,7 @@ def portal(tls: tuple[Path, Path, Path]):
 
 def test_so_aceita_https() -> None:
     with pytest.raises(ValueError, match="https"):
-        TransporteDireto("http://portal.intranet", "job_a", "t")
+        TransporteDireto("http://portal.intranet", "job_a", "t")  # sem permitir_http
 
 
 def test_url_com_credencial_ou_parametro_e_recusada() -> None:

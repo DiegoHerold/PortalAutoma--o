@@ -35,8 +35,39 @@ Definidos como HSL em `src/app/globals.css`, com `:root` (claro) e `.dark`
 | `info` | `#2563a6` | `#6fa8dc` | informativo |
 
 Regra: **nunca** usar cores soltas nas telas (`bg-slate-800`, `#111`). Sempre
-tokens. A única exceção é a `.faixa-noite`, que reproduz o gradiente do topo do
-Comunica e é igual nos dois temas.
+tokens. A faixa de resumo do topo (`.faixa-noite`) também segue o tema: veja abaixo.
+
+## Tamanho e densidade (pedido de 10/11/2026)
+
+- **O portal cresce com a tela**: `html { font-size: clamp(13.6px, 0.36vw + 9px, 17.6px) }`
+  dá ~13,6px até 1280px, ~14,2px em 1440px, ~15,9px em 1920px e no máximo 17,6px. É 80%
+  da escala anterior (pedido de 10/11/2026: "em 80% fica ótimo"). Tudo no Tailwind é
+  `rem`, então texto, ícones, espaços e o menu crescem juntos.
+- A escala do Tailwind é maior que a padrão (`xs` = 13px, `sm` = 15px na base de 16px).
+  **Nada abaixo de `text-xs`**; tamanhos fixos em `px` são proibidos (use `rem`).
+- **Menos é mais**: uma ação principal por tela; só a busca à mostra; o resto dos filtros
+  atrás de um botão "Filtros" que abre um painel, com a contagem de filtros ativos.
+- Monitorar vem primeiro: tela ao vivo, barra de progresso, falta e término em Barlow
+  Condensed grande, e as últimas linhas do log. Detalhe técnico fica um clique abaixo.
+- **Menu lateral por categoria** (`lib/navigation.ts`): Monitorar (Painel, Fila, Máquinas,
+  Histórico), Operação (Execuções, Fluxos, Webhooks, Agendamentos), Catálogo (Automações,
+  Categorias, Runtimes) e Infraestrutura (Agents). Por padrão o menu vai **até Agents**, sem
+  rolagem num notebook de 1366×768 (teste `menu lateral` em `e2e/fase5.spec.ts`).
+- **Configurações** (`settings-panel.tsx`) em abas, com a aba no endereço (`#menu`,
+  `#notificacoes`, `#conta`, `#sistema`): **Menu e atalhos** lista **todas** as áreas que a pessoa
+  pode abrir, por categoria e na ordem do menu, cada uma com uma frase do que faz, o atalho e a
+  chave "No menu / Fora do menu" (`areas-do-portal.tsx`, guardado em `portal.menu.itens`).
+  Nada fica sem caminho: o que sai do menu continua lá. "Restaurar padrão" volta itens e ordem.
+  Por padrão, ficam fora do menu (`padrao: false`): Armazenamento, Segurança, Pessoas e acesso e
+  Governança. A página aberta sempre aparece no menu, mesmo desligada.
+- **Ordem do menu**: arraste um item para cima ou para baixo dentro da categoria, ou arraste
+  o nome da categoria para mudar a ordem das categorias. Pelo teclado: Alt+↑/↓ no item.
+  Fica no navegador (`portal.menu.ordem`). No celular (gaveta) não há arrastar.
+- Menu **recolhido**: só ícones, maiores (~1,65rem, 23px em 1366px), ainda sem rolagem.
+- **Linha do tempo das Máquinas**: cada hora tem largura fixa (5rem). Janela curta ocupa a
+  largura toda; a de 24 h passa da tela e **rola na horizontal**, com o nome da máquina
+  fixo à esquerda e a tela já posicionada no "agora". O dia só aparece na virada
+  ("AMANHÃ" sobre 00:00), nunca grudado em cada hora.
 
 ## Tipografia
 
@@ -53,11 +84,23 @@ requisição a terceiros no navegador), em `src/app/layout.tsx`:
 - `.eyebrow` — caixa alta espaçada, cor `primary`, com tracinho névoa antes.
   Fica acima do título de cada página (`PageTitle eyebrow="Operação"`).
 - `.titulo-condensado` — Barlow Condensed 600. Títulos de página e números.
-- `.faixa-noite` — faixa escura com borda inferior névoa de 3 px; usada no
-  resumo do topo das telas operacionais (ex.: Fila).
-- Menu lateral: logo Biason branco (`public/marca/logo-biason-branco.png`) +
-  "Portal de Automações" em Barlow Condensed névoa, separados por um filete;
-  borda inferior névoa como o topo do Comunica; rodapé "by Biason".
+- `.faixa-noite` — faixa de resumo do topo das telas operacionais (Painel, Fila,
+  Acompanhar), com borda inferior névoa de 3 px. **No tema claro é branca com texto
+  azul-marinho**; no escuro, o gradiente noite do Comunica. Dentro dela use as classes
+  `.faixa-rotulo`, `.faixa-valor`, `.faixa-apoio` e `.faixa-alerta` e as variáveis
+  `--faixa-divisao` e `--tela-fundo`, nunca cor fixa (`text-white`, `#0b1223`): cor fixa
+  some no tema claro.
+- Menu lateral: **só o logo** Biason branco (`public/marca/logo-biason-branco.png`), sem
+  texto embaixo; borda inferior névoa como o topo do Comunica. O logo leva ao Painel.
+  Recolhido, mostra só "B". Rodapé: Configurações e o botão de recolher, lado a lado.
+- **Sino de avisos** no topo (`sino-de-avisos.tsx`): contagem por ler em vermelho, lista dos
+  últimos 20, "Marcar todos como lidos" e atalho para Configurações > Notificações.
+- **Filtros** em telas de lista: `FiltrosEscondidos` (`components/shared/filtros-escondidos.tsx`)
+  deixa só a busca à mostra e o resto atrás de "Filtros".
+- O rótulo acima do título (`PageTitle eyebrow`) é a **categoria do menu** da tela:
+  Monitorar, Operação, Catálogo, Infraestrutura, Segurança, Pessoas e acesso, Governança.
+- Cartões (`Card`, `SectionCard`, `EmptyState`) com canto `rounded-xl` e título em Barlow
+  Condensed (`titulo-condensado`). Texto de tela sempre com acento.
 
 ## Estimativas e motivos (regra de tela)
 
@@ -105,7 +148,7 @@ Sempre desenhar vazio/erro/carregando com a mesma atenção do estado com dados:
 ## Layout e navegação
 
 - `AppShell` (`components/layout/app-shell.tsx`): sidebar fixa + header sticky + área de conteúdo (`max-w-[1400px]`). Provê o `RealtimeStatusProvider`.
-- Sidebar (`app-sidebar.tsx`): navegação agrupada (`lib/navigation.ts`); "Fila" fica em **Visão geral**, ao lado do Dashboard; item ativo com barra e ícone névoa; versão mobile em drawer.
+- Sidebar (`app-sidebar.tsx`): navegação por categoria (`lib/navigation.ts`), filtrada pela escolha do menu (`lib/menu.ts`); item ativo com barra e ícone névoa; versão mobile em drawer.
 - Header (`app-header.tsx`): busca/command palette (⌘K), indicador de tempo real, toggle de tema, menu do usuário.
 - Command palette (`command-palette.tsx`): navegação rápida por teclado.
 - Tema: `ThemeProvider` (`components/theme/theme-provider.tsx`) com classe `dark`, persistência em `localStorage` e anti-flash inline no `layout.tsx`.

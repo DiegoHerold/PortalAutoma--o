@@ -66,14 +66,14 @@ export function RuntimesManager() {
   ) {
     if (!token) return;
     if (action === "publish" && !window.confirm(`Publicar Runtime ${version.version}?`)) return;
-    if (action === "deprecate" && !window.confirm(`Depreciar Runtime ${version.version}? Novos usos devem preferir outra versao.`)) return;
+    if (action === "deprecate" && !window.confirm(`Depreciar Runtime ${version.version}? Novos usos devem preferir outra versão.`)) return;
     setBusyVersionId(version.id);
     try {
       await fn(token);
-      toast({ title: "Versao de runtime atualizada", kind: "success" });
+      toast({ title: "Versão de runtime atualizada", kind: "success" });
       await refetchRuntime();
     } catch (err) {
-      toast({ title: "Falha na acao", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha na ação", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setBusyVersionId(null);
     }
@@ -81,7 +81,7 @@ export function RuntimesManager() {
 
   async function handleBlock(version: RuntimeVersionResponse) {
     if (!token) return;
-    if (!window.confirm(`Bloquear Runtime ${version.version}? Esta acao impede novos usos conforme as regras do backend.`)) return;
+    if (!window.confirm(`Bloquear Runtime ${version.version}? Esta ação impede novos usos conforme as regras do backend.`)) return;
     const reason = window.prompt("Motivo do bloqueio (opcional):") ?? "";
     await runVersionAction(version, "block", (t) => blockRuntimeVersion(t, version.id, { reason: reason || null }));
   }
@@ -110,7 +110,7 @@ export function RuntimesManager() {
         <EmptyState
           icon={Boxes}
           title="Nenhum runtime"
-          description={query ? "Nenhum resultado para a busca atual." : "Crie o primeiro runtime para publicar versoes compativeis com Agents."}
+          description={query ? "Nenhum resultado para a busca atual." : "Crie o primeiro runtime para publicar versões compativeis com Agents."}
           action={
             !query ? (
               <Button onClick={() => setCreateOpen(true)}>
@@ -186,7 +186,7 @@ function RuntimeCard({ runtime, onOpen }: { runtime: RuntimeResponse; onOpen: ()
     <button
       type="button"
       onClick={onOpen}
-      className="h-full rounded-lg border border-border bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/50"
+      className="h-full rounded-xl border border-border bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/50"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -198,7 +198,7 @@ function RuntimeCard({ runtime, onOpen }: { runtime: RuntimeResponse; onOpen: ()
       {runtime.description && <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{runtime.description}</p>}
       <div className="mt-4 grid gap-2 text-xs text-muted-foreground">
         <span>{versions.length} versao(oes)</span>
-        <span className="tabular">{published ? `Publicada: ${published.version}` : "Sem versao publicada"}</span>
+        <span className="tabular">{published ? `Publicada: ${published.version}` : "Sem versão publicada"}</span>
       </div>
     </button>
   );
@@ -230,7 +230,7 @@ function RuntimeDetails({
         onValueChange={setTab}
         items={[
           { value: "overview", label: "Resumo" },
-          { value: "versions", label: "Versoes", count: versions.length },
+          { value: "versions", label: "Versões", count: versions.length },
           { value: "compatibility", label: "Agents" },
         ]}
       />
@@ -242,14 +242,14 @@ function RuntimeDetails({
           <Meta label="Status" value={runtime.status} />
           <Meta label="Criado em" value={formatDateTime(runtime.created_at)} />
           <Meta label="Atualizado em" value={formatDateTime(runtime.updated_at)} />
-          <Meta label="Versoes" value={versions.length} />
-          {runtime.description && <div className="sm:col-span-2"><Meta label="Descricao" value={runtime.description} /></div>}
+          <Meta label="Versões" value={versions.length} />
+          {runtime.description && <div className="sm:col-span-2"><Meta label="Descrição" value={runtime.description} /></div>}
         </div>
       )}
 
       {tab === "versions" && (
         versions.length === 0 ? (
-          <EmptyState icon={Boxes} title="Sem versoes" description="Crie uma RuntimeVersion para definir plataforma, entrypoints e modos suportados." />
+          <EmptyState icon={Boxes} title="Sem versões" description="Crie uma RuntimeVersion para definir plataforma, entrypoints e modos suportados." />
         ) : (
           <div className="space-y-3">
             {versions.map((version) => (
@@ -340,7 +340,7 @@ function RuntimeAgentCompatibility({
   if (loading) return <Skeleton className="h-28 rounded-lg" />;
   const versionsWithMinimum = versions.filter((version) => version.minimum_agent_version);
   if (versionsWithMinimum.length === 0) {
-    return <EmptyState icon={Server} title="Sem requisito minimo" description="Nenhuma versao deste runtime exige minimum_agent_version." />;
+    return <EmptyState icon={Server} title="Sem requisito mínimo" description="Nenhuma versão deste runtime exige minimum_agent_version." />;
   }
   return (
     <div className="space-y-3">
@@ -359,7 +359,7 @@ function RuntimeAgentCompatibility({
               <div className="mt-3 flex items-start gap-2 rounded-md bg-warning/10 p-3 text-sm text-warning">
                 <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
-                  {older.length} Agent(s) registrados possuem versao anterior. Este aviso e informativo; o backend continua decidindo admissao e execucao.
+                  {older.length} Agent(s) registrados possuem versão anterior. Este aviso é informativo; o backend continua decidindo admissão e execução.
                 </span>
               </div>
             )}
@@ -410,7 +410,7 @@ function RuntimeCreateModal({
       open={open}
       onClose={onClose}
       title="Novo runtime"
-      description="Cadastre a identidade logica do runtime antes de adicionar versoes."
+      description="Cadastre a identidade lógica do runtime antes de adicionar versões."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
@@ -428,7 +428,7 @@ function RuntimeCreateModal({
           <Input id="runtime-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Python Desktop" />
         </Field>
         <Field>
-          <Label htmlFor="runtime-description">Descricao</Label>
+          <Label htmlFor="runtime-description">Descrição</Label>
           <Textarea id="runtime-description" value={description} onChange={(event) => setDescription(event.target.value)} />
         </Field>
       </div>
@@ -474,7 +474,7 @@ function RuntimeVersionCreateModal({
         }
         return parsed as Record<string, unknown>;
       } catch {
-        setError("Metadata JSON invalido.");
+        setError("Metadata JSON inválido.");
         return null;
       }
     }
@@ -502,12 +502,12 @@ function RuntimeVersionCreateModal({
         },
         idempotencyKey.current,
       );
-      toast({ title: "Versao de runtime criada", kind: "success" });
+      toast({ title: "Versão de runtime criada", kind: "success" });
       idempotencyKey.current = createIdempotencyKey("runtime-version:create");
       setVersion("");
       onCreated();
     } catch (err) {
-      toast({ title: "Falha ao criar versao", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "Falha ao criar versão", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -517,20 +517,20 @@ function RuntimeVersionCreateModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`Nova versao de ${runtime.name}`}
+      title={`Nova versão de ${runtime.name}`}
       description="Defina plataforma, entrypoints, modos e metadata da RuntimeVersion."
       className="max-w-2xl"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button onClick={submit} disabled={submitting || !version.trim() || entrypoints.length === 0 || executionModes.length === 0}>Criar versao</Button>
+          <Button onClick={submit} disabled={submitting || !version.trim() || entrypoints.length === 0 || executionModes.length === 0}>Criar versão</Button>
         </>
       }
     >
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
           <Field>
-            <Label htmlFor="runtime-version">Versao</Label>
+            <Label htmlFor="runtime-version">Versão</Label>
             <Input id="runtime-version" className="tabular" value={version} onChange={(event) => setVersion(event.target.value)} placeholder="1.0.0" />
           </Field>
           <Field>
@@ -543,7 +543,7 @@ function RuntimeVersionCreateModal({
           </Field>
         </div>
         <Field>
-          <Label htmlFor="runtime-min-agent">Agent minimo</Label>
+          <Label htmlFor="runtime-min-agent">Agent mínimo</Label>
           <Input id="runtime-min-agent" className="tabular" value={minimumAgentVersion} onChange={(event) => setMinimumAgentVersion(event.target.value)} placeholder="1.4.0" />
         </Field>
         <EditableList
@@ -556,7 +556,7 @@ function RuntimeVersionCreateModal({
           placeholder="python-module"
         />
         <EditableList
-          label="Modos de execucao"
+          label="Modos de execução"
           value={modeDraft}
           values={executionModes}
           onValueChange={setModeDraft}

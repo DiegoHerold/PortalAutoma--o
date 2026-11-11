@@ -9,9 +9,9 @@ export default function RuntimesPage() {
   return (
     <div className="space-y-6">
       <PageTitle
-        eyebrow="Catalogo"
+        eyebrow="Catálogo"
         title="Runtimes"
-        description="Gestao de runtimes, versoes publicadas e compatibilidade informativa com Agents."
+        description="Gestao de runtimes, versões publicadas e compatibilidade informativa com Agents."
       />
       <RuntimesManager />
     </div>

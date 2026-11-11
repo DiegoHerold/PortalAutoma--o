@@ -1,8 +1,9 @@
 """Modo direto: a automação fala direto com o Portal, só por HTTPS de saída.
 
-Regras (ADR-018): só HTTPS, TLS 1.2 ou superior, certificado sempre validado (pela CA da
+Regras (ADR-018): HTTPS, TLS 1.2 ou superior, certificado sempre validado (pela CA da
 empresa no repositório do Windows ou por um arquivo de CA). Não existe opção para desligar
-a validação. O token do job vai no cabeçalho, nunca na URL.
+a validação. O token do job vai no cabeçalho, nunca na URL. Exceção provisória: HTTP só
+com ``permitir_http`` e só na rede interna (ver ``enderecos.py``).
 
 Nesta versão a automação recebe o job pronto (URL, id e token do job). A inscrição da
 instância, o desafio assinado e o pedido de jobs entram na Fase 6.
@@ -15,8 +16,9 @@ import ssl
 import urllib.error
 import urllib.request
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
+from .enderecos import usa_http, validar_url_portal
 from .transporte import FalhaDeTransporte, Recusado
 
 TEMPO_LIMITE_S = 20.0
@@ -26,21 +28,19 @@ class TransporteDireto:
     nome = "direto"
 
     def __init__(self, url: str, job_id: str, token_job: str, arquivo_ca: str | None = None,
-                 tempo_limite_s: float = TEMPO_LIMITE_S) -> None:
-        partes = urlsplit(url)
-        if partes.scheme != "https" or not partes.hostname:
-            raise ValueError("o modo direto só aceita https://")
-        if partes.query or partes.username or partes.password:
-            raise ValueError("a URL do Portal não pode ter credenciais nem parâmetros")
+                 tempo_limite_s: float = TEMPO_LIMITE_S, permitir_http: bool = False) -> None:
+        url = validar_url_portal(url, permitir_http)
         if not job_id or not token_job:
             raise ValueError("modo direto sem PORTAL_JOB_ID ou PORTAL_JOB_TOKEN")
         self._base = f"{url.rstrip('/')}/api/v1/direto/jobs/{quote(job_id, safe='')}"
         self._token = token_job
         self._tempo_limite_s = tempo_limite_s
-        self._tls = ssl.create_default_context(cafile=arquivo_ca)
-        self._tls.minimum_version = ssl.TLSVersion.TLSv1_2
-        self._tls.check_hostname = True
-        self._tls.verify_mode = ssl.CERT_REQUIRED
+        self._tls: ssl.SSLContext | None = None
+        if not usa_http(url):
+            self._tls = ssl.create_default_context(cafile=arquivo_ca)
+            self._tls.minimum_version = ssl.TLSVersion.TLSv1_2
+            self._tls.check_hostname = True
+            self._tls.verify_mode = ssl.CERT_REQUIRED
         self.recusados: list[dict[str, Any]] = []
 
     def conectar(self) -> int:

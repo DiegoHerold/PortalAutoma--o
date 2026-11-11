@@ -436,7 +436,7 @@ export function FlowsManager() {
                     <TD>
                       <div className="flex max-w-[160px] flex-wrap gap-1">
                         {flow.tags.slice(0, 3).map((tag) => (
-                          <Badge key={tag} tone="outline" className="text-[10px]">
+                          <Badge key={tag} tone="outline" className="text-xs">
                             {tag}
                           </Badge>
                         ))}

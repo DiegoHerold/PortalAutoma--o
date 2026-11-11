@@ -114,7 +114,7 @@ export function TimelineTab({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium">{eventTypeLabel(event.event_type)}</span>
                 {event.level && (
-                  <span className={cn("text-[11px] font-semibold uppercase", LEVEL_COLOR[event.level] ?? "text-muted-foreground")}>
+                  <span className={cn("text-xs font-semibold uppercase", LEVEL_COLOR[event.level] ?? "text-muted-foreground")}>
                     {event.level}
                   </span>
                 )}

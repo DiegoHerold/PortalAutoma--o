@@ -179,6 +179,7 @@ class StepImageRecord(Base):
     __table_args__ = (
         UniqueConstraint("execution_attempt_id", "imagem_id", name="uq_step_images_tentativa_imagem"),
         Index("ix_step_images_execution", "execution_id", "created_at"),
+        Index("ix_step_images_automacao_criada", "automation_id", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
@@ -197,4 +198,56 @@ class StepImageRecord(Base):
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     motivo_recusa: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    apagada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NotificationPreferenceRecord(Base):
+    """O que cada pessoa quer receber (Fase 6). Sem linha: nada."""
+
+    __tablename__ = "notification_preferences"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    tipos: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    fila_minutos: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NotificationRecord(Base):
+    """Ocorrência agregada: a chave única impede repetir a mesma."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (UniqueConstraint("chave", name="uq_notifications_chave"),)
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    chave: Mapped[str] = mapped_column(String(300), nullable=False)
+    tipos: Mapped[list] = mapped_column(JSONB, nullable=False)
+    titulo: Mapped[str] = mapped_column(String(300), nullable=False)
+    texto: Mapped[str] = mapped_column(Text, nullable=False)
+    link: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    automation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    execution_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    quando: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class NotificationDeliveryRecord(Base):
+    """Um aviso por endereço e ocorrência; lido no portal e, quando ligado, enviado por e-mail."""
+
+    __tablename__ = "notification_deliveries"
+    __table_args__ = (
+        UniqueConstraint("notification_id", "email", name="uq_notification_deliveries_endereco"),
+        Index("ix_notification_deliveries_usuario", "user_id", "created_at"),
+        Index("ix_notification_deliveries_envio", "email_status", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    notification_id: Mapped[str] = mapped_column(ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    email_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pendente")
+    tentativas: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ultimo_erro: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    enviado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lida_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

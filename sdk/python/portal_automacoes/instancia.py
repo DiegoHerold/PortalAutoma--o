@@ -8,7 +8,8 @@ Uso típico numa máquina sem Agent:
 
 - A chave ECDSA P-256 é gerada aqui e a privada fica cifrada com o DPAPI do Windows, no
   escopo do usuário: só esse usuário, nesta máquina, consegue usá-la. Nunca sai da máquina.
-- Só HTTPS, TLS 1.2+, certificado sempre validado. Credencial só no corpo ou no cabeçalho.
+- HTTPS, TLS 1.2+, certificado sempre validado. Credencial só no corpo ou no cabeçalho.
+  Exceção provisória: ``permitir_http=True`` aceita http:// só na rede interna (``enderecos.py``).
 - Depois da inscrição, a instância fica pendente até o administrador aprová-la e escolher
   a máquina no Portal. Enquanto isso, ``trabalhar`` só espera.
 """
@@ -28,8 +29,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
+from .enderecos import usa_http, validar_url_portal
 from .transporte import FalhaDeTransporte, Recusado
 
 PROTOCOLO = "portal-automacoes/direto/1"
@@ -55,19 +56,21 @@ class Job:
 
 class Instancia:
     def __init__(self, portal: str, instancia_id: str, chave_privada: Any, arquivo_ca: str | None,
-                 arquivo: Path | None = None) -> None:
-        self.portal = _validar_url(portal)
+                 arquivo: Path | None = None, permitir_http: bool = False) -> None:
+        self.portal = validar_url_portal(portal, permitir_http)
+        self.permitir_http = permitir_http
         self.id = instancia_id
         self._chave = chave_privada
         self.arquivo_ca = arquivo_ca
         self.arquivo = arquivo
-        self._tls = contexto_tls(arquivo_ca)
+        self._tls = None if usa_http(self.portal) else contexto_tls(arquivo_ca)
         self._sessao: tuple[str, datetime] | None = None
 
     # -- inscrição e credencial ------------------------------------------------------------
     @classmethod
     def inscrever(cls, portal: str, *, codigo: str, nome: str, arquivo_ca: str | None = None,
-                  nome_maquina: str | None = None, versao_sdk: str = "0.1.0", pasta: Path | None = None) -> "Instancia":
+                  nome_maquina: str | None = None, versao_sdk: str = "0.1.0", pasta: Path | None = None,
+                  permitir_http: bool = False) -> "Instancia":
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -77,15 +80,17 @@ class Instancia:
         chave = ec.generate_private_key(ec.SECP256R1())
         publica = chave.public_key().public_bytes(serialization.Encoding.PEM,
                                                   serialization.PublicFormat.SubjectPublicKeyInfo).decode("ascii")
-        resposta = _pedir(contexto_tls(arquivo_ca), "POST", _validar_url(portal) + "/api/v1/direto/inscricao",
+        portal = validar_url_portal(portal, permitir_http)
+        resposta = _pedir(None if usa_http(portal) else contexto_tls(arquivo_ca), "POST", portal + "/api/v1/direto/inscricao",
                           {"codigo": codigo, "chave_publica": publica, "versao_sdk": versao_sdk,
                            "nome_maquina": nome_maquina or os.environ.get("COMPUTERNAME") or ""})
-        instancia = cls(portal, str(resposta["instancia_id"]), chave, arquivo_ca, arquivo)
+        instancia = cls(portal, str(resposta["instancia_id"]), chave, arquivo_ca, arquivo, permitir_http)
         privada = chave.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.PKCS8,
                                       serialization.NoEncryption())
         arquivo.parent.mkdir(parents=True, exist_ok=True)
         arquivo.write_text(json.dumps({
             "portal": instancia.portal, "instancia_id": instancia.id, "arquivo_ca": arquivo_ca,
+            "permitir_http": permitir_http,
             "chave_privada_dpapi": base64.b64encode(proteger(privada)).decode("ascii"),
         }, indent=2), encoding="utf-8")
         return instancia
@@ -100,7 +105,8 @@ class Instancia:
         dados = json.loads(arquivo.read_text(encoding="utf-8"))
         privada = desproteger(base64.b64decode(dados["chave_privada_dpapi"]))
         chave = serialization.load_der_private_key(privada, password=None)
-        return cls(dados["portal"], dados["instancia_id"], chave, dados.get("arquivo_ca"), arquivo)
+        return cls(dados["portal"], dados["instancia_id"], chave, dados.get("arquivo_ca"), arquivo,
+                   bool(dados.get("permitir_http")))
 
     # -- sessão ----------------------------------------------------------------------------
     def _token(self) -> str:
@@ -137,6 +143,8 @@ class Instancia:
                     "PORTAL_JOB_TOKEN": job.token}
         if self.arquivo_ca:
             ambiente["PORTAL_CA_ARQUIVO"] = self.arquivo_ca
+        if self.permitir_http:
+            ambiente["PORTAL_PERMITIR_HTTP"] = "1"
         return ambiente
 
 
@@ -182,15 +190,10 @@ def contexto_tls(arquivo_ca: str | None) -> ssl.SSLContext:
 
 
 def _validar_url(url: str) -> str:
-    partes = urlsplit(url)
-    if partes.scheme != "https" or not partes.hostname:
-        raise ValueError("o modo direto só aceita https://")
-    if partes.query or partes.username or partes.password:
-        raise ValueError("a URL do Portal não pode ter credenciais nem parâmetros")
-    return url.rstrip("/")
+    return validar_url_portal(url)
 
 
-def _pedir(tls: ssl.SSLContext, metodo: str, url: str, corpo: Any = None, token: str | None = None) -> dict[str, Any]:
+def _pedir(tls: ssl.SSLContext | None, metodo: str, url: str, corpo: Any = None, token: str | None = None) -> dict[str, Any]:
     cabecalhos = {"Accept": "application/json", "Content-Type": "application/json"}
     if token:
         cabecalhos["Authorization"] = f"Bearer {token}"

@@ -81,8 +81,8 @@ export function WebhookDetailsSheet({
           <InfoItem label="Mapeamento" value={mappingSummary(trigger.parameter_mapping_json)} />
           <InfoItem label="Criado em" value={formatDateTime(trigger.created_at)} />
           <InfoItem label="Atualizado em" value={formatDateTime(trigger.updated_at)} />
-          <InfoItem label="Ultima invocacao" value={formatDateTime(trigger.last_invoked_at)} />
-          <InfoItem label="Duracao da ultima Execution" value={formatDuration(trigger.last_execution_duration_seconds)} />
+          <InfoItem label="Última invocacao" value={formatDateTime(trigger.last_invoked_at)} />
+          <InfoItem label="Duração da última Execution" value={formatDuration(trigger.last_execution_duration_seconds)} />
         </div>
 
         {trigger.parameter_mapping_json && (

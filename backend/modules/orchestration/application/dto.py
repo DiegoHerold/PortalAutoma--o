@@ -25,9 +25,9 @@ class AutomationVersionSnapshotDTO:
     runtime_id: str
     runtime_version: str | None
     runtime_version_id: str | None
-    package_id: str
-    package_sha256: str
-    package_size_bytes: int
+    package_id: str | None
+    package_sha256: str | None
+    package_size_bytes: int | None
     package_download_url: str | None
     manifest: dict[str, Any]
     execution_mode: str
@@ -38,6 +38,8 @@ class AutomationVersionSnapshotDTO:
     exclusive_resources: list[str]
     retry_policy: dict[str, Any] = field(default_factory=dict)
     timeout_policy: dict[str, Any] = field(default_factory=dict)
+    # Automação externa: só roda pela fila, entregue a uma instância direta (nunca a um Agent).
+    externa: bool = False
 
 
 @dataclass(frozen=True)

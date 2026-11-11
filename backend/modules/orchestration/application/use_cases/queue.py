@@ -85,7 +85,11 @@ class EnfileirarExecucao:
                 execucao_criada = True
             tarefa = TaskExecutionDTO(
                 id=f"tsk_{uuid4().hex}", execution_id=execution_id, automation_version_id=automation_version_id,
-                status="queued", priority=prioridade, parameters=parametros, input={"itens": chaves_grupo},
+                status="queued", priority=prioridade, parameters=parametros,
+                # Retrato dos itens no pedido: mudar o cadastro depois não altera o job na fila (seção 6.5).
+                input={"itens": chaves_grupo, "dados_dos_itens": [
+                    {campo: i.get(campo) for campo in ("chave", "rotulo", "grupo", "configuracao", "atributos")}
+                    for i in grupo]},
                 result=None, retry_policy=_retry_policy(versao),
                 timeout_policy=versao.timeout_policy or _default_timeout_policy(versao.timeout_seconds),
                 created_at=now, queued_at=now,

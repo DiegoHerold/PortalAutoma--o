@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     agent_gateway_idle_timeout_seconds: int = 120
 
     backend_public_url: str = "http://localhost:8000"
+
+    # Notificações por e-mail pelo Microsoft Graph (Fase 6). Desligado até alguém ligar:
+    # os avisos ficam no portal e o e-mail espera. O segredo só vem do .env, nunca do código.
+    notificacoes_email_ligado: bool = False
+    graph_tenant_id: str = ""
+    graph_client_id: str = ""
+    graph_client_secret: SecretStr = SecretStr("")
+    graph_remetente: str = ""
 
     storage_backend: Literal["local", "s3"] = "local"
     local_storage_path: str = "data/packages"

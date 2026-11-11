@@ -165,6 +165,16 @@ class SqlAlchemyCatalogRepository:
         self.db.flush()
         return self._automation_to_dto(row)
 
+    def restore_automation(self, automation_id: int) -> AutomationDTO:
+        row = self.db.get(Automation, automation_id)
+        if row is None:
+            raise ValueError("Automation not found.")
+        row.status = "active"
+        row.is_active = True
+        self.db.add(row)
+        self.db.flush()
+        return self._automation_to_dto(row)
+
     def create_source(self, automation_id: int, payload: dict[str, Any]) -> AutomationSourceDTO:
         row = AutomationSource(automation_id=automation_id, **payload)
         self.db.add(row)

@@ -15,7 +15,7 @@ export function PermissionGuard({
     return (
       <EmptyState
         title="Acesso restrito"
-        description="Seu usuario nao possui permissao suficiente para acessar este recurso."
+        description="Seu usuário não possui permissão suficiente para acessar este recurso."
       />
     );
   }

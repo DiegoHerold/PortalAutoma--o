@@ -109,7 +109,7 @@ export function AcessosDaAutomacao({ id }: { id: string }) {
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
               <table className="w-full text-sm">
-                <thead className="bg-muted text-left text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                <thead className="bg-muted text-left text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2.5">Pessoa ou time</th>
                     {ACOES.map((a) => (

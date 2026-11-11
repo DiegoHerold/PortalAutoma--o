@@ -60,6 +60,21 @@ class SqlAlchemyDirectInstanceStore:
                  "aprovada_em": _iso(i.approved_at), "aprovada_por": i.approved_by, "revogada_em": _iso(i.revoked_at),
                  "ultimo_sinal": _iso(i.last_seen_at)} for i, nome in linhas]
 
+    def todas(self) -> list[dict[str, Any]]:
+        """Todas as instâncias (revogadas por último), com o nome da automação."""
+        from modules.catalog.infrastructure.orm.models import CatalogAutomationRecord
+
+        linhas = self.db.execute(
+            select(DirectInstanceRecord, MachineRecord.name, CatalogAutomationRecord.name)
+            .outerjoin(MachineRecord, MachineRecord.id == DirectInstanceRecord.machine_id)
+            .outerjoin(CatalogAutomationRecord, CatalogAutomationRecord.id == DirectInstanceRecord.automation_id)
+            .order_by((DirectInstanceRecord.status == "revogada"), DirectInstanceRecord.created_at.desc())
+        ).all()
+        return [{"id": i.id, "status": i.status, "automation_id": i.automation_id, "automacao": automacao,
+                 "nome_informado": i.reported_name, "versao": i.reported_version, "maquina_id": i.machine_id,
+                 "maquina_nome": nome, "inscrita_em": _iso(i.created_at), "ultimo_sinal": _iso(i.last_seen_at)}
+                for i, nome, automacao in linhas]
+
     def maquina_existe(self, machine_id: str) -> bool:
         return self.db.scalar(select(MachineRecord.id).where(MachineRecord.id == machine_id,
                                                               MachineRecord.status == "ativa")) is not None

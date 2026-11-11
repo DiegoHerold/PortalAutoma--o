@@ -89,12 +89,15 @@ class SqlAlchemyDirectDeliveryReader:
             select(ExecutionItemRecord.item_key, ExecutionItemRecord.label)
             .where(ExecutionItemRecord.task_execution_id == tarefa.id).order_by(ExecutionItemRecord.item_key)
         ).all()
-        da_entrada = {str(i.get("chave")): i for i in ((tarefa.input or {}).get("itens") or []) if isinstance(i, dict)}
+        entrada = tarefa.input or {}
+        da_entrada = {str(i.get("chave")): i for i in (entrada.get("dados_dos_itens") or entrada.get("itens") or [])
+                      if isinstance(i, dict)}
         return {
             "attempt_id": tentativa.id, "attempt_number": tentativa.attempt_number, "job_id": tarefa.id,
             "execution_id": tarefa.execution_id, "parametros": dict(tarefa.parameters or {}),
             "itens": [{"chave": k, "rotulo": r, "grupo": (da_entrada.get(k) or {}).get("grupo"),
-                       "configuracao": (da_entrada.get(k) or {}).get("configuracao") or {}} for k, r in itens]
+                       "configuracao": (da_entrada.get(k) or {}).get("configuracao") or {},
+                       "atributos": (da_entrada.get(k) or {}).get("atributos") or {}} for k, r in itens]
             or list(da_entrada.values()),
         }
 

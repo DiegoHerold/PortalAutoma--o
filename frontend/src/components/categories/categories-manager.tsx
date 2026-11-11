@@ -116,7 +116,7 @@ export function CategoriesManager() {
                   </Button>
                 </div>
               </div>
-              <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{c.description || "Sem descricao."}</p>
+              <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{c.description || "Sem descrição."}</p>
             </Card>
           ))}
         </div>
@@ -147,7 +147,7 @@ export function CategoriesManager() {
             <Input id="c-slug" className="tabular" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
           </Field>
           <Field>
-            <Label htmlFor="c-desc">Descricao</Label>
+            <Label htmlFor="c-desc">Descrição</Label>
             <Textarea id="c-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <label className="flex items-center gap-2 text-sm">

@@ -1,6 +1,13 @@
 /** Formato de `GET /execucoes/{id}/acompanhar` (backend/modules/telemetry/api/acompanhar.py). */
 
-export type SituacaoImagem = { situacao: "pronta" | "recusada"; motivo: string | null } | null;
+export type SituacaoImagem = { situacao: "pronta" | "recusada" | "apagada"; motivo: string | null } | null;
+
+/** Por que não há imagem para mostrar: recusada pelo portal ou apagada pela retenção. */
+export function semImagem(s: SituacaoImagem | undefined): string | null {
+  if (s?.situacao === "recusada") return `Imagem recusada: ${s.motivo ?? "sem motivo"}`;
+  if (s?.situacao === "apagada") return `Imagem ${s.motivo ?? "apagada pela retenção"}`;
+  return null;
+}
 
 export type Passo = {
   id: string;

@@ -42,6 +42,7 @@ class AutomationUpdateRequest(AutomationCreateRequest):
 
 class AutomationResponse(AutomationCreateRequest):
     id: int
+    status: str | None = None  # active | archived (arquivada: fora do Catálogo, histórico guardado)
 
 
 class AutomationSourceResponse(BaseModel):

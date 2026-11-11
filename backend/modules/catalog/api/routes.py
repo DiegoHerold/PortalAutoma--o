@@ -46,6 +46,7 @@ from modules.catalog.application.dto import ActorDTO, RuntimeDTO, RuntimeVersion
 from modules.catalog.application.use_cases import (
     AbortPackageUpload,
     ArchiveAutomation,
+    RestoreAutomation,
     ArchiveCategory,
     CreateAutomation,
     BlockAutomationVersion,
@@ -269,6 +270,22 @@ def archive_automation(
         ArchiveAutomation(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(automation_id, _actor(user))
     except CatalogError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/automations/{automation_id}/restaurar", response_model=AutomationResponse)
+def restore_automation(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: Any = Depends(get_current_user),
+) -> AutomationResponse:
+    adapters = build_catalog_adapters(db)
+    ensure_automation_action(db, user, automation_id, "can_delete")
+    try:
+        result = RestoreAutomation(adapters.catalog, adapters.audit, adapters.outbox, adapters.transaction).execute(
+            automation_id, _actor(user))
+    except CatalogError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AutomationResponse.model_validate(result, from_attributes=True)
 
 
 @router.get("/automations/{automation_id}/sources", response_model=list[AutomationSourceResponse])

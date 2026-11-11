@@ -35,21 +35,25 @@ class JobSimulado:
 
 
 class PortalSimulado:
-    def __init__(self, certificado: Path, chave: Path, validar: Callable[[dict[str, Any]], Any]) -> None:
+    def __init__(self, certificado: Path | None, chave: Path | None, validar: Callable[[dict[str, Any]], Any]) -> None:
+        """Sem certificado: HTTP puro (só para testar o modo provisório sem TLS na rede interna)."""
         self.jobs: dict[str, JobSimulado] = {}
         self.recusas_autenticacao = 0
         self._validar = validar
         self._lock = threading.Lock()
-        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        tls.minimum_version = ssl.TLSVersion.TLSv1_2
-        tls.load_cert_chain(certificado, chave)
         self._servidor = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
-        self._servidor.socket = tls.wrap_socket(self._servidor.socket, server_side=True)
+        self._esquema = "http"
+        if certificado is not None:
+            tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            tls.minimum_version = ssl.TLSVersion.TLSv1_2
+            tls.load_cert_chain(certificado, chave)
+            self._servidor.socket = tls.wrap_socket(self._servidor.socket, server_side=True)
+            self._esquema = "https"
         self._thread = threading.Thread(target=self._servidor.serve_forever, daemon=True)
 
     @property
     def url(self) -> str:
-        return f"https://127.0.0.1:{self._servidor.server_address[1]}"  # localhost tentaria ::1 antes, 2 s por conexão
+        return f"{self._esquema}://127.0.0.1:{self._servidor.server_address[1]}"  # localhost tentaria ::1 antes, 2 s por conexão
 
     def criar_job(self, job_id: str, token: str) -> JobSimulado:
         self.jobs[job_id] = JobSimulado(token)

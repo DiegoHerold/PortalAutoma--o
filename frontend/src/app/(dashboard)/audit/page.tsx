@@ -9,7 +9,7 @@ export default function AuditPage() {
   return (
     <div className="space-y-6">
       <PageTitle
-        eyebrow="Governança"
+        eyebrow="Segurança"
         title="Auditoria"
         description="Trilha de eventos: quem fez o quê, quando, com diff antes/depois."
       />

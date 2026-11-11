@@ -30,6 +30,6 @@ export function DetailState<T>({ path, render, loadingLabel }: DetailStateProps<
   }, [path, token]);
 
   if (loading) return <LoadingState label={loadingLabel} />;
-  if (error || !data) return <div className="rounded-3xl bg-white/80 p-6 shadow-sm text-rose-600">{error ?? "Detalhe nao encontrado."}</div>;
+  if (error || !data) return <div className="rounded-3xl bg-white/80 p-6 shadow-sm text-rose-600">{error ?? "Detalhe não encontrado."}</div>;
   return <>{render(data)}</>;
 }

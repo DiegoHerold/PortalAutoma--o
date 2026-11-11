@@ -124,7 +124,7 @@ export function SchedulesFilterSheet({
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Automações específicas</h3>
-              {draft.automationIds.length > 0 && <span className="text-[11px] text-muted-foreground">{draft.automationIds.length} selecionadas</span>}
+              {draft.automationIds.length > 0 && <span className="text-xs text-muted-foreground">{draft.automationIds.length} selecionadas</span>}
             </div>
             <Input placeholder="Buscar automação..." value={automationSearch} onChange={(e) => setAutomationSearch(e.target.value)} className="h-8 text-xs" />
             <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border p-2">
@@ -143,7 +143,7 @@ export function SchedulesFilterSheet({
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fluxos específicos</h3>
-              {draft.flowIds.length > 0 && <span className="text-[11px] text-muted-foreground">{draft.flowIds.length} selecionados</span>}
+              {draft.flowIds.length > 0 && <span className="text-xs text-muted-foreground">{draft.flowIds.length} selecionados</span>}
             </div>
             <Input placeholder="Buscar fluxo..." value={flowSearch} onChange={(e) => setFlowSearch(e.target.value)} className="h-8 text-xs" />
             <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border p-2">

@@ -24,6 +24,7 @@ import {
   SITUACOES,
   nestaTela,
   relogio,
+  semImagem,
   type Acompanhamento,
   type LinhaDeLog,
   type Passo,
@@ -153,7 +154,7 @@ export function AcompanharExecucao({ id }: { id: string }) {
           <ul className="space-y-0.5">
             {data.agora.atencoes.map((a) => (
               <li key={a.id}>
-                {a.item ? <span className="tabular mr-1.5 rounded bg-secondary px-1.5 text-[11px]">{a.item}</span> : null}
+                {a.item ? <span className="tabular mr-1.5 rounded bg-secondary px-1.5 text-xs">{a.item}</span> : null}
                 {a.motivo}
               </li>
             ))}
@@ -205,8 +206,8 @@ function Faixa({ data, passou, situacao }: { data: Acompanhamento; passou: numbe
   const motivo = data.jobs.find((j) => j.status === "running" && j.motivo_sem_previsao)?.motivo_sem_previsao;
   const etapa = data.agora.etapa_atual;
   return (
-    <section className="faixa-noite overflow-hidden rounded-xl text-white shadow-md">
-      <dl className="grid grid-cols-2 divide-white/10 md:grid-cols-5 md:divide-x">
+    <section className="faixa-noite overflow-hidden rounded-xl shadow-md">
+      <dl className="grid grid-cols-2 divide-[hsl(var(--faixa-divisao))] md:grid-cols-5 md:divide-x">
         <Numero rotulo="Situação" valor={situacao.texto} detalhe={etapa ? `etapa ${etapa.etapa}${etapa.item ? ` · item ${etapa.item}` : ""}` : data.agora.conclusao?.resumo ?? "—"} pulso={data.rodando} />
         <Numero rotulo="Decorrido" valor={relogio(decorrido)} detalhe={data.execucao.iniciada_em ? `desde ${horario(data.execucao.iniciada_em)}` : "ainda não começou"} />
         <Numero
@@ -221,12 +222,12 @@ function Faixa({ data, passou, situacao }: { data: Acompanhamento; passou: numbe
           detalhe={data.execucao.concluida_em ? "terminou" : data.termino_previsto ? relativo(data.termino_previsto) : "sem previsão"}
         />
         <div className="col-span-2 px-5 py-4 md:col-span-1">
-          <dt className="text-[11px] font-bold uppercase tracking-[0.16em] text-nevoa">Progresso</dt>
+          <dt className="text-xs font-bold uppercase tracking-[0.16em] faixa-rotulo">Progresso</dt>
           <dd className="titulo-condensado mt-1 text-3xl leading-none">{p ? `${p.atual}/${p.total}` : "—"}</dd>
-          <dd className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-nevoa transition-[width]" style={{ width: p ? `${Math.round((p.atual / Math.max(p.total, 1)) * 100)}%` : "0%" }} />
+          <dd className="mt-2 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--faixa-divisao))]">
+            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: p ? `${Math.round((p.atual / Math.max(p.total, 1)) * 100)}%` : "0%" }} />
           </dd>
-          <dd className="mt-1.5 truncate text-xs text-[#95a9c0]">{p?.rotulo ?? "a automação não informou progresso"}</dd>
+          <dd className="mt-1.5 truncate text-xs faixa-apoio">{p?.rotulo ?? "a automação não informou progresso"}</dd>
         </div>
       </dl>
     </section>
@@ -236,12 +237,12 @@ function Faixa({ data, passou, situacao }: { data: Acompanhamento; passou: numbe
 function Numero({ rotulo, valor, detalhe, alerta, pulso }: { rotulo: string; valor: string; detalhe: string; alerta?: boolean; pulso?: boolean }) {
   return (
     <div className="px-5 py-4">
-      <dt className="text-[11px] font-bold uppercase tracking-[0.16em] text-nevoa">{rotulo}</dt>
-      <dd className={cn("titulo-condensado mt-1 flex items-center gap-2 text-3xl leading-none", alerta ? "text-areia" : "text-white")}>
+      <dt className="text-xs font-bold uppercase tracking-[0.16em] faixa-rotulo">{rotulo}</dt>
+      <dd className={cn("titulo-condensado mt-1 flex items-center gap-2 text-3xl leading-none", alerta ? "faixa-alerta" : "faixa-valor")}>
         {pulso && <span className="h-2 w-2 animate-pulse-dot rounded-full bg-success" />}
         {valor}
       </dd>
-      <dd className="mt-1.5 truncate text-xs text-[#95a9c0]">{detalhe}</dd>
+      <dd className="mt-1.5 truncate text-xs faixa-apoio">{detalhe}</dd>
     </div>
   );
 }
@@ -255,7 +256,7 @@ function TelaAoVivo({ data, passou }: { data: Acompanhamento; passou: number }) 
   const tela = data.agora.tela;
   const escolhido: Passo | null = fixado ? passos.find((p) => p.id === fixado) ?? null : null;
   const imagemId = escolhido ? escolhido.imagem_id : tela?.imagem_id ?? null;
-  const recusa = escolhido ? escolhido.imagem?.situacao === "recusada" ? escolhido.imagem.motivo : null : tela?.imagem?.situacao === "recusada" ? tela.imagem.motivo : null;
+  const recusa = semImagem(escolhido ? escolhido.imagem : tela?.imagem);
   const segundos = !escolhido && tela?.segundos_nesta_tela != null ? tela.segundos_nesta_tela + passou : null;
   const indice = escolhido ? comImagem.findIndex((p) => p.id === escolhido.id) : comImagem.length - 1;
 
@@ -269,7 +270,7 @@ function TelaAoVivo({ data, passou }: { data: Acompanhamento; passou: number }) 
     <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
       <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
-          <p className="eyebrow text-[10px]">{escolhido ? "Passo anterior" : data.rodando ? "Tela agora" : "Última tela"}</p>
+          <p className="eyebrow text-xs">{escolhido ? "Passo anterior" : data.rodando ? "Tela agora" : "Última tela"}</p>
           <p className="truncate font-semibold text-titulo">{(escolhido ?? tela)?.rotulo ?? "Sem passos com imagem ainda"}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -289,7 +290,7 @@ function TelaAoVivo({ data, passou }: { data: Acompanhamento; passou: number }) 
           </Button>
         </div>
       </header>
-      <div className="relative bg-[#0b1223]">
+      <div className="relative bg-[hsl(var(--tela-fundo))]">
         <ImagemDoPasso execucao={data.execucao.id} imagem={imagemId} tamanho="media" alt={(escolhido ?? tela)?.rotulo ?? "Tela"} recusada={recusa} className="aspect-video w-full" />
         {segundos != null && (
           <span className="titulo-condensado absolute bottom-3 left-3 rounded-md bg-[#0e1729]/85 px-2.5 py-1 text-base text-white ring-1 ring-nevoa/40">
@@ -312,8 +313,8 @@ function TelaAoVivo({ data, passou }: { data: Acompanhamento; passou: number }) 
                 className={cn("w-28 shrink-0 overflow-hidden rounded-md border text-left", ativo ? "border-primary ring-2 ring-primary/40" : "border-border")}
                 title={`${p.rotulo ?? ""} · ${horario(p.quando)}`}
               >
-                <ImagemDoPasso execucao={data.execucao.id} imagem={p.imagem_id} tamanho="miniatura" alt={p.rotulo ?? "Passo"} recusada={p.imagem?.situacao === "recusada" ? p.imagem.motivo : null} className="aspect-video w-full" />
-                <span className={cn("block truncate px-1.5 py-1 text-[11px]", p.tipo === "falha" ? "text-destructive" : "text-muted-foreground")}>{p.rotulo}</span>
+                <ImagemDoPasso execucao={data.execucao.id} imagem={p.imagem_id} tamanho="miniatura" alt={p.rotulo ?? "Passo"} recusada={semImagem(p.imagem)} className="aspect-video w-full" />
+                <span className={cn("block truncate px-1.5 py-1 text-xs", p.tipo === "falha" ? "text-destructive" : "text-muted-foreground")}>{p.rotulo}</span>
               </button>
             );
           })}
@@ -358,7 +359,7 @@ function LogAoVivo({ linhas, mostrarEsperas, alternar }: { linhas: LinhaDeLog[];
           const el = e.currentTarget;
           colado.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
-        className="flex-1 overflow-y-auto bg-muted/40 px-3 py-2 font-mono text-[12.5px] leading-relaxed"
+        className="flex-1 overflow-y-auto bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed"
         data-testid="log-ao-vivo"
       >
         {linhas.length === 0 ? (
@@ -393,7 +394,7 @@ function Etapas({ data }: { data: Acompanhamento }) {
       <h2 className="titulo-condensado text-xl">Etapas: estimativa e tempo real</h2>
       <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-muted text-left text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          <thead className="bg-muted text-left text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
             <tr>
               <th className="px-4 py-2.5">Etapa</th>
               <th className="px-4 py-2.5">Item</th>
@@ -448,7 +449,7 @@ function Jobs({ data }: { data: Acompanhamento }) {
               </div>
               <p className="mt-2 flex flex-wrap gap-1">
                 {j.itens.slice(0, 6).map((i) => (
-                  <span key={rotuloItem(i)} className="tabular rounded bg-secondary px-1.5 py-0.5 text-[11px]">{rotuloItem(i)}</span>
+                  <span key={rotuloItem(i)} className="tabular rounded bg-secondary px-1.5 py-0.5 text-xs">{rotuloItem(i)}</span>
                 ))}
               </p>
               {j.status === "running" && (

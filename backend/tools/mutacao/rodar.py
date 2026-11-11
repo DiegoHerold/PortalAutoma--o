@@ -30,6 +30,12 @@ ALVOS = {
     "acompanhamento": ("modules/telemetry/domain/acompanhamento.py", "modules/telemetry/tests/test_acompanhamento.py"),
     "concessao": ("modules/access/domain/concessao.py", "modules/access/tests/test_concessao.py"),
     "instancia_direta": ("modules/fleet/domain/instancia_direta.py", "modules/fleet/tests/test_instancia_direta.py"),
+    "linha_do_tempo": ("modules/dispatch/domain/linha_do_tempo.py", "modules/dispatch/tests/test_linha_do_tempo.py"),
+    "itens": ("modules/catalog/domain/itens.py", "modules/catalog/tests/test_itens.py"),
+    "notificacoes": ("modules/telemetry/domain/notificacoes.py", "modules/telemetry/tests/test_notificacoes.py"),
+    "retencao": ("modules/governance/domain/retencao_por_automacao.py",
+                 "modules/governance/tests/test_retencao_por_automacao.py"),
+    "formulario": ("modules/catalog/domain/formulario.py", "modules/catalog/tests/test_formulario.py"),
 }
 # Operadores excluídos por alvo, sempre com o motivo. Mutante equivalente não é falha de teste.
 EXCLUIDOS = {
@@ -48,6 +54,21 @@ EXCLUIDOS = {
         "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
     },
     "instancia_direta": {
+        "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
+    },
+    "linha_do_tempo": {
+        "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
+    },
+    "itens": {
+        "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
+    },
+    "notificacoes": {
+        "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
+    },
+    "retencao": {
+        "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
+    },
+    "formulario": {
         "core/ReplaceBinaryOperator_BitOr_.*": "| só aparece em anotações de tipo",
     },
 }
@@ -94,8 +115,17 @@ def main(nome: str) -> int:
             subprocess.run([str(filtro), str(sessao), str(config)], cwd=BACKEND, check=True)
             for padrao, motivo in EXCLUIDOS[nome].items():
                 print(f"Excluído: {padrao} ({motivo})")
-        subprocess.run([str(cosmic_ray), "exec", str(config), str(sessao)], cwd=BACKEND, check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # O cosmic-ray troca o arquivo no lugar. Se um mutante estoura o tempo, ele pode não
+        # devolver o original (aconteceu na Fase 6): guardamos uma cópia e conferimos no fim.
+        arquivo = BACKEND / modulo
+        original = arquivo.read_bytes()
+        try:
+            subprocess.run([str(cosmic_ray), "exec", str(config), str(sessao)], cwd=BACKEND, check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        finally:
+            if arquivo.read_bytes() != original:
+                arquivo.write_bytes(original)
+                print(f"ATENÇÃO: {modulo} ficou com um mutante; o original foi devolvido.")
 
     con = sqlite3.connect(sessao)
     linhas = con.execute("SELECT test_outcome, diff FROM work_results").fetchall()

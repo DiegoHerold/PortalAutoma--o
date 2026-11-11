@@ -100,7 +100,8 @@ class Ouvinte:
             if canal is None:
                 alvos = [item for grupo in self._assinantes.values() for item in grupo]
             else:
-                alvos = list(self._assinantes.get((canal, chave or ""), ()))
+                # ("*", "*") recebe tudo: o Painel acorda com qualquer execução ou com a fila.
+                alvos = list(self._assinantes.get((canal, chave or ""), ())) + list(self._assinantes.get(("*", "*"), ()))
         for sinal, laco in alvos:
             with contextlib.suppress(RuntimeError):  # laço já fechado
                 laco.call_soon_threadsafe(sinal.set)

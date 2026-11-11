@@ -91,6 +91,9 @@ class CreateAutomationExecution:
         if version is None:
             self.transaction.rollback()
             raise AutomationVersionNotExecutable("AutomationVersion must exist, be published, and have published package/runtime.")
+        if version.externa:
+            self.transaction.rollback()
+            raise AutomationVersionNotExecutable("Automação externa entra só pela fila e roda na instância direta dela.")
         if len(str(command.parameters).encode("utf-8")) > 64 * 1024:
             self.transaction.rollback()
             raise ValueError("Execution parameters payload is too large.")
@@ -970,6 +973,7 @@ def _requirements_snapshot(version: AutomationVersionSnapshotDTO, execution_id: 
         },
         "required_pools": version.required_pools,
         "manifest_content_hash": version.manifest.get("content_hash") if isinstance(version.manifest, dict) else None,
+        "externa": version.externa,
     }
 
 

@@ -197,6 +197,8 @@ def imagem(execution_id: str, imagem_id: str, tamanho: str = Query(default="medi
         raise HTTPException(status_code=422, detail=f"tamanho: {', '.join(TAMANHOS)}.")
     ensure_automation_grant(db, user, _automation_id(_detalhes(db, execution_id), db), VER_TELAS_E_LOGS)
     registro = SqlAlchemyStepImageRepository(db).da_execucao(execution_id, imagem_id)
+    if registro is not None and registro.apagada_em is not None:
+        raise HTTPException(status_code=410, detail="Imagem apagada pela retenção.")
     objeto = getattr(registro, f"{tamanho}_id", None) if registro else None
     if objeto is None:
         raise HTTPException(status_code=404, detail="Imagem não encontrada.")

@@ -56,6 +56,15 @@
     --sidebar-border: 222 34% 23%;
     --sidebar-accent: 220 40% 21%;
     --sidebar-primary: 206 38% 79%;
+
+    /* Faixas de resumo e fundo das telas: claros no tema claro (pedido de 10/11/2026) */
+    --faixa-fundo: 0 0% 100%;
+    --faixa-texto: 223 47% 15%;
+    --faixa-rotulo: 214 57% 25%;
+    --faixa-apoio: 219 17% 44%;
+    --faixa-alerta: 36 90% 34%;
+    --faixa-divisao: 212 31% 89%;
+    --tela-fundo: 213 33% 94%;
   }
 
   .dark {
@@ -98,16 +107,34 @@
     --sidebar-border: 222 40% 15%;
     --sidebar-accent: 221 45% 14%;
     --sidebar-primary: 206 38% 79%;
+
+    --faixa-fundo: 223 47% 15%;
+    --faixa-texto: 0 0% 100%;
+    --faixa-rotulo: 206 38% 79%;
+    --faixa-apoio: 213 22% 67%;
+    --faixa-alerta: 39 47% 71%;
+    --faixa-divisao: 222 34% 23%;
+    --tela-fundo: 221 53% 9%;
   }
 
   * {
     @apply border-border;
   }
 
+  /*
+   * O portal cresce com a tela (pedido de 10/11/2026: texto pequeno em telas grandes).
+   * Tudo no Tailwind é rem, então texto, ícones e espaços crescem juntos:
+   * ~14px até 1280px, ~14px em 1440px, ~16px em 1920px, no máximo 17,6px.
+   */
+  html {
+    /* 80% da escala anterior (pedido de 10/11/2026: "em 80% fica ótimo") */
+    font-size: clamp(13.6px, calc(0.36vw + 9px), 17.6px);
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
-    font-size: 15px;
-    line-height: 1.5;
+    font-size: 1rem;
+    line-height: 1.6;
   }
 
   h1,
@@ -149,10 +176,29 @@
     font-weight: 600;
     letter-spacing: 0.01em;
   }
-  /* Faixa escura do cabeçalho de página, igual ao topo do Comunica */
+  /* Faixa de resumo: cartão claro no tema claro; noite em degradê no escuro (como o Comunica) */
   .faixa-noite {
-    background: linear-gradient(100deg, #0e1729 0%, #141e37 55%, #17264a 100%);
+    background: hsl(var(--faixa-fundo));
+    color: hsl(var(--faixa-texto));
+    border: 1px solid hsl(var(--border));
     border-bottom: 3px solid hsl(var(--nevoa));
+  }
+  .dark .faixa-noite {
+    background: linear-gradient(100deg, #0e1729 0%, #141e37 55%, #17264a 100%);
+    border-color: transparent;
+    border-bottom-color: hsl(var(--nevoa));
+  }
+  .faixa-rotulo {
+    color: hsl(var(--faixa-rotulo));
+  }
+  .faixa-valor {
+    color: hsl(var(--faixa-texto));
+  }
+  .faixa-apoio {
+    color: hsl(var(--faixa-apoio));
+  }
+  .faixa-alerta {
+    color: hsl(var(--faixa-alerta));
   }
   .skeleton {
     @apply relative overflow-hidden rounded-md bg-muted;

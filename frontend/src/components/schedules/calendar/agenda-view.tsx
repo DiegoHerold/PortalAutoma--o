@@ -89,7 +89,7 @@ function AgendaGroup({
   if (items.length === 0) return null;
   return (
     <div className="divide-y divide-border/60">
-      <p className="bg-muted/10 px-4 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="bg-muted/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
       {items.map((item) => (
         <ScheduleItemRow key={item.id} item={item} onClick={() => onSelectItem(item)} density={density} />
       ))}

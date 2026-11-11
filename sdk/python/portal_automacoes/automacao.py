@@ -13,6 +13,11 @@
 
 Falha de transporte nunca derruba a automação: o evento fica na fila local e é reenviado.
 Evento fora do contrato é erro de programação e levanta EventoInvalido na hora.
+
+``segundo_plano=True`` (ou PORTAL_ENVIO_EM_SEGUNDO_PLANO=1): uma thread do SDK envia os
+eventos, as imagens e consulta os comandos. Quem emite nunca espera a rede: com o Portal
+fora do ar, o robô segue no mesmo ritmo e tudo fica na fila local. Recomendado para
+automação de tela (RPA).
 """
 
 from __future__ import annotations
@@ -31,10 +36,12 @@ from . import eventos, imagens
 from .fila import FilaLocal
 from .transporte import FalhaDeTransporte, Recusado, Transporte, TransporteDesligado
 from .transporte_agente import TransporteAgente
+from .enderecos import ligado
 from .transporte_direto import TransporteDireto
 
-VERSAO_SDK = "0.1.0"
+VERSAO_SDK = "0.2.0"
 INTERVALO_COMANDOS_S = 2.0
+ESPERA_MAXIMA_S = 30.0  # segundo plano: maior intervalo entre tentativas com o Portal fora do ar
 
 
 class ParadaSolicitada(Exception):
@@ -54,7 +61,7 @@ class Etapa:
 
 class Automacao:
     def __init__(self, transporte: Transporte, fila: FilaLocal, versao_automacao: str | None = None,
-                 log_local: Any = None) -> None:
+                 log_local: Any = None, segundo_plano: bool = False) -> None:
         self._transporte = transporte
         self._fila = fila
         self._versao = versao_automacao
@@ -72,10 +79,21 @@ class Automacao:
         self._pendentes_ao_fechar: int | None = None
         # Emissão de várias threads (ex.: um monitor de tela à parte) sai em ordem e sem repetir sequência.
         self._trava = threading.RLock()
+        self._trava_envio = threading.RLock()  # só uma conversa com o Portal por vez
+        self._segundo_plano = segundo_plano
+        self._acordar = threading.Event()
+        self._fim = threading.Event()
+        self._fora_do_ar_ate = 0.0
+        self._enviador: threading.Thread | None = None
+        if segundo_plano:
+            self._enviador = threading.Thread(target=self._enviar_em_segundo_plano, name="portal-automacoes-envio",
+                                              daemon=True)
+            self._enviador.start()
 
     # -- criação -------------------------------------------------------------
     @classmethod
-    def conectar(cls, versao_automacao: str | None = None, ambiente: dict[str, str] | None = None) -> "Automacao":
+    def conectar(cls, versao_automacao: str | None = None, ambiente: dict[str, str] | None = None,
+                 segundo_plano: bool | None = None) -> "Automacao":
         """Escolhe o modo pela configuração (variáveis de ambiente), nunca pelo código.
 
         PORTAL_MODO=agente|direto|desligado. Sem PORTAL_MODO: agente se o ExecutionHost
@@ -91,7 +109,8 @@ class Automacao:
             chave = env.get("AUTOMATION_ATTEMPT_ID") or env.get("AUTOMATION_EVENTS_PIPE", "")
         elif modo == "direto":
             transporte = TransporteDireto(env.get("PORTAL_URL", ""), env.get("PORTAL_JOB_ID", ""),
-                                          env.get("PORTAL_JOB_TOKEN", ""), env.get("PORTAL_CA_ARQUIVO") or None)
+                                          env.get("PORTAL_JOB_TOKEN", ""), env.get("PORTAL_CA_ARQUIVO") or None,
+                                          permitir_http=ligado(env.get("PORTAL_PERMITIR_HTTP")))
             chave = env.get("PORTAL_JOB_ID", "")
         elif modo == "desligado":
             transporte, chave = TransporteDesligado(), f"local-{os.getpid()}-{time.time_ns()}"
@@ -101,7 +120,9 @@ class Automacao:
             else Path(tempfile.gettempdir()) / "portal-automacoes" / "fila"
         pasta = Path(env.get("PORTAL_FILA_DIR") or padrao)
         nome = hashlib.sha256(f"{transporte.nome}:{chave}".encode()).hexdigest()[:24]
-        return cls(transporte, FilaLocal(pasta / f"{nome}.db"), versao_automacao)
+        if segundo_plano is None:
+            segundo_plano = ligado(env.get("PORTAL_ENVIO_EM_SEGUNDO_PLANO"))
+        return cls(transporte, FilaLocal(pasta / f"{nome}.db"), versao_automacao, segundo_plano=segundo_plano)
 
     @property
     def modo(self) -> str:
@@ -130,6 +151,12 @@ class Automacao:
 
     def fechar(self, tempo_limite_s: float = 10.0) -> None:
         """Tenta esvaziar a fila antes de sair. O que sobrar continua no disco."""
+        if self._enviador is not None:
+            self._fim.set()
+            self._acordar.set()
+            self._enviador.join(timeout=tempo_limite_s)
+            self._enviador = None
+            self._fora_do_ar_ate = 0.0
         limite = time.monotonic() + tempo_limite_s
         while time.monotonic() < limite:
             with self._trava:
@@ -237,12 +264,16 @@ class Automacao:
         self._emitir("log", {"nivel": nivel, "texto": texto[:4000], "espera": espera or None, "item": self._item})
 
     def passo(self, rotulo: str, tipo: str = "acao", imagem: Any = None) -> None:
-        """Passo da trajetória. A imagem vai por fora do canal de eventos; o evento leva só o id."""
-        with self._trava:
-            self._passo(rotulo, tipo, imagem)
+        """Passo da trajetória. A imagem vai por fora do canal de eventos; o evento leva só o id.
+        O envio da imagem não segura quem emite os outros eventos. Com o Portal fora do ar, a
+        imagem não é enviada (o passo entra só com o texto): imagem não fica na fila local."""
+        self._passo(rotulo, tipo, imagem)
 
     def _passo(self, rotulo: str, tipo: str, imagem: Any) -> None:
         imagem_id = None
+        if imagem is not None and time.monotonic() < self._fora_do_ar_ate:
+            self._avisar(f"imagem do passo '{rotulo}' não enviada: Portal fora do ar")
+            imagem = None
         if imagem is not None:
             try:
                 jpeg = imagens.preparar(imagem)
@@ -254,6 +285,8 @@ class Automacao:
             except (FalhaDeTransporte, Recusado, OSError) as exc:
                 self._avisar(f"imagem do passo '{rotulo}' não enviada: {exc}")
                 imagem_id = None
+                if isinstance(exc, FalhaDeTransporte):
+                    self._fora_do_ar_ate = time.monotonic() + ESPERA_MAXIMA_S
         self._emitir("passo", {"rotulo": rotulo[:200], "tipo": tipo, "imagem_id": imagem_id, "item": self._item})
 
     def espera(self, rotulo: str, desde: str) -> None:
@@ -282,14 +315,23 @@ class Automacao:
         finally:
             self._emitir("pausa.concluida", {"motivo": motivo, "item": self._item})
 
+    def iniciar_pausa(self, motivo: str, detalhe: str | None = None) -> None:
+        """Como ``with pausa(...)``, para quem não consegue envolver a pausa num bloco."""
+        self._emitir("pausa.iniciada", {"motivo": motivo, "detalhe": detalhe, "item": self._item})
+
+    def concluir_pausa(self, motivo: str) -> None:
+        self._emitir("pausa.concluida", {"motivo": motivo, "item": self._item})
+
     # -- comandos -----------------------------------------------------------------
     def deve_parar(self) -> bool:
         """O Portal pediu para parar depois do item atual (ou cancelar)."""
-        self._consultar_comandos()
+        if not self._segundo_plano:  # em segundo plano, a thread de envio consulta
+            self._consultar_comandos()
         return self._parar or self._cancelar
 
     def cancelamento_pedido(self) -> bool:
-        self._consultar_comandos()
+        if not self._segundo_plano:
+            self._consultar_comandos()
         return self._cancelar
 
     def verificar_parada(self) -> None:
@@ -302,8 +344,9 @@ class Automacao:
             return
         self._ultima_consulta = agora
         try:
-            self._garantir_conexao()
-            recebidos = self._transporte.comandos()
+            with self._trava_envio:
+                self._garantir_conexao()
+                recebidos = self._transporte.comandos()
         except (FalhaDeTransporte, Recusado) as exc:
             self._avisar(f"sem consulta de comandos: {exc}")
             return
@@ -322,7 +365,27 @@ class Automacao:
             self._sequencia += 1
             evento = eventos.montar(self._sequencia, tipo, payload)
             self._fila.adicionar(evento)
-            self._descarregar()
+            if not self._segundo_plano:
+                self._descarregar()
+        if self._segundo_plano:
+            self._acordar.set()
+
+    def _enviar_em_segundo_plano(self) -> None:
+        espera = 1.0
+        while not self._fim.is_set():
+            self._acordar.wait(INTERVALO_COMANDOS_S if espera <= 1.0 else espera)
+            self._acordar.clear()
+            if self._fim.is_set():
+                break
+            if time.monotonic() < self._fora_do_ar_ate:
+                continue  # fora do ar: não insiste a cada evento novo
+            ok = self._descarregar() if self._fila.quantidade() else True
+            if ok:
+                espera = 1.0
+                self._consultar_comandos()
+            else:
+                espera = min(espera * 2, ESPERA_MAXIMA_S)
+                self._fora_do_ar_ate = time.monotonic() + espera
 
     def _garantir_conexao(self) -> None:
         if not self._conectado:
@@ -331,6 +394,10 @@ class Automacao:
             self._conectado = True
 
     def _descarregar(self) -> bool:
+        with self._trava_envio:
+            return self._descarregar_sem_trava()
+
+    def _descarregar_sem_trava(self) -> bool:
         try:
             self._garantir_conexao()
             while pendentes := self._fila.pendentes(500):

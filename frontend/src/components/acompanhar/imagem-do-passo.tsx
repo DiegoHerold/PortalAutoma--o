@@ -51,7 +51,7 @@ export function ImagemDoPasso({
   tamanho: Tamanho;
   alt: string;
   className?: string;
-  /** Motivo, quando o portal recusou a imagem (vazia, corrompida...). */
+  /** Por que não há imagem: recusada pelo portal ou apagada pela retenção (ver ``semImagem``). */
   recusada?: string | null;
 }) {
   const { token } = useAuth();
@@ -77,7 +77,7 @@ export function ImagemDoPasso({
     return (
       <div className={cn("flex flex-col items-center justify-center gap-1 bg-muted text-center text-xs text-muted-foreground", className)}>
         <ImageOff className="h-5 w-5" />
-        <span>{recusada ? `Imagem recusada: ${recusada}` : !imagem ? "Passo sem imagem" : "Imagem indisponível"}</span>
+        <span>{recusada ?? (!imagem ? "Passo sem imagem" : "Imagem indisponível")}</span>
       </div>
     );
   }

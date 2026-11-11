@@ -37,7 +37,7 @@ export function WebhookTestPanel({ trigger, open, onClose }: { trigger: Trigger 
       sampleHeaders = parseJson(headers, "Headers");
       sampleQuery = parseJson(query, "Query parameters");
     } catch (err) {
-      toast({ title: "JSON invalido", description: err instanceof Error ? err.message : undefined, kind: "error" });
+      toast({ title: "JSON inválido", description: err instanceof Error ? err.message : undefined, kind: "error" });
       return;
     }
     setTesting(true);
@@ -99,7 +99,7 @@ export function WebhookTestPanel({ trigger, open, onClose }: { trigger: Trigger 
               </Field>
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-card p-4">
+          <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-2">
               {result?.valid ? <CheckCircle2 className="h-4 w-4 text-success" /> : result ? <XCircle className="h-4 w-4 text-destructive" /> : <FlaskConical className="h-4 w-4 text-muted-foreground" />}
               <h3 className="font-display text-sm font-semibold tracking-tight">

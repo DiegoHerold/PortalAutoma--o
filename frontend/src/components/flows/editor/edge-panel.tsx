@@ -75,7 +75,7 @@ export function EdgePanel({
             <ul className="space-y-1">
               {issues.map((issue, i) => (
                 <li key={i} className="text-xs text-muted-foreground">
-                  <Badge tone="destructive" className="mr-1.5 text-[10px]">
+                  <Badge tone="destructive" className="mr-1.5 text-xs">
                     {issue.code}
                   </Badge>
                   {issue.message}

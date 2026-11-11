@@ -48,7 +48,7 @@ export function ScheduleItemPill({
       }}
       title={`${name} — ${meta.label}`}
       className={cn(
-        "flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] font-medium transition-opacity hover:opacity-80",
+        "flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-xs font-medium transition-opacity hover:opacity-80",
         meta.tone === "success" && "bg-success/12 text-success",
         meta.tone === "destructive" && "bg-destructive/12 text-destructive",
         meta.tone === "info" && "bg-info/12 text-info",
@@ -89,7 +89,7 @@ export function ScheduleItemBlock({
       }}
       title={`${name} — ${meta.label}`}
       className={cn(
-        "flex h-full w-full flex-col overflow-hidden rounded-md border px-1.5 py-1 text-left text-[11px] leading-tight shadow-sm transition-colors hover:brightness-95",
+        "flex h-full w-full flex-col overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs leading-tight shadow-sm transition-colors hover:brightness-95",
         meta.tone === "success" && "border-success/30 bg-success/10 text-success",
         meta.tone === "destructive" && "border-destructive/30 bg-destructive/10 text-destructive",
         meta.tone === "info" && "border-info/30 bg-info/10 text-info",
@@ -101,8 +101,8 @@ export function ScheduleItemBlock({
         <Icon className="h-3 w-3 shrink-0" aria-hidden />
         <span className="truncate">{name}</span>
       </span>
-      {!compact && <span className="truncate text-[10px] opacity-80">{meta.label}</span>}
-      {!compact && progress && <span className="truncate text-[10px] opacity-80">{progress}</span>}
+      {!compact && <span className="truncate text-xs opacity-80">{meta.label}</span>}
+      {!compact && progress && <span className="truncate text-xs opacity-80">{progress}</span>}
     </button>
   );
 }

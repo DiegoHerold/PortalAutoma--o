@@ -39,6 +39,11 @@ from modules.orchestration.triggers.api.routes import router as trigger_module_r
 from modules.orchestration.triggers.api.webhooks import router as webhook_module_router
 from modules.storage.api.routes import router as storage_module_router
 from modules.telemetry.api.acompanhar import router as acompanhar_router
+from modules.telemetry.api.painel import router as painel_router
+from modules.catalog.api.itens import router as itens_router
+from modules.catalog.api.formulario import router as formulario_router
+from modules.telemetry.api.notificacoes import router as notificacoes_router
+from modules.governance.api.retencao import router as retencao_router
 from modules.telemetry.api.realtime import router as realtime_router
 from modules.telemetry.api.routes import automation_times_router as telemetry_times_router
 from modules.telemetry.api.routes import router as telemetry_module_router
@@ -136,6 +141,10 @@ def register_execution_routes(router: APIRouter) -> None:
     router.include_router(admin_instancias_router)
     router.include_router(telemetry_module_router, tags=["telemetry"])
     router.include_router(acompanhar_router)
+    router.include_router(painel_router)
+    router.include_router(itens_router)
+    router.include_router(formulario_router)
+    router.include_router(notificacoes_router)
     router.include_router(telemetry_times_router, tags=["telemetry"])
     router.include_router(storage_module_router, tags=["storage"])
 
@@ -151,6 +160,7 @@ def register_schedule_routes(router: APIRouter) -> None:
 
 def register_governance_routes(router: APIRouter) -> None:
     router.include_router(governance_module_router, tags=["governance"])
+    router.include_router(retencao_router)
 
 
 def register_compatibility_routes(router: APIRouter) -> None:

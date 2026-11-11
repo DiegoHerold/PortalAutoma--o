@@ -243,7 +243,10 @@ class DespacharFila:
 
     def _entregar(self, job: JobNaFila, maquina: Maquina, lida: Any, detalhe: dict[str, Any], agora: datetime):
         tarefa = self.tasks.get(job.id)
-        agente = next((a for a in lida.agentes if a["online"] and a["habilitado"] and not a["bloqueada"]), None)
+        # Automação externa roda só na instância direta dela: um Agent na máquina não a recebe.
+        externa = bool((tarefa.requirements_snapshot or {}).get("externa"))
+        agente = None if externa else next(
+            (a for a in lida.agentes if a["online"] and a["habilitado"] and not a["bloqueada"]), None)
         if agente is not None:
             requisitos = dict(tarefa.requirements_snapshot or {})
             requisitos["dispatch"] = {**(requisitos.get("dispatch") or {}), "required_agent_id": agente["id"],

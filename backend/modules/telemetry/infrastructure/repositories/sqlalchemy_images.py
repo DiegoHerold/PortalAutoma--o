@@ -96,10 +96,12 @@ class SqlAlchemyStepImageRepository:
         return saida, cursor
 
     def situacoes(self, execution_id: str) -> dict[str, dict[str, Any]]:
-        """Situação de cada imagem da execução: pronta ou recusada (com o motivo)."""
-        linhas = self.db.execute(select(StepImageRecord.imagem_id, StepImageRecord.status, StepImageRecord.motivo_recusa)
+        """Situação de cada imagem da execução: pronta, recusada (com o motivo) ou apagada pela retenção."""
+        linhas = self.db.execute(select(StepImageRecord.imagem_id, StepImageRecord.status, StepImageRecord.motivo_recusa,
+                                        StepImageRecord.apagada_em)
                                  .where(StepImageRecord.execution_id == execution_id)).all()
-        return {i: {"situacao": s, "motivo": m} for i, s, m in linhas}
+        return {i: ({"situacao": "apagada", "motivo": f"apagada pela retenção em {apagada:%d/%m/%Y}"} if apagada
+                    else {"situacao": s, "motivo": m}) for i, s, m, apagada in linhas}
 
     def nome_da_maquina(self, machine_id: str | None, agent_id: str | None) -> tuple[str | None, str | None]:
         from modules.fleet.infrastructure.orm.models import AgentRecord, MachineRecord

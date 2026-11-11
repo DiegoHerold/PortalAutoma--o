@@ -30,16 +30,16 @@ function emptyState(automations: Automation[]): FormState {
 }
 
 function validationError(state: FormState, existing: Trigger[], editingId?: number | null): string | null {
-  if (!state.automation_id) return "Selecione a automacao de destino.";
+  if (!state.automation_id) return "Selecione a automação de destino.";
   const routePath = state.route_path.trim().replace(/^\/+|\/+$/g, "");
   if (!routePath) return "Informe o route path.";
   if (/\s/.test(routePath) || routePath.includes("\\") || routePath.includes("//") || routePath.includes("..")) {
-    return "O route path nao pode conter espacos, barras duplicadas, barra invertida ou '..'.";
+    return "O route path não pode conter espacos, barras duplicadas, barra invertida ou '..'.";
   }
   if (!ROUTE_RE.test(routePath)) return "Use apenas letras, numeros, ponto, traco, underscore e barras simples.";
   if (RESERVED_PREFIXES.has(routePath.split("/", 1)[0])) return "Este prefixo de route path e reservado.";
   const duplicated = existing.some((trigger) => trigger.id !== editingId && trigger.trigger_type === "https" && trigger.route_path === routePath);
-  if (duplicated) return "Ja existe um Webhook com este route path.";
+  if (duplicated) return "Já existe um Webhook com este route path.";
   return null;
 }
 
@@ -83,7 +83,7 @@ export function WebhookForm({
       open={open}
       onClose={onClose}
       title={editing ? "Editar Webhook" : "Novo Webhook"}
-      description="Webhook HTTP de entrada para disparar uma automacao publicada."
+      description="Webhook HTTP de entrada para disparar uma automação publicada."
       widthClassName="w-full sm:max-w-3xl"
       footer={
         <>

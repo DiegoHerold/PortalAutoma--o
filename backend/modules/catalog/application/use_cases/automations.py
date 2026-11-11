@@ -109,6 +109,39 @@ class UpdateAutomationMetadata:
 
 
 @dataclass
+class RestoreAutomation:
+    """Volta uma automação arquivada para o Catálogo (o histórico nunca saiu)."""
+
+    catalog: CatalogRepository
+    audit: AuditRecorder
+    outbox: OutboxPort
+    transaction: TransactionManager
+
+    def execute(self, automation_id: int, actor: ActorDTO) -> AutomationDTO:
+        before = self.catalog.get_automation(automation_id)
+        if before is None:
+            raise CatalogValidationError("Automation not found.")
+        automation = self.catalog.restore_automation(automation_id)
+        self.audit.append(
+            AuditEvent(
+                id=str(uuid4()),
+                actor_type=actor.actor_type,
+                actor_id=actor.actor_id or actor.actor_email,
+                action="automation.restored",
+                resource_type="automation",
+                resource_id=str(automation.id),
+                before={"status": before.status},
+                after={"status": automation.status},
+            )
+        )
+        self.outbox.append_catalog_event(
+            automation_event("automation.restored", str(automation.id), {"key": automation.key})
+        )
+        self.transaction.commit()
+        return automation
+
+
+@dataclass
 class ArchiveAutomation:
     catalog: CatalogRepository
     audit: AuditRecorder

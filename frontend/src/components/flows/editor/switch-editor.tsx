@@ -89,7 +89,7 @@ export function SwitchCaseEditor({
         )}
         {cases.map((c, index) => (
           <div key={c.id} className="flex items-center gap-2 rounded-lg border border-border bg-card p-2.5">
-            <span className="w-5 shrink-0 text-center text-[11px] text-muted-foreground">{index + 1}</span>
+            <span className="w-5 shrink-0 text-center text-xs text-muted-foreground">{index + 1}</span>
             <Input
               placeholder="Nome do caso (ex.: Ativo)"
               value={c.label}

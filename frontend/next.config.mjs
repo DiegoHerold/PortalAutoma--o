@@ -8,6 +8,12 @@ const nextConfig = {
   typescript: { tsconfigPath: process.env.NEXT_TSCONFIG || "tsconfig.json" },
   
   // Otimizações para desenvolvimento
+  // NEXT_SEM_CACHE=1: build sem o cache do webpack (centenas de MB), para disco quase cheio.
+  webpack: (config) => {
+    if (process.env.NEXT_SEM_CACHE) config.cache = false;
+    return config;
+  },
+
   experimental: {
     // Usa compilação otimizada
     optimizePackageImports: ['lucide-react'],

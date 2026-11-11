@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -23,32 +24,48 @@ class FilaLocal:
         self._con.execute("CREATE TABLE IF NOT EXISTS pendentes (sequencia INTEGER PRIMARY KEY, evento TEXT NOT NULL)")
         self._con.execute("CREATE TABLE IF NOT EXISTS estado (chave TEXT PRIMARY KEY, valor INTEGER NOT NULL)")
         self.descartados = 0
+        self._trava = threading.RLock()  # quem emite e quem envia (segundo plano) usam a mesma conexão
 
     def ultima_sequencia(self) -> int:
         """Maior sequência já gerada nesta fila (para continuar depois de reabrir o processo)."""
+        with self._trava:
+            return self._ultima()
+
+    def _ultima(self) -> int:
         linha = self._con.execute("SELECT valor FROM estado WHERE chave = 'ultima'").fetchone()
         return int(linha[0]) if linha else 0
 
     def adicionar(self, evento: dict[str, Any]) -> None:
+        with self._trava:
+            self._adicionar(evento)
+
+    def _adicionar(self, evento: dict[str, Any]) -> None:
         self._con.execute("INSERT OR IGNORE INTO pendentes (sequencia, evento) VALUES (?, ?)",
                           (evento["sequence"], json.dumps(evento, ensure_ascii=False)))
         self._con.execute("INSERT INTO estado (chave, valor) VALUES ('ultima', ?) "
                           "ON CONFLICT (chave) DO UPDATE SET valor = MAX(valor, excluded.valor)", (evento["sequence"],))
-        excesso = self.quantidade() - LIMITE_EVENTOS
+        excesso = self._quantidade() - LIMITE_EVENTOS
         if excesso > 0:
             self._con.execute("DELETE FROM pendentes WHERE sequencia IN "
                               "(SELECT sequencia FROM pendentes ORDER BY sequencia LIMIT ?)", (excesso,))
             self.descartados += excesso
 
     def pendentes(self, limite: int = 500) -> list[dict[str, Any]]:
-        linhas = self._con.execute("SELECT evento FROM pendentes ORDER BY sequencia LIMIT ?", (limite,)).fetchall()
+        with self._trava:
+            linhas = self._con.execute("SELECT evento FROM pendentes ORDER BY sequencia LIMIT ?", (limite,)).fetchall()
         return [json.loads(l[0]) for l in linhas]
 
     def confirmar_ate(self, sequencia: int) -> None:
-        self._con.execute("DELETE FROM pendentes WHERE sequencia <= ?", (sequencia,))
+        with self._trava:
+            self._con.execute("DELETE FROM pendentes WHERE sequencia <= ?", (sequencia,))
 
     def quantidade(self) -> int:
+        with self._trava:
+            return self._quantidade()
+
+    def _quantidade(self) -> int:
         return int(self._con.execute("SELECT COUNT(*) FROM pendentes").fetchone()[0])
 
     def fechar(self) -> None:
-        self._con.close()
+        with self._trava:
+            self._con.close()

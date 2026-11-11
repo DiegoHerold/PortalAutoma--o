@@ -67,6 +67,17 @@ const config: Config = {
         nevoa: "hsl(var(--nevoa))",
         areia: "hsl(var(--areia))",
       },
+      // Escala maior que a padrão (pedido de 10/11/2026: texto pequeno demais). Nada abaixo de 13px.
+      fontSize: {
+        xs: ["0.8125rem", { lineHeight: "1.2rem" }],
+        sm: ["0.9375rem", { lineHeight: "1.45rem" }],
+        base: ["1rem", { lineHeight: "1.6rem" }],
+        lg: ["1.125rem", { lineHeight: "1.7rem" }],
+        xl: ["1.3rem", { lineHeight: "1.8rem" }],
+        "2xl": ["1.6rem", { lineHeight: "2rem" }],
+        "3xl": ["2rem", { lineHeight: "2.3rem" }],
+        "4xl": ["2.5rem", { lineHeight: "2.75rem" }],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

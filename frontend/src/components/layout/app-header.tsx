@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { RealtimeIndicator } from "@/components/layout/realtime-indicator";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { SinoDeAvisos } from "@/components/layout/sino-de-avisos";
 
 export function AppHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const router = useRouter();
@@ -46,11 +47,12 @@ export function AppHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       >
         <Search className="h-4 w-4" />
         <span className="flex-1 text-left">Buscar…</span>
-        <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px]">⌘K</kbd>
+        <kbd className="rounded border border-border px-1.5 py-0.5 text-xs">⌘K</kbd>
       </button>
 
       <div className="flex flex-1 items-center justify-end gap-2">
         <RealtimeIndicator />
+        <SinoDeAvisos />
         <ThemeToggle />
         <div className="relative">
           <button

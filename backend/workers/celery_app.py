@@ -23,6 +23,7 @@ from workers.tasks import schedule_tasks  # noqa: E402,F401
 from workers.tasks import flow_tasks  # noqa: E402,F401
 from workers.tasks import housekeeping_tasks  # noqa: E402,F401
 from workers.tasks import dispatch_tasks  # noqa: E402,F401
+from workers.tasks import notificacoes_tasks  # noqa: E402,F401
 
 celery_app.conf.beat_schedule = {
     "sync-schedules-every-minute": {
@@ -60,6 +61,20 @@ celery_app.conf.beat_schedule = {
     "force-cancel-executions-every-30-seconds": {
         "task": "workers.tasks.housekeeping_tasks.force_cancel_execution_attempts",
         "schedule": 30.0,
+    },
+    # Fase 6: notificações (detectar a cada 30 s; e-mail só sai se o envio estiver ligado)
+    "detectar-notificacoes-every-30-seconds": {
+        "task": "workers.tasks.notificacoes_tasks.detectar",
+        "schedule": 30.0,
+    },
+    "enviar-notificacoes-every-60-seconds": {
+        "task": "workers.tasks.notificacoes_tasks.enviar",
+        "schedule": 60.0,
+    },
+    # Retenção por automação: sem prazo definido não apaga nada
+    "aplicar-retencao-every-hour": {
+        "task": "workers.tasks.notificacoes_tasks.aplicar_retencao",
+        "schedule": 3600.0,
     },
 }
 celery_app.conf.timezone = "UTC"

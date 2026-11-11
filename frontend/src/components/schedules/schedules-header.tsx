@@ -82,7 +82,7 @@ export function SchedulesHeader({
               </Button>
             </div>
           )}
-          <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[11px] font-medium text-muted-foreground" title="Timezone de exibição">
+          <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground" title="Timezone de exibição">
             {timezone}
           </span>
         </div>
@@ -104,7 +104,7 @@ export function SchedulesHeader({
         <Button variant="outline" size="sm" onClick={onOpenFilters}>
           <Filter className="h-3.5 w-3.5" /> Filtros
           {activeFilterCount > 0 && (
-            <span className="tabular ml-0.5 rounded-full bg-primary/15 px-1.5 text-[11px] text-primary">{activeFilterCount}</span>
+            <span className="tabular ml-0.5 rounded-full bg-primary/15 px-1.5 text-xs text-primary">{activeFilterCount}</span>
           )}
         </Button>
       </div>

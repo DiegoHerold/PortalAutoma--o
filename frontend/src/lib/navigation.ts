@@ -4,6 +4,7 @@ import {
   GitBranch,
   History,
   ListOrdered,
+  Monitor,
   CalendarClock,
   Webhook,
   Package,
@@ -35,22 +36,28 @@ export type NavItem = {
   adminOnly?: boolean;
   /** Área ainda não implementada no frontend nesta etapa — leva a uma página "em construção". */
   comingSoon?: boolean;
+  /** ``false``: fora do menu até a pessoa ligar nas Configurações. Padrão: no menu. */
+  padrao?: boolean;
 };
 
+/** Categoria do menu. Itens com ``padrao: false`` ficam fora do menu até a pessoa ligar
+ * nas Configurações (e sempre aparecem lá, na área de administração). */
 export type NavGroup = { label: string; items: NavItem[] };
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Visão geral",
+    label: "Monitorar",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/dashboard", label: "Painel", icon: LayoutDashboard },
       { href: "/fila", label: "Fila", icon: ListOrdered, anyPermission: ["execution.read", "automation.read"] },
-      { href: "/executions", label: "Execuções", icon: History, anyPermission: ["execution.read", "flow.read"] },
+      { href: "/maquinas", label: "Máquinas", icon: Monitor, anyPermission: ["execution.read", "agent.read"] },
+      { href: "/historico", label: "Histórico", icon: History, anyPermission: ["execution.read", "flow.read"] },
     ],
   },
   {
     label: "Operação",
     items: [
+      { href: "/executions", label: "Execuções", icon: ScrollText, anyPermission: ["execution.read", "flow.read"] },
       { href: "/flows", label: "Fluxos", icon: GitBranch, permission: "flow.read" },
       { href: "/webhooks", label: "Webhooks", icon: Webhook, permission: "flow.read" },
       { href: "/schedules", label: "Agendamentos", icon: CalendarClock, permission: "schedule.read" },
@@ -68,32 +75,36 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Infraestrutura",
     items: [
       { href: "/workers", label: "Agents", icon: Server, permission: "agent.read" },
-      { href: "/storage", label: "Armazenamento", icon: Database, permission: "artifact.read" },
+      { href: "/storage", label: "Armazenamento", icon: Database, permission: "artifact.read", padrao: false },
+    ],
+  },
+  {
+    label: "Segurança",
+    items: [
+      { href: "/audit", label: "Auditoria", icon: ScrollText, permission: "audit.read", padrao: false },
+      { href: "/secrets", label: "Segredos", icon: KeyRound, permission: "secret.read_metadata", padrao: false },
+      { href: "/service-accounts", label: "Contas de serviço", icon: IdCard, adminOnly: true, padrao: false },
+    ],
+  },
+  {
+    label: "Pessoas e acesso",
+    items: [
+      { href: "/users", label: "Usuários", icon: Users, permission: "admin.users", padrao: false },
+      { href: "/teams", label: "Times", icon: UsersRound, adminOnly: true, padrao: false },
+      { href: "/roles", label: "Papéis", icon: ShieldCheck, permission: "admin.roles", padrao: false },
+      { href: "/organizations", label: "Organizações", icon: Building2, adminOnly: true, padrao: false },
     ],
   },
   {
     label: "Governança",
     items: [
-      { href: "/audit", label: "Auditoria", icon: ScrollText, permission: "audit.read" },
-      { href: "/secrets", label: "Segredos", icon: KeyRound, permission: "secret.read_metadata" },
-      { href: "/governance/limits", label: "Limites", icon: Gauge, adminOnly: true },
-      { href: "/governance/retention", label: "Retenção", icon: Archive, adminOnly: true },
+      { href: "/governance/limits", label: "Limites", icon: Gauge, adminOnly: true, padrao: false },
+      { href: "/governance/retention", label: "Retenção", icon: Archive, adminOnly: true, padrao: false },
     ],
-  },
-  {
-    label: "Administração",
-    items: [
-      { href: "/users", label: "Usuários", icon: Users, permission: "admin.users" },
-      { href: "/organizations", label: "Organizações", icon: Building2, adminOnly: true },
-      { href: "/teams", label: "Times", icon: UsersRound, adminOnly: true },
-      { href: "/roles", label: "Papéis", icon: ShieldCheck, permission: "admin.roles" },
-      { href: "/service-accounts", label: "Contas de serviço", icon: IdCard, adminOnly: true },
-    ],
-  },
-  {
-    label: "Configurações",
-    items: [{ href: "/settings", label: "Configurações", icon: Settings }],
   },
 ];
 
-export const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+/** Sempre no rodapé do menu, fora das categorias. */
+export const CONFIGURACOES: NavItem = { href: "/settings", label: "Configurações", icon: Settings };
+
+export const ALL_NAV_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), CONFIGURACOES];

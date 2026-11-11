@@ -192,12 +192,13 @@ class SqlAlchemyAutomationVersionReader:
         automation = self.db.get(Automation, version.automation_id)
         if automation is None:
             return None
+        manifest = self._manifest(version)
+        externa = (manifest.get("entrypoint") or {}).get("type") == "externa" or version.entrypoint_type == "externa"
         package = self._package(version)
         runtime_version = self._runtime_version(version)
-        if package is None or runtime_version is None or runtime_version.status != "published":
+        if not externa and (package is None or runtime_version is None or runtime_version.status != "published"):
             return None
-        runtime = self.db.get(RuntimeRecord, runtime_version.runtime_id)
-        manifest = self._manifest(version)
+        runtime = self.db.get(RuntimeRecord, runtime_version.runtime_id) if runtime_version is not None else None
         execution = manifest.get("execution") if isinstance(manifest.get("execution"), dict) else {}
         resources = manifest.get("resources") if isinstance(manifest.get("resources"), dict) else {}
         capabilities = manifest.get("capabilities") if isinstance(manifest.get("capabilities"), dict) else {}
@@ -211,12 +212,13 @@ class SqlAlchemyAutomationVersionReader:
             version=version.version,
             status=version.status,
             runtime_id=runtime.key if runtime else version.runtime_id,
-            runtime_version=runtime_version.version,
-            runtime_version_id=runtime_version.id,
-            package_id=package.id,
-            package_sha256=package.sha256,
-            package_size_bytes=package.size_bytes,
-            package_download_url=self._package_download_url(package),
+            runtime_version=runtime_version.version if runtime_version is not None else version.runtime_version,
+            runtime_version_id=runtime_version.id if runtime_version is not None else None,
+            package_id=package.id if package is not None else None,
+            package_sha256=package.sha256 if package is not None else None,
+            package_size_bytes=package.size_bytes if package is not None else None,
+            package_download_url=self._package_download_url(package) if package is not None else None,
+            externa=externa,
             manifest=manifest,
             execution_mode=mode,
             timeout_seconds=_positive_int(execution.get("timeout_seconds"), 300),

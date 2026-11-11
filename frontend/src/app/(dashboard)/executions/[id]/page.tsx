@@ -18,8 +18,8 @@ export default async function ExecutionDetailPage({ params }: { params: Promise<
       </nav>
       <PageTitle
         eyebrow="Detalhe"
-        title={`Execucao #${id}`}
-        description="Timeline, eventos, logs, metricas, processos, progresso, tasks e artefatos."
+        title={`Execução #${id}`}
+        description="Timeline, eventos, logs, métricas, processos, progresso, tasks e artefatos."
         actions={
           <Button size="sm" asChild>
             <Link href={`/execucoes/${id}`}>

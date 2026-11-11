@@ -360,7 +360,7 @@ export function FlowExecutionMonitor({ flowExecutionId }: { flowExecutionId: str
             <Background gap={20} />
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable className="!bg-card" />
-            <Panel position="top-right" className="rounded-md border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
+            <Panel position="top-right" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm">
               {nodes.length} nó(s) · clique em um nó para detalhar
             </Panel>
           </ReactFlow>

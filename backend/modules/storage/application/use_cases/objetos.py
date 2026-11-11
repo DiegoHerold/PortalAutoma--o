@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import tempfile
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -48,3 +50,19 @@ class LerObjeto:
         if objeto is None or objeto.status == StoredObjectStatus.DELETED:
             raise ArtifactNotFound("Objeto não encontrado.")
         return self.object_storage.read_bytes(objeto.bucket, objeto.object_key), objeto.content_type
+
+
+class ApagarObjeto:
+    """Apaga os bytes e marca o objeto como apagado (retenção). Apagar de novo não faz nada."""
+
+    def __init__(self, object_storage: Any, stored_objects: Any) -> None:
+        self.object_storage = object_storage
+        self.stored_objects = stored_objects
+
+    def execute(self, stored_object_id: str) -> bool:
+        objeto = self.stored_objects.get(stored_object_id)
+        if objeto is None or objeto.status == StoredObjectStatus.DELETED:
+            return False
+        self.object_storage.delete_object(objeto.bucket, objeto.object_key)
+        self.stored_objects.update(replace(objeto, status=StoredObjectStatus.DELETED, deleted_at=datetime.now(UTC)))
+        return True

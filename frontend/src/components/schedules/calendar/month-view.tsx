@@ -72,7 +72,7 @@ export function MonthView({
                   {date.getDate()}
                 </span>
                 {dayItems.length > 0 && (
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     {automationCount > 0 && (
                       <span className="flex items-center gap-0.5">
                         <Bot className="h-2.5 w-2.5" /> {automationCount}
@@ -89,8 +89,8 @@ export function MonthView({
 
               {(failedCount > 0 || runningCount > 0) && (
                 <div className="flex gap-1">
-                  {runningCount > 0 && <span className="rounded-full bg-info/15 px-1.5 text-[9px] font-medium text-info">{runningCount} ativas</span>}
-                  {failedCount > 0 && <span className="rounded-full bg-destructive/15 px-1.5 text-[9px] font-medium text-destructive">{failedCount} falhas</span>}
+                  {runningCount > 0 && <span className="rounded-full bg-info/15 px-1.5 text-xs font-medium text-info">{runningCount} ativas</span>}
+                  {failedCount > 0 && <span className="rounded-full bg-destructive/15 px-1.5 text-xs font-medium text-destructive">{failedCount} falhas</span>}
                 </div>
               )}
 
@@ -102,7 +102,7 @@ export function MonthView({
                   <button
                     type="button"
                     onClick={() => setExpandedDay(key)}
-                    className="px-1 text-left text-[11px] font-medium text-primary hover:underline"
+                    className="px-1 text-left text-xs font-medium text-primary hover:underline"
                   >
                     + {overflow} outros
                   </button>

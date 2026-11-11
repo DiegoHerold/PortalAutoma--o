@@ -19,7 +19,11 @@ SUPPORTED_ENTRYPOINT_TYPES = {
     "powershell-script",
     "executable",
     "browser-playwright",
+    # Automação externa (ADR-018, modo direto): já instalada na máquina dela, fala com o
+    # Portal pelo SDK. Não tem pacote para o Agent baixar nem runtime fornecido pelo Portal.
+    "externa",
 }
+ENTRYPOINT_EXTERNA = "externa"
 SUPPORTED_EXECUTION_MODES = {"interactive", "background", "browser"}
 # Modo de execução (decisão 10): obrigatório. Nomes em português ou os do pool.
 EXECUTION_MODE_ALIASES = {
@@ -230,6 +234,7 @@ def parse_automation_manifest(raw_yaml: str) -> tuple[AutomationManifest | None,
     schemas = _parse_schema_refs(data.get("schemas"), result)
     items = _parse_items(data.get("itens"), result)
     steps = _parse_steps(data.get("etapas"), result)
+    parameters = _parse_parameters(data.get("parametros", data.get("parameters")), result)
 
     if not result.is_valid:
         return None, result
@@ -248,6 +253,7 @@ def parse_automation_manifest(raw_yaml: str) -> tuple[AutomationManifest | None,
             "version": runtime_version,
         },
         "entrypoint": entrypoint,
+        "parameters": parameters,
         "execution": {
             "mode": execution.mode,
             "timeout_seconds": execution.timeout_seconds,
@@ -490,6 +496,20 @@ def _required_string(data: dict[str, Any], key: str, result: ValidationResult, p
 def _optional_string(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _parse_parameters(raw: Any, result: ValidationResult) -> list[dict[str, Any]]:
+    """Campos de entrada sugeridos (Fase 7). O Portal pode editá-los depois livremente."""
+    if raw in (None, []):
+        return []
+    from modules.catalog.domain.formulario import FormularioInvalido, validar_campos
+
+    try:
+        return [c.publico() for c in validar_campos(raw)]
+    except FormularioInvalido as exc:
+        for caminho, mensagem in exc.campos.items():
+            result.add("MANIFEST_PARAMETER_INVALID", f"parametros.{caminho}", mensagem)
+        return []
 
 
 def _parse_entrypoint(raw_entrypoint: Any, result: ValidationResult) -> dict[str, Any]:

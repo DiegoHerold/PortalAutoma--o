@@ -253,8 +253,8 @@ function Resumo({ visao, agora }: { visao: VisaoFila; agora: Date }) {
   const semPrevisao = visao.jobs.filter((j) => !j.termino_previsto).length;
 
   return (
-    <section className="faixa-noite overflow-hidden rounded-xl text-white shadow-md">
-      <dl className="grid grid-cols-2 divide-white/10 lg:grid-cols-4 lg:divide-x">
+    <section className="faixa-noite overflow-hidden rounded-xl shadow-md">
+      <dl className="grid grid-cols-2 divide-[hsl(var(--faixa-divisao))] lg:grid-cols-4 lg:divide-x">
         <Numero rotulo="Esperando" valor={String(visao.jobs.length)} detalhe={visao.jobs.length === 1 ? "job na fila" : "jobs na fila"} />
         <Numero rotulo="Telas livres" valor={`${livres}/${visao.maquinas.length}`} detalhe="máquinas prontas para receber" />
         <Numero
@@ -282,9 +282,9 @@ function Resumo({ visao, agora }: { visao: VisaoFila; agora: Date }) {
 function Numero({ rotulo, valor, detalhe, alerta }: { rotulo: string; valor: string; detalhe: string; alerta?: boolean }) {
   return (
     <div className="px-5 py-4">
-      <dt className="text-[11px] font-bold uppercase tracking-[0.16em] text-nevoa">{rotulo}</dt>
-      <dd className={cn("titulo-condensado mt-1 text-3xl leading-none", alerta ? "text-areia" : "text-white")}>{valor}</dd>
-      <dd className="mt-1.5 text-xs text-[#95a9c0]">{detalhe}</dd>
+      <dt className="text-xs font-bold uppercase tracking-[0.16em] faixa-rotulo">{rotulo}</dt>
+      <dd className={cn("titulo-condensado mt-1 text-3xl leading-none", alerta ? "faixa-alerta" : "faixa-valor")}>{valor}</dd>
+      <dd className="mt-1.5 text-xs faixa-apoio">{detalhe}</dd>
     </div>
   );
 }
@@ -434,7 +434,7 @@ function ListaDeJobs({
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-          <div className="hidden grid-cols-[3rem_minmax(0,2.2fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_7rem_5.5rem] gap-4 border-b border-border bg-muted px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground lg:grid">
+          <div className="hidden grid-cols-[3rem_minmax(0,2.2fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_7rem_5.5rem] gap-4 border-b border-border bg-muted px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground lg:grid">
             <span>Pos.</span>
             <span>Automação e itens</span>
             <span>Máquina prevista</span>
@@ -487,7 +487,7 @@ function LinhaJob({
         <div className="min-w-0">
           <p className="truncate font-semibold text-titulo">{job.automacao ?? "Automação"}</p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <Badge tone="outline" className="py-0 text-[11px]">
+            <Badge tone="outline" className="py-0 text-xs">
               {POOLS[job.pool] ?? job.pool}
             </Badge>
             <Itens itens={job.itens} />
@@ -499,7 +499,7 @@ function LinhaJob({
             <span className="flex items-center gap-1.5">
               {job.maquina_prevista_nome ?? <span className="text-muted-foreground">—</span>}
               {job.maquina_obrigatoria && (
-                <Badge tone="info" className="px-1.5 py-0 text-[10px]" title="Retomada de job perdido: só roda nesta máquina">
+                <Badge tone="info" className="px-1.5 py-0 text-xs" title="Retomada de job perdido: só roda nesta máquina">
                   fixa
                 </Badge>
               )}
@@ -507,7 +507,7 @@ function LinhaJob({
           </Campo>
           <Campo rotulo="Início → término">
             {job.inicio_previsto ? (
-              <span className="tabular text-[13px]">
+              <span className="tabular text-[0.8125rem]">
                 {horario(job.inicio_previsto, agora)}
                 <ArrowRight className="mx-1 inline h-3 w-3 text-muted-foreground" />
                 {job.termino_previsto ? horario(job.termino_previsto, agora) : "?"}
@@ -521,7 +521,7 @@ function LinhaJob({
             {job.estimativa_s != null ? (
               <span className="titulo-condensado text-lg leading-none">{duracao(job.estimativa_s)}</span>
             ) : job.estimativa_minima_s != null ? (
-              <span className="text-[13px]">
+              <span className="text-[0.8125rem]">
                 pelo menos <span className="titulo-condensado text-lg leading-none">{duracao(job.estimativa_minima_s)}</span>
               </span>
             ) : (
@@ -578,7 +578,7 @@ function LinhaJob({
       </div>
 
       {(semPrevisao || job.motivos.length > 0) && (
-        <ul className="mt-3 space-y-1 rounded-md bg-warning/10 px-3 py-2 text-[13px] lg:ml-[4rem]">
+        <ul className="mt-3 space-y-1 rounded-md bg-warning/10 px-3 py-2 text-[0.8125rem] lg:ml-[4rem]">
           {job.motivos.length === 0 && (
             <li className="flex gap-2">
               <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
@@ -598,8 +598,8 @@ function LinhaJob({
       )}
 
       {explicar && (
-        <div className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-[13px] lg:ml-[4rem]">
-          <p className="eyebrow mb-1.5 text-[10px]">Por que espera</p>
+        <div className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-[0.8125rem] lg:ml-[4rem]">
+          <p className="eyebrow mb-1.5 text-xs">Por que espera</p>
           <PorQueEspera job={job} agora={agora} />
         </div>
       )}
@@ -640,7 +640,7 @@ function PorQueEspera({ job, agora }: { job: JobNaFila; agora: Date }) {
 function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground lg:hidden">{rotulo}</p>
+      <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground lg:hidden">{rotulo}</p>
       <div className="mt-0.5 lg:mt-0">{children}</div>
     </div>
   );
@@ -652,11 +652,11 @@ function Itens({ itens, className }: { itens: string[]; className?: string }) {
   return (
     <span className={cn("inline-flex flex-wrap gap-1", className)}>
       {visiveis.map((item) => (
-        <span key={item} className="tabular rounded bg-secondary px-1.5 py-0.5 text-[11px] text-secondary-foreground">
+        <span key={item} className="tabular rounded bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
           {item}
         </span>
       ))}
-      {resto > 0 && <span className="text-[11px] text-muted-foreground">+{resto}</span>}
+      {resto > 0 && <span className="text-xs text-muted-foreground">+{resto}</span>}
     </span>
   );
 }

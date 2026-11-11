@@ -51,6 +51,12 @@ def listar(automation_id: int, db: Session = Depends(get_db), user: Any = Depend
     return {"instancias": SqlAlchemyDirectInstanceStore(db).da_automacao(automation_id)}
 
 
+@router.get("/instancias-diretas")
+def todas(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    _gestor(db, user)
+    return {"instancias": SqlAlchemyDirectInstanceStore(db).todas()}
+
+
 @router.post("/instancias-diretas/{instancia_id}/{acao}")
 def decidir(instancia_id: str, acao: str, corpo: dict[str, Any] = Body(default={}), db: Session = Depends(get_db),
             user: Any = Depends(get_current_user)) -> dict[str, Any]:

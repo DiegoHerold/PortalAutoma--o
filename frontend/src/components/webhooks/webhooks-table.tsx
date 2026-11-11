@@ -107,7 +107,7 @@ function WebhookCard({
   }
 
   return (
-    <article className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <article className="rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <button type="button" className="min-w-0 text-left" onClick={() => onOpen(trigger)}>
           <span className="flex items-center gap-2">

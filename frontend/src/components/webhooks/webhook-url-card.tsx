@@ -51,7 +51,7 @@ export function WebhookUrlCard({ trigger, invokeBaseUrl }: { trigger: Trigger; i
         </Button>
       </div>
       <div className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2">
-        <code className="tabular block truncate text-xs">{url || "URL indisponivel"}</code>
+        <code className="tabular block truncate text-xs">{url || "URL indisponível"}</code>
       </div>
       <div className="mt-3 rounded-md border border-border bg-background">
         <div className="flex items-center justify-between border-b border-border px-3 py-2">
