@@ -1,0 +1,115 @@
+# SDK Python do Portal de Automações
+
+Para a automação contar ao Portal o que está fazendo: etapas, itens, progresso, log,
+passos com imagem e itens que precisam de uma pessoa. O mesmo código funciona no
+**modo agente** (a automação fala só com o Agent local) e no **modo direto** (fala
+direto com o Portal por HTTPS). O modo vem da configuração, nunca do código.
+
+Contrato: [`contracts/automation-events/v1`](../../contracts/automation-events/v1/README.md).
+
+## Instalação
+
+```powershell
+pip install .\sdk\python            # eventos
+pip install .\sdk\python[imagens]   # com imagens dos passos (Pillow)
+```
+
+## Uso
+
+```python
+from portal_automacoes import Automacao
+
+with Automacao.conectar(versao_automacao="2.3.0") as a:
+    with a.etapa("iniciar"):
+        a.log("Abrindo a Domínio")
+        a.passo("Domínio carregada", tipo="abriu", imagem=print_da_janela())
+    for empresa in empresas:
+        with a.item(empresa.codigo, rotulo=empresa.nome, grupo=empresa.matriz,
+                    configuracao={"separar_por_custo": empresa.separa}):
+            with a.etapa("rubricas", tarefas_previstas=len(centros)) as etapa:
+                for i, centro in enumerate(centros, 1):
+                    a.progresso(i, len(centros), f"centro {centro}")
+                    ...
+                    etapa.tarefa_concluida()
+            if pendentes:
+                a.atencao("Rubricas a parametrizar",
+                          colunas=[("codigo", "Rubrica"), ("descricao", "Descrição")],
+                          linhas=[{"codigo": r.codigo, "descricao": r.descricao} for r in pendentes])
+            a.resumo("50 relatórios")
+        if a.deve_parar():          # "Parar depois do item atual", pedido no Portal
+            break
+```
+
+| Método | Evento |
+|---|---|
+| `with Automacao.conectar()` | `execucao.iniciada` / `execucao.concluida` (`ok`, `erro`, `interrompida`, `atencao`) |
+| `with a.etapa(chave, tarefas_previstas=)` | `etapa.iniciada` / `etapa.concluida`; exceção vira `erro`. `tarefas_previstas` é o total da etapa no job; numa retomada, informe o total de novo e chame `tarefa_concluida()` só para o que esta tentativa fizer |
+| `with a.item(chave, rotulo=, grupo=, configuracao=)` | `item.iniciado` / `item.concluido` |
+| `a.progresso(atual, total, rotulo)` | `progresso` |
+| `a.log(texto, nivel="info", espera=False)` | `log` |
+| `a.passo(rotulo, tipo="acao", imagem=)` | `passo`; a imagem vai por fora e o evento leva só o id |
+| `a.espera(rotulo, desde)` | `espera.atualizada` |
+| `a.atencao(motivo, colunas, linhas, acoes)` | `atencao` (dentro de um item) |
+| `with a.pausa("reinicio", detalhe)` | `pausa.iniciada` / `pausa.concluida`: tempo fora da estimativa |
+| `a.deve_parar()`, `a.verificar_parada()` | Consulta os comandos do Portal |
+
+Garantias:
+
+- Falha do Agent ou do Portal **nunca derruba a automação**: o evento fica numa fila em
+  disco e é reenviado na ordem, sem duplicar.
+- Evento fora do contrato é erro de programação e levanta `EventoInvalido` na hora.
+- Imagem vazia, de uma cor só ou corrompida nunca sai da máquina.
+
+## Configuração
+
+| Variável | Modo | Uso |
+|---|---|---|
+| `PORTAL_MODO` | todos | `agente`, `direto` ou `desligado`. Sem ela: agente se houver pipe, direto se houver `PORTAL_URL`, senão desligado |
+| `AUTOMATION_EVENTS_PIPE`, `AUTOMATION_EVENTS_TOKEN` | agente | Entregues pelo ExecutionHost |
+| `PORTAL_URL` | direto | `https://...` (http é recusado) |
+| `PORTAL_JOB_ID`, `PORTAL_JOB_TOKEN` | direto | Job e token do job; `Instancia.ambiente_do_job` os monta a partir do job recebido |
+| `PORTAL_CA_ARQUIVO` | direto | CA da empresa em PEM, se ela não estiver no repositório do Windows |
+| `PORTAL_FILA_DIR` | todos | Pasta da fila local |
+
+Não existe opção para desligar a validação do certificado.
+
+## Máquina sem Agent: a instância pede os próprios jobs
+
+Precisa do extra `direto` (`pip install portal-automacoes-sdk[direto]`).
+
+```python
+from portal_automacoes import Automacao
+from portal_automacoes.instancia import Instancia, trabalhar
+
+# Uma vez por máquina, com o código que o administrador gerou na automação (vale 30 min):
+Instancia.inscrever("https://MAQ65.intranet.biason.net:8000", codigo="ABCD-EFGH-JKLM-NPQR",
+                    nome="integracao-contabil", arquivo_ca=r"C:\caminho\Biason-Intranet-Root-CA.crt")
+
+# Depois, sempre: espera jobs e roda um por vez.
+def executar(job, ambiente):
+    with Automacao.conectar(versao_automacao="2.0.0", ambiente=ambiente) as a:
+        for item in job.itens:
+            with a.item(item["chave"], rotulo=item.get("rotulo")):
+                ...
+
+trabalhar(Instancia.carregar("integracao-contabil"), executar)
+```
+
+- A chave privada é gerada na máquina e fica cifrada pelo DPAPI, no escopo do usuário que
+  inscreveu: outro usuário ou outra máquina não a usa. O arquivo fica em
+  `%LOCALAPPDATA%\PortalAutomacoes\instancias\`.
+- Até o administrador aprovar a instância e escolher a máquina, `trabalhar` só espera.
+- Para automações que já existem, em que item e etapa começam e terminam em pontos
+  diferentes do código: `iniciar_item`, `concluir_item`, `iniciar_etapa`,
+  `concluir_etapa`. A emissão pode vir de mais de uma thread.
+
+## Simuladores e testes
+
+`simuladores/` tem o Agent Service simulado (que roda o **ExecutionHost.exe real**), o
+Portal simulado do modo direto (HTTPS com CA própria) e uma automação de exemplo que roda
+igual nos dois modos.
+
+```powershell
+..\..\backend\.venv\Scripts\python.exe -m pytest -q tests
+cd ..\..\backend; .venv\Scripts\python.exe -m pytest -q tests\integration\test_automacao_dois_modos.py
+```
