@@ -1,2 +1,0 @@
-[console_scripts]
-portal-automacoes = portal_automacoes.trabalhador:main
