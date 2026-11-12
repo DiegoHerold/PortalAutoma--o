@@ -3,12 +3,16 @@
     portal-automacoes inscrever --portal https://MAQ65.intranet.biason.net --codigo ABCD-EFGH-JKLM-NPQR --nome folha
     portal-automacoes status --nome folha
     portal-automacoes trabalhar --nome folha -- python -m minha_automacao
+    portal-automacoes trabalhar --nome folha --declaracao portal/declaracao.json -- python -m minha_automacao
 
 ``trabalhar`` espera os jobs do Portal (um por vez) e, para cada um, roda o comando com:
 
 - ``PORTAL_MODO``, ``PORTAL_URL``, ``PORTAL_JOB_ID`` e ``PORTAL_JOB_TOKEN`` (o
   ``Automacao.conectar()`` do SDK lê sozinho) e ``PORTAL_ENVIO_EM_SEGUNDO_PLANO=1``;
 - ``PORTAL_JOB_ARQUIVO``: JSON com ``parametros`` e ``itens`` do job (``job_atual()`` lê).
+
+``--declaracao``: JSON com o que a automação pede para executar, o que é um item e a tabela
+(ver ``Instancia.declarar``). Lido e enviado sempre que a instância passa a receber jobs.
 
 O token do job vai por variável de ambiente do processo filho, nunca na linha de comando.
 Automação em Python pode, em vez do comando, chamar ``trabalhar(instancia, executar)``.
@@ -54,7 +58,9 @@ def rodar_comando(comando: list[str], job: Job, ambiente: dict[str, str], avisar
         arquivo = gravar_job(job, Path(pasta))
         env = {**os.environ, **ambiente, "PORTAL_JOB_ARQUIVO": str(arquivo), "PORTAL_ENVIO_EM_SEGUNDO_PLANO": "1"}
         codigo = subprocess.run(comando, env=env, check=False).returncode
-    if codigo != 0:
+    if codigo == 130:  # o SDK encerrou o processo depois de cancelar: o fim já foi registrado
+        avisar(f"job {job.job_id}: encerrado pelo cancelamento")
+    elif codigo != 0:
         avisar(f"job {job.job_id}: o comando saiu com {codigo}")
         automacao = Automacao.conectar(ambiente=ambiente)
         automacao._emitir("execucao.concluida", {"situacao": "erro",
@@ -80,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("trabalhar", help="espera jobs e roda o comando para cada um")
     s.add_argument("--nome", required=True)
+    s.add_argument("--declaracao", type=Path, help="JSON da declaração (parâmetros, itens, tabela)")
     s.add_argument("comando", nargs=argparse.REMAINDER, help="-- comando da automação")
 
     a = p.parse_args(argv)
@@ -100,7 +107,13 @@ def main(argv: list[str] | None = None) -> int:
     comando = a.comando[1:] if a.comando[:1] == ["--"] else a.comando
     if not comando:
         p.error("informe o comando da automação depois de --")
-    trabalhar(instancia, lambda job, ambiente: rodar_comando(comando, job, ambiente) and None)
+    declaracao = None
+    if a.declaracao is not None:
+        arquivo = a.declaracao
+        if not arquivo.is_file():
+            p.error(f"declaração não encontrada: {arquivo}")
+        declaracao = lambda: json.loads(arquivo.read_text(encoding="utf-8"))  # noqa: E731 - lida a cada envio
+    trabalhar(instancia, lambda job, ambiente: rodar_comando(comando, job, ambiente) and None, declaracao=declaracao)
     return 0
 
 

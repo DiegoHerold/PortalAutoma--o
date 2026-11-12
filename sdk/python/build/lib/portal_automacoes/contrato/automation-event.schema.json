@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal-automacoes.local/contracts/automation-events/v1/automation-event.schema.json",
+  "title": "AutomationEvent",
+  "description": "Evento emitido pela automação, igual no modo agente e no modo direto. O contexto (execução, job, tentativa, executor) não vem no evento: o Portal deduz pela conexão do Agent ou pelo token do job.",
+  "type": "object",
+  "required": ["protocol_version", "event_id", "sequence", "type", "occurred_at", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "const": "automation-events/1" },
+    "event_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "sequence": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "type": {
+      "enum": [
+        "execucao.iniciada",
+        "execucao.concluida",
+        "etapa.iniciada",
+        "etapa.concluida",
+        "item.iniciado",
+        "item.concluido",
+        "progresso",
+        "log",
+        "passo",
+        "atencao",
+        "espera.atualizada",
+        "pausa.iniciada",
+        "pausa.concluida"
+      ]
+    },
+    "occurred_at": { "type": "string", "format": "date-time", "maxLength": 40 },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "execucao.iniciada" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/execucao_iniciada" } } } },
+    { "if": { "properties": { "type": { "const": "execucao.concluida" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/execucao_concluida" } } } },
+    { "if": { "properties": { "type": { "const": "etapa.iniciada" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/etapa_iniciada" } } } },
+    { "if": { "properties": { "type": { "const": "etapa.concluida" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/etapa_concluida" } } } },
+    { "if": { "properties": { "type": { "const": "item.iniciado" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/item_iniciado" } } } },
+    { "if": { "properties": { "type": { "const": "item.concluido" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/item_concluido" } } } },
+    { "if": { "properties": { "type": { "const": "progresso" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/progresso" } } } },
+    { "if": { "properties": { "type": { "const": "log" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/log" } } } },
+    { "if": { "properties": { "type": { "const": "passo" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/passo" } } } },
+    { "if": { "properties": { "type": { "const": "atencao" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/atencao" } } } },
+    { "if": { "properties": { "type": { "const": "espera.atualizada" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/espera_atualizada" } } } },
+    { "if": { "properties": { "type": { "const": "pausa.iniciada" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/pausa" } } } },
+    { "if": { "properties": { "type": { "const": "pausa.concluida" } } }, "then": { "properties": { "payload": { "$ref": "#/$defs/pausa" } } } }
+  ],
+  "$defs": {
+    "chave": {
+      "description": "Chave técnica declarada no manifesto (etapa) ou chave do item no cadastro.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "texto_curto": { "type": "string", "maxLength": 300 },
+    "situacao_etapa": { "enum": ["ok", "erro", "interrompida"] },
+    "execucao_iniciada": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "versao_automacao": { "type": "string", "maxLength": 60 },
+        "sdk": { "type": "string", "maxLength": 60 }
+      }
+    },
+    "execucao_concluida": {
+      "type": "object",
+      "required": ["situacao"],
+      "additionalProperties": false,
+      "properties": {
+        "situacao": { "enum": ["ok", "erro", "interrompida", "atencao"] },
+        "resumo": { "$ref": "#/$defs/texto_curto" }
+      }
+    },
+    "etapa_iniciada": {
+      "type": "object",
+      "required": ["etapa"],
+      "additionalProperties": false,
+      "properties": {
+        "etapa": { "$ref": "#/$defs/chave" },
+        "item": { "$ref": "#/$defs/chave" },
+        "tarefas_previstas": { "type": "integer", "minimum": 0, "maximum": 100000 }
+      }
+    },
+    "etapa_concluida": {
+      "type": "object",
+      "required": ["etapa", "situacao"],
+      "additionalProperties": false,
+      "properties": {
+        "etapa": { "$ref": "#/$defs/chave" },
+        "item": { "$ref": "#/$defs/chave" },
+        "situacao": { "$ref": "#/$defs/situacao_etapa" },
+        "tarefas": { "type": "integer", "minimum": 0, "maximum": 100000 }
+      }
+    },
+    "item_iniciado": {
+      "type": "object",
+      "required": ["item"],
+      "additionalProperties": false,
+      "properties": {
+        "item": { "$ref": "#/$defs/chave" },
+        "rotulo": { "type": "string", "maxLength": 200 },
+        "grupo": { "$ref": "#/$defs/chave" },
+        "configuracao": {
+          "description": "Só os atributos que mudam o trabalho do item, declarados no manifesto. Mudar um deles zera a base da estimativa.",
+          "type": "object",
+          "maxProperties": 30,
+          "propertyNames": { "pattern": "^[A-Za-z0-9_]{1,60}$" },
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string", "maxLength": 200 },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    },
+    "item_concluido": {
+      "type": "object",
+      "required": ["item", "situacao"],
+      "additionalProperties": false,
+      "properties": {
+        "item": { "$ref": "#/$defs/chave" },
+        "situacao": { "enum": ["ok", "erro", "atencao", "cancelado", "ignorado"] },
+        "resumo": { "$ref": "#/$defs/texto_curto" }
+      }
+    },
+    "progresso": {
+      "type": "object",
+      "required": ["atual", "total"],
+      "additionalProperties": false,
+      "properties": {
+        "atual": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "total": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "rotulo": { "type": "string", "maxLength": 200 },
+        "item": { "$ref": "#/$defs/chave" }
+      }
+    },
+    "log": {
+      "type": "object",
+      "required": ["nivel", "texto"],
+      "additionalProperties": false,
+      "properties": {
+        "nivel": { "enum": ["debug", "info", "aviso", "erro", "critico"] },
+        "texto": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "espera": { "type": "boolean", "description": "Linha de espera (\"Ainda gerando...\"): a tela pode ocultar." },
+        "item": { "$ref": "#/$defs/chave" }
+      }
+    },
+    "passo": {
+      "type": "object",
+      "required": ["rotulo", "tipo"],
+      "additionalProperties": false,
+      "properties": {
+        "rotulo": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "tipo": { "enum": ["abriu", "fechou", "acao", "falha"] },
+        "imagem_id": {
+          "description": "Imagem já enviada por HTTPS/armazenamento. A imagem nunca vai dentro do evento.",
+          "type": "string",
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "item": { "$ref": "#/$defs/chave" }
+      }
+    },
+    "atencao": {
+      "type": "object",
+      "required": ["item", "motivo"],
+      "additionalProperties": false,
+      "properties": {
+        "item": { "$ref": "#/$defs/chave" },
+        "motivo": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "tabela": {
+          "type": "object",
+          "required": ["colunas", "linhas"],
+          "additionalProperties": false,
+          "properties": {
+            "colunas": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "required": ["chave", "titulo"],
+                "additionalProperties": false,
+                "properties": {
+                  "chave": { "type": "string", "pattern": "^[A-Za-z0-9_]{1,60}$" },
+                  "titulo": { "type": "string", "maxLength": 80 }
+                }
+              }
+            },
+            "linhas": {
+              "type": "array",
+              "maxItems": 500,
+              "items": {
+                "type": "object",
+                "maxProperties": 20,
+                "additionalProperties": {
+                  "oneOf": [
+                    { "type": "string", "maxLength": 500 },
+                    { "type": "number" },
+                    { "type": "boolean" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "acoes": {
+          "description": "Ações que uma pessoa pode tomar por linha, executadas pelo Portal no cadastro de itens (ex.: incluir a rubrica nas ignoradas).",
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["id", "rotulo", "tipo", "lista", "coluna"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" },
+              "rotulo": { "type": "string", "maxLength": 60 },
+              "tipo": { "const": "adicionar_a_lista" },
+              "lista": { "type": "string", "pattern": "^[A-Za-z0-9_]{1,60}$" },
+              "coluna": { "type": "string", "pattern": "^[A-Za-z0-9_]{1,60}$" },
+              "no_grupo": { "type": "boolean", "description": "Grava no item que lidera o grupo (ex.: a matriz)." }
+            }
+          }
+        }
+      }
+    },
+    "espera_atualizada": {
+      "type": "object",
+      "required": ["desde"],
+      "additionalProperties": false,
+      "properties": {
+        "desde": { "type": "string", "format": "date-time", "maxLength": 40 },
+        "rotulo": { "type": "string", "maxLength": 200 },
+        "item": { "$ref": "#/$defs/chave" }
+      }
+    },
+    "pausa": {
+      "type": "object",
+      "required": ["motivo"],
+      "additionalProperties": false,
+      "properties": {
+        "motivo": { "enum": ["reinicio", "espera_externa"] },
+        "detalhe": { "$ref": "#/$defs/texto_curto" },
+        "item": { "$ref": "#/$defs/chave" }
+      }
+    }
+  }
+}

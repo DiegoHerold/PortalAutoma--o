@@ -137,10 +137,19 @@ class Instancia:
         return Job(job["job_id"], job["execucao_id"], job["token"], int(job.get("tentativa") or 1),
                    dict(job.get("parametros") or {}), list(job.get("itens") or []))
 
+    def declarar(self, declaracao: dict[str, Any]) -> dict[str, Any]:
+        """Diz ao Portal o que a automação pede para executar (``parametros``), o que é um item
+        (``itens``: nome, chave, grupo e ``colunas``) e, se tiver, a ``tabela`` de itens. O Portal
+        junta com o que já existe (edições feitas lá valem) e põe a tabela em prévia para alguém
+        aprovar. Só vale com a instância aprovada. Devolve o que mudou."""
+        return _pedir(self._tls, "POST", self.portal + "/api/v1/direto/declaracao", declaracao, token=self._token())
+
     def ambiente_do_job(self, job: Job) -> dict[str, str]:
         """O que ``Automacao.conectar(ambiente=...)`` precisa para falar com o Portal neste job."""
+        # Segundo plano: a thread do SDK consulta os comandos a cada 2 s, o que também é o sinal de
+        # vida que o Portal espera (sem sinal por 2 min, ele cancela a execução).
         ambiente = {"PORTAL_MODO": "direto", "PORTAL_URL": self.portal, "PORTAL_JOB_ID": job.job_id,
-                    "PORTAL_JOB_TOKEN": job.token}
+                    "PORTAL_JOB_TOKEN": job.token, "PORTAL_ENVIO_EM_SEGUNDO_PLANO": "1"}
         if self.arquivo_ca:
             ambiente["PORTAL_CA_ARQUIVO"] = self.arquivo_ca
         if self.permitir_http:
@@ -150,10 +159,16 @@ class Instancia:
 
 def trabalhar(instancia: Instancia, executar: Callable[[Job, dict[str, str]], None], *,
               parar: Callable[[], bool] = lambda: False, avisar: Callable[[str], None] = print,
-              espera_aprovacao_s: float = 30.0) -> None:
-    """Espera jobs para sempre (ou até ``parar()``), um por vez, e entrega cada um a ``executar``."""
+              espera_aprovacao_s: float = 30.0,
+              declaracao: dict[str, Any] | Callable[[], dict[str, Any]] | None = None) -> None:
+    """Espera jobs para sempre (ou até ``parar()``), um por vez, e entrega cada um a ``executar``.
+
+    ``declaracao`` (ou uma função que a monta na hora): enviada assim que a instância puder
+    receber jobs, e de novo se ela voltar a ser aprovada. Declaração recusada é avisada e o
+    trabalho segue (o Portal continua com o que já tinha)."""
     pausa = 2.0
     ultimo_status = None
+    declarada = False
     while not parar():
         try:
             situacao = instancia.status()
@@ -162,14 +177,17 @@ def trabalhar(instancia: Instancia, executar: Callable[[Job, dict[str, str]], No
                        + ("" if situacao.get("recebe_jobs") else " (sem jobs: aguardando o administrador)"))
                 ultimo_status = situacao["status"]
             if not situacao.get("recebe_jobs"):
+                declarada = False
                 time.sleep(espera_aprovacao_s)
                 continue
+            if declaracao is not None and not declarada:
+                declarada = _declarar(instancia, declaracao, avisar)
             job = instancia.proximo_job()
             pausa = 2.0
             if job is None:
                 continue
             avisar(f"job {job.job_id}: {len(job.itens)} item(ns), parâmetros {job.parametros}")
-            executar(job, instancia.ambiente_do_job(job))
+            _executar_um(executar, job, instancia.ambiente_do_job(job), avisar)
         except Recusado as exc:
             avisar(f"Portal recusou a instância: {exc}. Confira se ela foi revogada.")
             time.sleep(espera_aprovacao_s)
@@ -177,6 +195,48 @@ def trabalhar(instancia: Instancia, executar: Callable[[Job, dict[str, str]], No
             avisar(f"Portal indisponível ({exc}); tentando de novo em {pausa:.0f} s")
             time.sleep(pausa)
             pausa = min(pausa * 2, 60.0)
+
+
+def _executar_um(executar: Callable[[Job, dict[str, str]], None], job: Job, ambiente: dict[str, str],
+                 avisar: Callable[[str], None]) -> None:
+    """Um job. Interrupção do SDK (cancelamento) e erro inesperado da automação não derrubam o
+    ``trabalhar``: ele avisa e segue esperando o próximo job. Ctrl+C de uma pessoa sai."""
+    from .automacao import interrompida_pelo_sdk
+
+    interrompida_pelo_sdk()  # descarta sobra de um job anterior
+    try:
+        executar(job, ambiente)
+    except KeyboardInterrupt:
+        if not interrompida_pelo_sdk():
+            raise
+        avisar(f"job {job.job_id}: interrompido pelo SDK (cancelamento); esperando o próximo job")
+    except (Recusado, FalhaDeTransporte):
+        raise
+    except Exception as exc:  # noqa: BLE001 - erro da automação: o Portal já soube pelo execucao.concluida
+        avisar(f"job {job.job_id}: a automação falhou ({exc.__class__.__name__}: {exc}); esperando o próximo job")
+
+
+def _declarar(instancia: Instancia, declaracao: Any, avisar: Callable[[str], None]) -> bool:
+    """``True`` quando não precisa tentar de novo (enviada ou recusada); a falha de rede volta."""
+    try:
+        dados = declaracao() if callable(declaracao) else declaracao
+        resposta = instancia.declarar(dados)
+    except Recusado as exc:
+        avisar(f"declaração recusada: {exc}")
+        return True
+    except FalhaDeTransporte:
+        raise
+    except Exception as exc:  # montar a declaração falhou: avisa e segue trabalhando
+        avisar(f"declaração não montada: {exc.__class__.__name__}: {exc}")
+        return True
+    novos = (resposta.get("entrada") or {}).get("novos") or []
+    fora = (resposta.get("entrada") or {}).get("fora_de_uso") or []
+    tabela = resposta.get("tabela")
+    partes = [f"{len(novos)} campo(s) novo(s)" if novos else "", f"{len(fora)} fora de uso" if fora else "",
+              f"tabela: {tabela['novos']} novo(s), {tabela['alterados']} alterado(s) para aprovar" if tabela
+              and (tabela["novos"] or tabela["alterados"]) else ""]
+    avisar("declaração enviada" + (": " + "; ".join(p for p in partes if p) if any(partes) else ": nada mudou"))
+    return True
 
 
 # -- HTTP ------------------------------------------------------------------------------------

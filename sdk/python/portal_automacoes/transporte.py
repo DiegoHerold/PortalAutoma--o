@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -10,7 +11,12 @@ class FalhaDeTransporte(RuntimeError):
 
 
 class Recusado(RuntimeError):
-    """O receptor recusou definitivamente (credencial inválida, evento fora do contrato)."""
+    """O receptor recusou definitivamente (credencial inválida, evento fora do contrato).
+    ``codigo``: o status HTTP no modo direto (401/409: o Portal não aceita mais este job)."""
+
+    def __init__(self, mensagem: str = "", codigo: int | None = None) -> None:
+        super().__init__(mensagem)
+        self.codigo = codigo
 
 
 class Transporte(Protocol):
@@ -27,6 +33,9 @@ class Transporte(Protocol):
 
     def enviar_imagem(self, imagem_id: str, jpeg: bytes) -> None:
         """Entrega a imagem fora do canal de eventos (arquivo local ou HTTPS)."""
+
+    def enviar_arquivo(self, caminho: Path, nome: str, item: str | None, tipo: str) -> None:
+        """Arquivo entregue pela automação (planilha, TXT...), fora do canal de eventos."""
 
     def fechar(self) -> None: ...
 
@@ -46,6 +55,9 @@ class TransporteDesligado:
         return []
 
     def enviar_imagem(self, imagem_id: str, jpeg: bytes) -> None:
+        return None
+
+    def enviar_arquivo(self, caminho: Path, nome: str, item: str | None, tipo: str) -> None:
         return None
 
     def fechar(self) -> None:

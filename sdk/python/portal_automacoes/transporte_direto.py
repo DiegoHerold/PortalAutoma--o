@@ -15,13 +15,15 @@ import json
 import ssl
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from .enderecos import usa_http, validar_url_portal
 from .transporte import FalhaDeTransporte, Recusado
 
 TEMPO_LIMITE_S = 20.0
+TEMPO_LIMITE_ARQUIVO_S = 300.0  # planilhas grandes numa rede lenta
 
 
 class TransporteDireto:
@@ -61,24 +63,32 @@ class TransporteDireto:
     def enviar_imagem(self, imagem_id: str, jpeg: bytes) -> None:
         self._pedir("PUT", f"/imagens/{quote(imagem_id, safe='')}", corpo_bruto=jpeg, tipo="image/jpeg")
 
+    def enviar_arquivo(self, caminho: Path, nome: str, item: str | None, tipo: str) -> None:
+        """Envia o arquivo como está no disco agora, sem carregar tudo na memória."""
+        consulta = urlencode({"nome": nome, **({"item": item} if item else {})})
+        with caminho.open("rb") as corpo:
+            self._pedir("PUT", f"/arquivos?{consulta}", corpo_bruto=corpo, tipo=tipo,
+                        tamanho=caminho.stat().st_size, tempo_limite_s=TEMPO_LIMITE_ARQUIVO_S)
+
     def fechar(self) -> None:
         return None
 
-    def _pedir(self, metodo: str, caminho: str, corpo: Any = None, corpo_bruto: bytes | None = None,
-               tipo: str = "application/json") -> dict[str, Any]:
+    def _pedir(self, metodo: str, caminho: str, corpo: Any = None, corpo_bruto: Any = None,
+               tipo: str = "application/json", tamanho: int | None = None,
+               tempo_limite_s: float | None = None) -> dict[str, Any]:
         dados = corpo_bruto if corpo_bruto is not None else (
             json.dumps(corpo, ensure_ascii=False).encode("utf-8") if corpo is not None else None)
-        pedido = urllib.request.Request(self._base + caminho, data=dados, method=metodo, headers={
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type": tipo,
-            "Accept": "application/json",
-        })
+        cabecalhos = {"Authorization": f"Bearer {self._token}", "Content-Type": tipo, "Accept": "application/json"}
+        if tamanho is not None:
+            cabecalhos["Content-Length"] = str(tamanho)
+        pedido = urllib.request.Request(self._base + caminho, data=dados, method=metodo, headers=cabecalhos)
         try:
-            with urllib.request.urlopen(pedido, timeout=self._tempo_limite_s, context=self._tls) as resposta:
+            with urllib.request.urlopen(pedido, timeout=max(self._tempo_limite_s, tempo_limite_s or 0),
+                                        context=self._tls) as resposta:
                 texto = resposta.read()
         except urllib.error.HTTPError as exc:
             if exc.code in (400, 401, 403, 404, 409, 413, 415, 422):
-                raise Recusado(f"Portal recusou ({exc.code}): {_motivo(exc)}") from exc
+                raise Recusado(f"Portal recusou ({exc.code}): {_motivo(exc)}", codigo=exc.code) from exc
             raise FalhaDeTransporte(f"Portal respondeu {exc.code}") from exc
         except (urllib.error.URLError, OSError) as exc:
             # Inclui certificado inválido: a conexão não acontece, e o evento fica na fila.

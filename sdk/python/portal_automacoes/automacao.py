@@ -14,15 +14,29 @@
 Falha de transporte nunca derruba a automação: o evento fica na fila local e é reenviado.
 Evento fora do contrato é erro de programação e levanta EventoInvalido na hora.
 
+Parar e cancelar (0.4.0): o SDK atende os comandos do Portal sozinho, em qualquer automação.
+
+- ``parar_apos_item``: o próximo ``item()``/``iniciar_item()`` não começa (levanta
+  ``ParadaSolicitada``); quem registrou ``ao_parar`` é chamado na hora.
+- ``cancelar``: quem registrou ``ao_cancelar`` é chamado na hora e tem ``PRAZO_CANCELAR_S``
+  (60 s, ou PORTAL_PRAZO_CANCELAR_S) para encerrar. Sem nada registrado, ou passado o prazo, o
+  SDK interrompe a thread principal (como um Ctrl+C) e, se a automação roda num processo só
+  dela (``portal-automacoes trabalhar -- comando``), encerra o processo 15 s depois.
+- Sem comunicação com o Portal por ``LIMITE_SEM_PORTAL_S`` (2 min, ou
+  PORTAL_LIMITE_SEM_PORTAL_S), ou o Portal dizendo que o job não vale mais (401/409), o SDK
+  avisa no log local e cancela a execução do mesmo jeito: a automação não roda às cegas.
+
 ``segundo_plano=True`` (ou PORTAL_ENVIO_EM_SEGUNDO_PLANO=1): uma thread do SDK envia os
-eventos, as imagens e consulta os comandos. Quem emite nunca espera a rede: com o Portal
+eventos, as imagens, os arquivos entregues (``arquivo()``) e consulta os comandos. Quem emite nunca espera a rede: com o Portal
 fora do ar, o robô segue no mesmo ritmo e tudo fica na fila local. Recomendado para
 automação de tela (RPA).
 """
 
 from __future__ import annotations
 
+import _thread
 import hashlib
+import mimetypes
 import os
 import sys
 import tempfile
@@ -30,7 +44,7 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Callable, Iterator, Sequence
 
 from . import eventos, imagens
 from .fila import FilaLocal
@@ -39,13 +53,30 @@ from .transporte_agente import TransporteAgente
 from .enderecos import ligado
 from .transporte_direto import TransporteDireto
 
-VERSAO_SDK = "0.2.0"
+VERSAO_SDK = "0.4.0"
 INTERVALO_COMANDOS_S = 2.0
+PRAZO_CANCELAR_S = 60.0  # depois de "cancelar", quanto a automação tem para parar sozinha
+FOLGA_ENCERRAR_S = 15.0  # depois da interrupção, quanto até encerrar o processo (só processo próprio)
+LIMITE_SEM_PORTAL_S = 120.0  # sem falar com o Portal por isso, a execução é cancelada
+
+# O SDK interrompeu a thread principal (cancelamento, Portal fora do ar ou job encerrado no
+# Portal). ``trabalhar`` usa isso para seguir esperando jobs em vez de sair com o Ctrl+C.
+_interrompeu = threading.Event()
+
+
+def interrompida_pelo_sdk(limpar: bool = True) -> bool:
+    """A interrupção (KeyboardInterrupt) foi do SDK, e não de uma pessoa no terminal."""
+    houve = _interrompeu.is_set()
+    if limpar:
+        _interrompeu.clear()
+    return houve
 ESPERA_MAXIMA_S = 30.0  # segundo plano: maior intervalo entre tentativas com o Portal fora do ar
+LIMITE_ARQUIVO = 100 * 1024 * 1024  # o mesmo do Portal
 
 
 class ParadaSolicitada(Exception):
-    """Levantada por ``verificar_parada()`` quando o Portal pede para parar."""
+    """Levantada por ``verificar_parada()`` (e no início de um item depois de "parar") quando o
+    Portal pede para parar."""
 
 
 class Etapa:
@@ -61,7 +92,9 @@ class Etapa:
 
 class Automacao:
     def __init__(self, transporte: Transporte, fila: FilaLocal, versao_automacao: str | None = None,
-                 log_local: Any = None, segundo_plano: bool = False) -> None:
+                 log_local: Any = None, segundo_plano: bool = False, *, prazo_cancelar_s: float = PRAZO_CANCELAR_S,
+                 limite_sem_portal_s: float = LIMITE_SEM_PORTAL_S, processo_proprio: bool = False,
+                 interromper: Callable[[], None] | None = None, encerrar_processo: Callable[[int], None] | None = None) -> None:
         self._transporte = transporte
         self._fila = fila
         self._versao = versao_automacao
@@ -74,6 +107,18 @@ class Automacao:
         self._execucao_atencao = False
         self._parar = False
         self._cancelar = False
+        self._motivo: str | None = None
+        self._ao_parar: list[Callable[[], Any]] = []
+        self._ao_cancelar: list[Callable[[], Any]] = []
+        self._encerrada = False
+        self._prazo_cancelar_s = prazo_cancelar_s
+        self._limite_sem_portal_s = limite_sem_portal_s
+        self._processo_proprio = processo_proprio
+        self._interromper_principal = interromper or _thread.interrupt_main
+        self._encerrar_processo = encerrar_processo or os._exit
+        self._sem_portal_desde: float | None = None
+        self._trata_pedidos = False  # a automação consulta deve_parar()/cancelamento_pedido()
+        self._temporizadores: list[threading.Timer] = []
         self._ultima_consulta = 0.0
         self.recusados = 0
         self._pendentes_ao_fechar: int | None = None
@@ -84,6 +129,8 @@ class Automacao:
         self._acordar = threading.Event()
         self._fim = threading.Event()
         self._fora_do_ar_ate = 0.0
+        self._arquivos: list[tuple[Path, str, str | None]] = []  # entregues e ainda não enviados
+        self._trava_arquivos = threading.Lock()  # só protege a lista; nunca segura outra trava
         self._enviador: threading.Thread | None = None
         if segundo_plano:
             self._enviador = threading.Thread(target=self._enviar_em_segundo_plano, name="portal-automacoes-envio",
@@ -122,11 +169,20 @@ class Automacao:
         nome = hashlib.sha256(f"{transporte.nome}:{chave}".encode()).hexdigest()[:24]
         if segundo_plano is None:
             segundo_plano = ligado(env.get("PORTAL_ENVIO_EM_SEGUNDO_PLANO"))
-        return cls(transporte, FilaLocal(pasta / f"{nome}.db"), versao_automacao, segundo_plano=segundo_plano)
+        return cls(transporte, FilaLocal(pasta / f"{nome}.db"), versao_automacao, segundo_plano=segundo_plano,
+                   prazo_cancelar_s=_segundos(env.get("PORTAL_PRAZO_CANCELAR_S"), PRAZO_CANCELAR_S),
+                   limite_sem_portal_s=_segundos(env.get("PORTAL_LIMITE_SEM_PORTAL_S"), LIMITE_SEM_PORTAL_S),
+                   # Rodando por "portal-automacoes trabalhar -- comando": o processo é só desta execução.
+                   processo_proprio=bool(os.environ.get("PORTAL_JOB_ARQUIVO")) and ambiente is None)
 
     @property
     def modo(self) -> str:
         return self._transporte.nome
+
+    @property
+    def arquivos_pendentes(self) -> int:
+        with self._trava_arquivos:
+            return len(self._arquivos)
 
     @property
     def pendentes(self) -> int:
@@ -145,12 +201,26 @@ class Automacao:
             situacao = "interrompida"
         else:
             situacao = "erro"
-        self._emitir("execucao.concluida", {"situacao": situacao,
-                                            "resumo": _curto(str(erro)) if erro and situacao == "erro" else None})
+        resumo = _curto(str(erro)) if erro and situacao == "erro" else (
+            _curto(self._motivo) if situacao == "interrompida" and self._motivo else None)
+        self._concluir(situacao, resumo)
         self.fechar()
+
+    def _concluir(self, situacao: str, resumo: str | None) -> None:
+        """``execucao.concluida`` uma vez só (a saída normal e o encerramento à força não repetem)."""
+        with self._trava:
+            if self._encerrada:
+                return
+            self._encerrada = True
+        for t in self._temporizadores:
+            t.cancel()
+        self._emitir("execucao.concluida", {"situacao": situacao, "resumo": resumo})
 
     def fechar(self, tempo_limite_s: float = 10.0) -> None:
         """Tenta esvaziar a fila antes de sair. O que sobrar continua no disco."""
+        self._encerrada = True
+        for t in self._temporizadores:
+            t.cancel()
         if self._enviador is not None:
             self._fim.set()
             self._acordar.set()
@@ -165,6 +235,13 @@ class Automacao:
                         break
                     continue
             time.sleep(0.5)
+        while self.arquivos_pendentes and time.monotonic() < limite:
+            if not self._enviar_arquivos():
+                time.sleep(0.5)
+        with self._trava_arquivos:
+            perdidos, self._arquivos = self._arquivos, []
+        for caminho, nome, _ in perdidos:
+            self._avisar(f"arquivo '{nome}' não foi enviado ao Portal (continua em {caminho})")
         with self._trava:
             if self._fila.quantidade():
                 self._avisar(f"{self._fila.quantidade()} evento(s) ainda na fila local; serão reenviados na próxima conexão")
@@ -196,6 +273,7 @@ class Automacao:
     @contextmanager
     def item(self, chave: Any, rotulo: str | None = None, grupo: Any = None,
              configuracao: dict[str, Any] | None = None) -> Iterator[None]:
+        self._antes_de_um_item()
         anterior = self._item
         self._item, self._item_atencao, self._item_resumo = str(chave), False, None
         self._emitir("item.iniciado", {"item": self._item, "rotulo": rotulo,
@@ -221,6 +299,7 @@ class Automacao:
     def iniciar_item(self, chave: Any, rotulo: str | None = None, grupo: Any = None,
                      configuracao: dict[str, Any] | None = None) -> None:
         """Como ``with item(...)``, para quem não consegue envolver o item num bloco."""
+        self._antes_de_um_item()
         with self._trava:
             self._item, self._item_atencao, self._item_resumo = str(chave), False, None
             self._emitir("item.iniciado", {"item": self._item, "rotulo": rotulo,
@@ -289,6 +368,47 @@ class Automacao:
                     self._fora_do_ar_ate = time.monotonic() + ESPERA_MAXIMA_S
         self._emitir("passo", {"rotulo": rotulo[:200], "tipo": tipo, "imagem_id": imagem_id, "item": self._item})
 
+    def arquivo(self, caminho: str | os.PathLike[str], nome: str | None = None, item: Any = ...) -> None:
+        """Arquivo que a automação entregou (planilha, TXT...): aparece na aba Arquivos do
+        Catálogo, ligado à execução e ao item (por padrão, o item atual). Vai por fora do canal de
+        eventos, até 100 MB. Com o Portal fora do ar, fica pendente e é tentado de novo até
+        ``fechar()``; o que não sair até lá é avisado no log local (o arquivo continua no disco)."""
+        origem = Path(caminho)
+        if not origem.is_file():
+            raise FileNotFoundError(f"arquivo não encontrado: {origem}")
+        tamanho = origem.stat().st_size
+        if tamanho == 0:
+            raise ValueError(f"arquivo vazio: {origem}")
+        if tamanho > LIMITE_ARQUIVO:
+            raise ValueError(f"arquivo acima de 100 MB: {origem}")
+        dono = self._item if item is ... else (None if item is None else str(item))
+        with self._trava_arquivos:
+            self._arquivos.append((origem, (nome or origem.name)[:255], dono))
+        if self._segundo_plano:
+            self._acordar.set()
+        else:
+            self._enviar_arquivos()
+
+    def _enviar_arquivos(self) -> bool:
+        """Envia os pendentes em ordem. ``False``: Portal fora do ar (o resto fica para depois)."""
+        while True:
+            with self._trava_arquivos:
+                if not self._arquivos:
+                    return True
+                caminho, nome, item = self._arquivos[0]
+            try:
+                with self._trava_envio:
+                    tipo = mimetypes.guess_type(nome)[0] or "application/octet-stream"
+                    self._transporte.enviar_arquivo(caminho, nome, item, tipo)
+            except FalhaDeTransporte as exc:
+                self._avisar(f"arquivo '{nome}' não enviado agora: {exc}")
+                return False
+            except (Recusado, OSError) as exc:  # recusa definitiva ou arquivo sumiu: não insiste
+                self._avisar(f"arquivo '{nome}' não enviado: {exc}")
+            with self._trava_arquivos:
+                if self._arquivos and self._arquivos[0] == (caminho, nome, item):
+                    self._arquivos.pop(0)
+
     def espera(self, rotulo: str, desde: str) -> None:
         """Ainda na mesma tela, sem imagem nova. ``desde`` em ISO 8601 com fuso."""
         self._emitir("espera.atualizada", {"desde": desde, "rotulo": rotulo, "item": self._item})
@@ -323,13 +443,124 @@ class Automacao:
         self._emitir("pausa.concluida", {"motivo": motivo, "item": self._item})
 
     # -- comandos -----------------------------------------------------------------
+    def ao_cancelar(self, funcao: Callable[[], Any]) -> Callable[[], Any]:
+        """Chamada (numa thread do SDK) assim que chega o "cancelar": a automação fecha o que
+        precisa. Ela tem ``PRAZO_CANCELAR_S`` para terminar; depois o SDK interrompe."""
+        self._ao_cancelar.append(funcao)
+        return funcao
+
+    def ao_parar(self, funcao: Callable[[], Any]) -> Callable[[], Any]:
+        """Chamada assim que chega o "parar depois do item atual"."""
+        self._ao_parar.append(funcao)
+        return funcao
+
+    @property
+    def motivo_da_parada(self) -> str | None:
+        return self._motivo
+
+    def _antes_de_um_item(self) -> None:
+        if not self._segundo_plano:
+            self._consultar_comandos(fora_do_intervalo=True)  # início de item é raro: consulta sempre
+        if self._parar or self._cancelar:
+            raise ParadaSolicitada(self._motivo or "parada solicitada pelo Portal")
+
+    def _receber(self, tipo: str, motivo: str) -> None:
+        """Um pedido de parada (do Portal ou do próprio SDK). Cada tipo é atendido uma vez."""
+        if tipo == "parar_apos_item":
+            if self._parar or self._cancelar:
+                return
+            self._parar, self._motivo = True, motivo
+            self._avisar(f"pedido para parar: {motivo}")
+            self._emitir("log", {"nivel": "aviso", "texto": f"Pedido para parar recebido ({motivo}): termina o item "
+                                                            "atual e não começa outro", "item": self._item})
+            self._chamar(self._ao_parar)
+            return
+        if self._cancelar or self._encerrada:
+            return
+        self._cancelar, self._motivo = True, motivo
+        self._avisar(f"cancelamento: {motivo}")
+        self._emitir("log", {"nivel": "aviso", "texto": f"Cancelamento recebido ({motivo}): encerrando", "item": self._item})
+        if self._ao_cancelar or self._trata_pedidos:
+            self._chamar(self._ao_cancelar)
+            self._agendar(self._prazo_cancelar_s, self._interromper)
+        else:
+            self._interromper()  # ninguém trata o cancelamento: interrompe já
+
+    def _chamar(self, funcoes: list[Callable[[], Any]]) -> None:
+        for funcao in list(funcoes):
+            threading.Thread(target=self._chamar_uma, args=(funcao,), name="portal-automacoes-pedido", daemon=True).start()
+
+    def _chamar_uma(self, funcao: Callable[[], Any]) -> None:
+        try:
+            funcao()
+        except Exception as exc:  # noqa: BLE001 - o tratamento da automação falhou: o prazo segue valendo
+            self._avisar(f"tratamento do pedido falhou: {exc.__class__.__name__}: {exc}")
+
+    def _agendar(self, segundos: float, acao: Callable[[], None]) -> None:
+        temporizador = threading.Timer(max(segundos, 0.0), acao)
+        temporizador.daemon = True
+        self._temporizadores.append(temporizador)
+        temporizador.start()
+
+    def _interromper(self) -> None:
+        """A automação não parou sozinha: interrompe a thread principal (KeyboardInterrupt)."""
+        if self._encerrada:
+            return
+        self._avisar("a automação não parou sozinha: interrompendo")
+        _interrompeu.set()
+        try:
+            self._interromper_principal()
+        except Exception as exc:  # noqa: BLE001
+            self._avisar(f"não consegui interromper: {exc}")
+        if self._processo_proprio:
+            self._agendar(FOLGA_ENCERRAR_S, self._encerrar_agora)
+
+    def _encerrar_agora(self) -> None:
+        """Último recurso, só quando o processo é só desta execução: registra o fim e sai."""
+        if self._encerrada:
+            return
+        self._avisar("a automação continua presa depois da interrupção: encerrando o processo")
+        with self._trava:
+            if self._item is not None:
+                self._emitir("item.concluido", {"item": self._item, "situacao": "cancelado", "resumo": None})
+                self._item = None
+        self._concluir("interrompida", _curto(self._motivo or "cancelada"))
+        self.fechar(tempo_limite_s=5.0)
+        self._encerrar_processo(130)
+
+    def _sem_portal(self, exc: Exception) -> None:
+        """Falha de comunicação: avisa na primeira e cancela depois de ``LIMITE_SEM_PORTAL_S``."""
+        if self._sem_portal_desde is None:
+            self._sem_portal_desde = time.monotonic()
+            self._avisar(f"sem comunicação com o Portal ({exc}); tentando por até {self._limite_sem_portal_s:.0f} s")
+        self._verificar_sem_portal()
+
+    def _com_portal(self) -> None:
+        if self._sem_portal_desde is not None:
+            self._avisar("comunicação com o Portal de volta")
+        self._sem_portal_desde = None
+
+    def _verificar_sem_portal(self) -> None:
+        if (self._sem_portal_desde is not None and not self._cancelar and getattr(self._transporte, "nome", "") != "desligado"
+                and time.monotonic() - self._sem_portal_desde >= self._limite_sem_portal_s):
+            self._receber("cancelar", f"sem comunicação com o Portal há {self._limite_sem_portal_s / 60:.0f} min")
+
+    def _job_encerrado_no_portal(self, exc: Recusado) -> bool:
+        """401/409 no modo direto: o Portal já encerrou este job (cancelado, encerrado à força)."""
+        if getattr(exc, "codigo", None) in (401, 409) and getattr(self._transporte, "nome", "") == "direto":
+            self._receber("cancelar", "o Portal encerrou esta execução")
+            return True
+        return False
+
     def deve_parar(self) -> bool:
         """O Portal pediu para parar depois do item atual (ou cancelar)."""
+        self._trata_pedidos = True
         if not self._segundo_plano:  # em segundo plano, a thread de envio consulta
             self._consultar_comandos()
         return self._parar or self._cancelar
 
     def cancelamento_pedido(self) -> bool:
+        self._trata_pedidos = True
         if not self._segundo_plano:
             self._consultar_comandos()
         return self._cancelar
@@ -338,26 +569,31 @@ class Automacao:
         if self.deve_parar():
             raise ParadaSolicitada("parada solicitada pelo Portal")
 
-    def _consultar_comandos(self) -> None:
+    def _consultar_comandos(self, fora_do_intervalo: bool = False) -> None:
         agora = time.monotonic()
-        if agora - self._ultima_consulta < INTERVALO_COMANDOS_S:
-            return
-        self._ultima_consulta = agora
+        if not fora_do_intervalo:
+            if agora - self._ultima_consulta < INTERVALO_COMANDOS_S:
+                return
+            self._ultima_consulta = agora
         try:
             with self._trava_envio:
                 self._garantir_conexao()
                 recebidos = self._transporte.comandos()
-        except (FalhaDeTransporte, Recusado) as exc:
-            self._avisar(f"sem consulta de comandos: {exc}")
+        except FalhaDeTransporte as exc:
+            self._sem_portal(exc)
             return
+        except Recusado as exc:
+            if not self._job_encerrado_no_portal(exc):
+                self._avisar(f"sem consulta de comandos: {exc}")
+            return
+        self._com_portal()
         for comando in recebidos:
             if not eventos.comando_valido(comando):
                 self._avisar("comando fora do contrato ignorado")
                 continue
-            if comando["type"] == "cancelar":
-                self._cancelar = True
-            elif comando["type"] == "parar_apos_item":
-                self._parar = True
+            motivo = str(comando.get("motivo") or "pedido pelo Portal")
+            if comando["type"] in ("cancelar", "parar_apos_item"):
+                self._receber(comando["type"], motivo)
 
     # -- envio ----------------------------------------------------------------------
     def _emitir(self, tipo: str, payload: dict[str, Any]) -> None:
@@ -367,6 +603,7 @@ class Automacao:
             self._fila.adicionar(evento)
             if not self._segundo_plano:
                 self._descarregar()
+                self._verificar_sem_portal()
         if self._segundo_plano:
             self._acordar.set()
 
@@ -377,9 +614,12 @@ class Automacao:
             self._acordar.clear()
             if self._fim.is_set():
                 break
+            self._verificar_sem_portal()
             if time.monotonic() < self._fora_do_ar_ate:
                 continue  # fora do ar: não insiste a cada evento novo
             ok = self._descarregar() if self._fila.quantidade() else True
+            if ok and self.arquivos_pendentes:
+                ok = self._enviar_arquivos()
             if ok:
                 espera = 1.0
                 self._consultar_comandos()
@@ -416,14 +656,17 @@ class Automacao:
                 if confirmada < pendentes[0]["sequence"]:
                     return False
                 self._fila.confirmar_ate(confirmada)
+            self._com_portal()
             return True
         except FalhaDeTransporte as exc:
             self._conectado = False
             self._avisar(f"{exc}; {self._fila.quantidade()} evento(s) na fila local")
+            self._sem_portal(exc)
             return False
         except Recusado as exc:
             self._conectado = False
             self._avisar(str(exc))
+            self._job_encerrado_no_portal(exc)
             return False
 
     def _avisar(self, texto: str) -> None:
@@ -431,6 +674,14 @@ class Automacao:
             print(f"[portal-automacoes] {texto}", file=self._log_local, flush=True)
         except (OSError, ValueError):
             pass
+
+
+def _segundos(texto: str | None, padrao: float) -> float:
+    try:
+        valor = float(texto) if texto not in (None, "") else padrao
+    except ValueError:
+        return padrao
+    return valor if valor > 0 else padrao
 
 
 def _curto(texto: str) -> str:
