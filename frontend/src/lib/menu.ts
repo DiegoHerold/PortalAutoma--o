@@ -57,12 +57,13 @@ export function useMenuVisivel(): (item: NavItem) => boolean {
 }
 
 /*
- * Ordem do menu: a pessoa arrasta itens (dentro da categoria) e categorias no próprio menu
- * lateral. Fica neste navegador, como a escolha dos itens.
+ * Ordem do menu: uma lista só, sem categorias (12/11/2026); a pessoa arrasta qualquer item
+ * para qualquer lugar. Fica neste navegador, como a escolha dos itens. A ordem salva no
+ * formato antigo (por categoria) vira a lista na mesma ordem em que aparecia na tela.
  */
 const CHAVE_ORDEM = "portal.menu.ordem";
 
-export type OrdemDoMenu = { grupos: string[]; itens: string[] };
+export type OrdemDoMenu = { grupos: string[]; itens: string[]; plana?: boolean };
 
 function ordemPadrao(): OrdemDoMenu {
   return { grupos: NAV_GROUPS.map((g) => g.label), itens: NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href)) };
@@ -73,7 +74,12 @@ function lerOrdem(): OrdemDoMenu {
     const salvo = window.localStorage.getItem(CHAVE_ORDEM);
     if (salvo) {
       const o = JSON.parse(salvo) as Partial<OrdemDoMenu>;
-      if (Array.isArray(o.grupos) && Array.isArray(o.itens)) return { grupos: o.grupos.map(String), itens: o.itens.map(String) };
+      if (Array.isArray(o.grupos) && Array.isArray(o.itens)) {
+        const lida = { grupos: o.grupos.map(String), itens: o.itens.map(String) };
+        if (o.plana) return { ...lida, plana: true };
+        // formato antigo: a ordem da tela (categoria por categoria) vira a lista
+        return { ...lida, itens: aplicarOrdem(NAV_GROUPS, lida).flatMap((g) => g.items.map((i) => i.href)), plana: true };
+      }
     }
   } catch {
     /* sem armazenamento ou valor quebrado: padrão */
@@ -134,6 +140,12 @@ export function mover(lista: string[], de: string, para: string): string[] {
   nova.splice(i, 1);
   nova.splice(j, 0, de);
   return nova;
+}
+
+/** Os itens na ordem da pessoa (lista única); item novo entra no fim. */
+export function itensEmOrdem<T extends NavItem>(itens: T[], ordem: OrdemDoMenu): T[] {
+  const pos = new Map(completar(ordem).itens.map((h, i) => [h, i]));
+  return [...itens].sort((a, b) => (pos.get(a.href) ?? 999) - (pos.get(b.href) ?? 999));
 }
 
 export function useMenuOrdem(): OrdemDoMenu {

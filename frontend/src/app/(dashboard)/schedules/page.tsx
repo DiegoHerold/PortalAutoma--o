@@ -1,15 +1,11 @@
 import type { Metadata } from "next";
 
-import { PageTitle } from "@/components/shared/page-title";
-import { SchedulesManager } from "@/components/schedules/schedules-manager";
+import { AgendaCalendario } from "@/components/schedules/agenda/agenda-calendario";
 
 export const metadata: Metadata = { title: "Agendamentos" };
 
+// Agendamentos como uma agenda (12/11/2026): só o calendário. A tela antiga (lista, filtros,
+// resumo e legenda) segue em components/schedules, fora da página.
 export default function SchedulesPage() {
-  return (
-    <div className="space-y-6">
-      <PageTitle eyebrow="Operação" title="Agendamentos" description="Execuções recorrentes por expressão cron." />
-      <SchedulesManager />
-    </div>
-  );
+  return <AgendaCalendario />;
 }

@@ -71,7 +71,10 @@ export type Acompanhamento = {
     concluida_em: string | null;
     falha: string | null;
     solicitante: string | null;
+    continua_de?: string | null;
+    continuada_em?: string | null;
   };
+  situacao?: import("@/components/painel/controle-da-execucao").SituacaoDoAgora | null;
   automacao: { id: number | null; nome: string | null; versao: string | null };
   pode: { ver_telas_e_logs: boolean; controlar: boolean };
   rodando: boolean;
@@ -104,6 +107,7 @@ export type LinhaDeLog = {
 export const SITUACOES: Record<string, { texto: string; tom: "success" | "warning" | "destructive" | "info" | "neutral" }> = {
   created: { texto: "Criada", tom: "neutral" },
   pending: { texto: "Na fila", tom: "info" },
+  queued: { texto: "Na fila", tom: "info" },
   running: { texto: "Rodando", tom: "success" },
   cancelling: { texto: "Cancelando", tom: "warning" },
   succeeded: { texto: "Concluída", tom: "success" },

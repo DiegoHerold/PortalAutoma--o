@@ -146,8 +146,10 @@ class Instancia:
 
     def ambiente_do_job(self, job: Job) -> dict[str, str]:
         """O que ``Automacao.conectar(ambiente=...)`` precisa para falar com o Portal neste job."""
+        # Segundo plano: a thread do SDK consulta os comandos a cada 2 s, o que também é o sinal de
+        # vida que o Portal espera (sem sinal por 2 min, ele cancela a execução).
         ambiente = {"PORTAL_MODO": "direto", "PORTAL_URL": self.portal, "PORTAL_JOB_ID": job.job_id,
-                    "PORTAL_JOB_TOKEN": job.token}
+                    "PORTAL_JOB_TOKEN": job.token, "PORTAL_ENVIO_EM_SEGUNDO_PLANO": "1"}
         if self.arquivo_ca:
             ambiente["PORTAL_CA_ARQUIVO"] = self.arquivo_ca
         if self.permitir_http:
@@ -185,7 +187,7 @@ def trabalhar(instancia: Instancia, executar: Callable[[Job, dict[str, str]], No
             if job is None:
                 continue
             avisar(f"job {job.job_id}: {len(job.itens)} item(ns), parâmetros {job.parametros}")
-            executar(job, instancia.ambiente_do_job(job))
+            _executar_um(executar, job, instancia.ambiente_do_job(job), avisar)
         except Recusado as exc:
             avisar(f"Portal recusou a instância: {exc}. Confira se ela foi revogada.")
             time.sleep(espera_aprovacao_s)
@@ -193,6 +195,25 @@ def trabalhar(instancia: Instancia, executar: Callable[[Job, dict[str, str]], No
             avisar(f"Portal indisponível ({exc}); tentando de novo em {pausa:.0f} s")
             time.sleep(pausa)
             pausa = min(pausa * 2, 60.0)
+
+
+def _executar_um(executar: Callable[[Job, dict[str, str]], None], job: Job, ambiente: dict[str, str],
+                 avisar: Callable[[str], None]) -> None:
+    """Um job. Interrupção do SDK (cancelamento) e erro inesperado da automação não derrubam o
+    ``trabalhar``: ele avisa e segue esperando o próximo job. Ctrl+C de uma pessoa sai."""
+    from .automacao import interrompida_pelo_sdk
+
+    interrompida_pelo_sdk()  # descarta sobra de um job anterior
+    try:
+        executar(job, ambiente)
+    except KeyboardInterrupt:
+        if not interrompida_pelo_sdk():
+            raise
+        avisar(f"job {job.job_id}: interrompido pelo SDK (cancelamento); esperando o próximo job")
+    except (Recusado, FalhaDeTransporte):
+        raise
+    except Exception as exc:  # noqa: BLE001 - erro da automação: o Portal já soube pelo execucao.concluida
+        avisar(f"job {job.job_id}: a automação falhou ({exc.__class__.__name__}: {exc}); esperando o próximo job")
 
 
 def _declarar(instancia: Instancia, declaracao: Any, avisar: Callable[[str], None]) -> bool:

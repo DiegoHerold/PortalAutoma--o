@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, LayoutGrid, MonitorPlay, PauseCircle, Radio } from "lucide-react";
+import { AlertTriangle, LayoutGrid, MonitorPlay, Radio } from "lucide-react";
 
 import { useApi } from "@/hooks/use-api";
 import { useAvisos, useSegundosDesde } from "@/hooks/use-avisos";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { ErrorState } from "@/components/shared/error-state";
 import { ImagemDoPasso } from "@/components/acompanhar/imagem-do-passo";
 import { BotaoExecutar, UltimasAutomacoes, useDisparo } from "@/components/painel/disparo-rapido";
+import { BotaoEncerrar, BotaoParar, LinhaDaSituacao } from "@/components/painel/controle-da-execucao";
 
 const GRADES = [1, 2, 4, 6, 9] as const;
 const COLUNAS: Record<number, string> = { 1: "grid-cols-1", 2: "lg:grid-cols-2", 4: "lg:grid-cols-2", 6: "lg:grid-cols-3", 9: "lg:grid-cols-3" };
@@ -65,44 +66,46 @@ export function PainelAoVivo() {
             {aoVivo ? "Ao vivo" : "Reconectando"}
           </span>
           {data.central && (
-            <div className="flex rounded-lg border border-border bg-card p-1" role="tablist" aria-label="Modo do painel">
-              {(["monitores", "central"] as const).map((m) => (
-                <button
-                  key={m}
-                  role="tab"
-                  aria-selected={modo === m}
-                  onClick={() => {
-                    setModo(m);
-                    lembrar(CHAVE_MODO, m);
-                  }}
-                  className={cn("flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium",
-                    modo === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-                >
-                  {m === "monitores" ? <MonitorPlay className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-                  {m === "monitores" ? "Monitores" : "Central de telas"}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex rounded-lg border border-border bg-card p-1" role="tablist" aria-label="Modo do painel">
+                {(["monitores", "central"] as const).map((m) => (
+                  <button
+                    key={m}
+                    role="tab"
+                    aria-selected={modo === m}
+                    onClick={() => {
+                      setModo(m);
+                      lembrar(CHAVE_MODO, m);
+                    }}
+                    className={cn("flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium",
+                      modo === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                  >
+                    {m === "monitores" ? <MonitorPlay className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+                    {m === "monitores" ? "Monitores" : "Central de telas"}
+                  </button>
+                ))}
+              </div>
+              {central && (
+                <div className="flex rounded-lg border border-border bg-card p-1" aria-label="Telas por vez">
+                  {GRADES.map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => {
+                        setGrade(g);
+                        lembrar(CHAVE_GRADE, String(g));
+                      }}
+                      aria-pressed={grade === g}
+                      className={cn("min-w-9 rounded-md px-2 py-1.5 text-sm font-semibold tabular",
+                        grade === g ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <BotaoExecutar disparar={disparar} />
-          {central && (
-            <div className="flex rounded-lg border border-border bg-card p-1" aria-label="Telas por vez">
-              {GRADES.map((g) => (
-                <button
-                  key={g}
-                  onClick={() => {
-                    setGrade(g);
-                    lembrar(CHAVE_GRADE, String(g));
-                  }}
-                  aria-pressed={grade === g}
-                  className={cn("min-w-9 rounded-md px-2 py-1.5 text-sm font-semibold tabular",
-                    grade === g ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-                >
-                  {g}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
@@ -117,7 +120,7 @@ export function PainelAoVivo() {
       ) : (
         <div className="grid gap-6 xl:grid-cols-2 min-[1800px]:grid-cols-3">
           {data.execucoes.map((e) => (
-            <Monitor key={e.execucao_id} e={e} passou={passou} />
+            <Monitor key={e.execucao_id} e={e} passou={passou} aoMudar={() => void refetch()} />
           ))}
         </div>
       )}
@@ -194,14 +197,15 @@ function nomeDaEtapa(chave: string): string {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
-export function Monitor({ e, passou }: { e: ExecucaoAoVivo; passou: number }) {
+export function Monitor({ e, passou, aoMudar }: { e: ExecucaoAoVivo; passou: number; aoMudar?: () => void }) {
   const segundos = e.tela?.segundos_nesta_tela != null ? e.tela.segundos_nesta_tela + passou : null;
   return (
-    <Link
-      href={`/execucoes/${e.execucao_id}`}
-      className="group overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
+    <article
+      className="group relative overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
       data-testid="monitor"
     >
+      <Link href={`/execucoes/${e.execucao_id}`} className="absolute inset-0 z-0" aria-label={`Acompanhar ${e.automacao ?? "a execução"}`} />
+      <div className="pointer-events-none relative">
       {e.pode_ver_tela && (
         <div className="relative bg-[hsl(var(--tela-fundo))]">
           <ImagemDoPasso
@@ -217,11 +221,6 @@ export function Monitor({ e, passou }: { e: ExecucaoAoVivo; passou: number }) {
               {nestaTela(segundos)}
             </span>
           )}
-          {e.pausa && (
-            <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md bg-info px-2.5 py-1 text-sm text-info-foreground">
-              <PauseCircle className="h-4 w-4" /> Pausada
-            </span>
-          )}
         </div>
       )}
       <div className="space-y-4 p-5">
@@ -232,12 +231,25 @@ export function Monitor({ e, passou }: { e: ExecucaoAoVivo; passou: number }) {
               {e.maquina ?? "Máquina"} {e.itens.length > 0 && `· ${e.itens.length === 1 ? e.itens[0].chave : `${e.itens.length} itens`}`}
             </p>
           </div>
-          {e.atencoes > 0 && (
-            <span className="flex shrink-0 items-center gap-1.5 rounded-md bg-warning/15 px-2.5 py-1 text-sm font-medium text-warning">
-              <AlertTriangle className="h-4 w-4" /> {e.atencoes}
-            </span>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {e.atencoes > 0 && (
+              <span className="flex items-center gap-1.5 rounded-md bg-warning/15 px-2.5 py-1 text-sm font-medium text-warning"
+                title="Itens que precisam de uma pessoa">
+                <AlertTriangle className="h-4 w-4" /> {e.atencoes}
+              </span>
+            )}
+            {e.pode_controlar && (
+              <span className="pointer-events-auto relative z-10">
+                {e.situacao?.tipo === "cancelamento_sem_resposta" ? (
+                  <BotaoEncerrar execucaoId={e.execucao_id} recebido={e.situacao.recebido} aoEncerrar={aoMudar} />
+                ) : (
+                  <BotaoParar execucaoId={e.execucao_id} modo={e.modo} situacao={e.situacao} aoParar={aoMudar} />
+                )}
+              </span>
+            )}
+          </div>
         </div>
+        <LinhaDaSituacao situacao={e.situacao} />
         <Progresso e={e} />
         <Tempos e={e} passou={passou} />
         {e.log && e.log.length > 0 && (
@@ -250,7 +262,8 @@ export function Monitor({ e, passou }: { e: ExecucaoAoVivo; passou: number }) {
           </div>
         )}
       </div>
-    </Link>
+      </div>
+    </article>
   );
 }
 
@@ -299,6 +312,7 @@ function QuadroAoVivo({ e, passou, compacto }: { e: ExecucaoAoVivo; passou: numb
         )}
       </div>
       <div className="space-y-3 px-4 py-3">
+        <LinhaDaSituacao situacao={e.situacao} />
         <Progresso e={e} />
         {!compacto && <Tempos e={e} passou={passou} grande={false} />}
       </div>

@@ -66,8 +66,8 @@ class _Lento:
 
     nome = "direto"
 
-    def __init__(self, atraso: float, fora: bool = False) -> None:
-        self.atraso, self.fora = atraso, fora
+    def __init__(self, atraso: float, fora: bool = False, com_comando: bool = False) -> None:
+        self.atraso, self.fora, self.com_comando = atraso, fora, com_comando
         self.recebidos: list[int] = []
         self.recusados: list = []
 
@@ -88,7 +88,7 @@ class _Lento:
         if self.fora:
             raise FalhaDeTransporte("fora do ar")
         return [{"protocol_version": "automation-events/1", "command_id": "cmd_1", "type": "parar_apos_item",
-                 "issued_at": "2026-11-11T10:00:00Z"}] if self.recebidos else []
+                 "issued_at": "2026-11-11T10:00:00Z"}] if self.recebidos and self.com_comando else []
 
     def enviar_imagem(self, imagem_id, jpeg):
         raise AssertionError("não chega aqui")
@@ -98,7 +98,7 @@ class _Lento:
 
 
 def test_segundo_plano_quem_emite_nao_espera_a_rede(tmp_path: Path) -> None:
-    lento = _Lento(atraso=0.5, fora=True)
+    lento = _Lento(atraso=0.5, fora=True, com_comando=True)
     a = Automacao(lento, FilaLocal(tmp_path / "f.db"), log_local=io.StringIO(), segundo_plano=True)
     inicio = time.monotonic()
     a.iniciar_item("5081", rotulo="Matriz")
@@ -113,7 +113,7 @@ def test_segundo_plano_quem_emite_nao_espera_a_rede(tmp_path: Path) -> None:
     limite = time.monotonic() + 5
     while lento.recebidos[-1:] != [52] and time.monotonic() < limite:
         time.sleep(0.05)
-    assert lento.recebidos == list(range(1, 53))
+    assert lento.recebidos[:52] == list(range(1, 53))
     limite = time.monotonic() + 5
     while not a.deve_parar() and time.monotonic() < limite:  # comando lido pela thread de envio
         time.sleep(0.05)

@@ -58,7 +58,9 @@ def rodar_comando(comando: list[str], job: Job, ambiente: dict[str, str], avisar
         arquivo = gravar_job(job, Path(pasta))
         env = {**os.environ, **ambiente, "PORTAL_JOB_ARQUIVO": str(arquivo), "PORTAL_ENVIO_EM_SEGUNDO_PLANO": "1"}
         codigo = subprocess.run(comando, env=env, check=False).returncode
-    if codigo != 0:
+    if codigo == 130:  # o SDK encerrou o processo depois de cancelar: o fim já foi registrado
+        avisar(f"job {job.job_id}: encerrado pelo cancelamento")
+    elif codigo != 0:
         avisar(f"job {job.job_id}: o comando saiu com {codigo}")
         automacao = Automacao.conectar(ambiente=ambiente)
         automacao._emitir("execucao.concluida", {"situacao": "erro",

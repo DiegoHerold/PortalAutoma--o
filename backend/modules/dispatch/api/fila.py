@@ -17,7 +17,7 @@ from modules.access.application.use_cases import PermissionChecker
 from modules.access.domain import AuthorizationDenied
 from modules.access.infrastructure.adapters import build_access_adapters
 from modules.dispatch.application.use_cases.queue import TEXTOS
-from modules.dispatch.infrastructure.adapters.fila import build_fila
+from modules.dispatch.infrastructure.adapters.fila import build_continuar, build_encerrar, build_fila, build_parar
 from modules.orchestration.application.use_cases.queue import FilaError
 from modules.telemetry.infrastructure.realtime.postgres import CANAL_FILA, notificar
 
@@ -123,10 +123,148 @@ def cancelar(job_id: str, db: Session = Depends(get_db), user: Any = Depends(get
     tarefa = _job_da_fila(db, fila, job_id, user, "can_execute")
     if tarefa.status != "queued":
         raise HTTPException(status_code=409, detail="Só dá para cancelar pela fila um job que ainda não começou.")
+    from modules.orchestration.application.use_cases.queue import fechar_execucao
+    from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
+
     fila.tasks.save(replace(tarefa, status="cancelled", completed_at=_agora(), failure_summary="Cancelado na fila."))
+    fechar_execucao(build_orchestration_adapters(db).executions, fila.tasks, tarefa.execution_id, _agora())
     fila.transaction.commit()
     _mudou()
     return {"job_id": job_id, "status": "cancelled"}
+
+
+def _automacao_da_execucao(db: Session, fila: Any, execution_id: str) -> int:
+    tarefas = fila.tasks.list_for_execution(execution_id)
+    if not tarefas or tarefas[0].enqueue_batch_id is None:
+        raise HTTPException(status_code=404, detail="Execução não encontrada na fila.")
+    automation_id = fila.reader.automation_id(tarefas[0].automation_version_id)
+    if automation_id is None:
+        raise HTTPException(status_code=404, detail="Execução não encontrada na fila.")
+    return automation_id
+
+
+def _auditar(db: Session, user: Any, acao: str, execution_id: str, depois: dict[str, Any]) -> None:
+    from uuid import uuid4
+
+    from modules.governance.domain.audit import AuditEvent
+    from modules.governance.infrastructure.adapters import build_governance_adapters
+
+    build_governance_adapters(db).audit.append(AuditEvent(
+        id=f"aud_{uuid4().hex}", actor_type="user", actor_id=str(getattr(user, "id", "") or "") or None, action=acao,
+        resource_type="execution", resource_id=execution_id, before=None, after=depois, occurred_at=_agora()))
+
+
+@router.post("/execucoes/{execution_id}/parar")
+def parar_execucao(execution_id: str, request: Request, corpo: dict[str, Any] = Body(default={}),
+                   db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """``modo``: ``apos_item`` (termina o item atual e não começa outro) ou ``agora``. Pede a
+    concessão ``controlar`` ("Parar e retomar execuções")."""
+    from modules.access.api.authorization import ensure_automation_grant
+    from modules.access.domain.concessao import CONTROLAR
+
+    fila = build_fila(db)
+    ensure_automation_grant(db, user, _automacao_da_execucao(db, fila, execution_id), CONTROLAR)
+    motivo = str(corpo.get("motivo") or "").strip()[:300] or None
+
+    def cancelar_no_agent(execucao: str, razao: str | None) -> object:
+        from modules.dispatch.infrastructure.adapters import build_dispatch_adapters
+        from modules.orchestration.api.routes import _actor
+        from modules.orchestration.application.use_cases.resilience import RequestExecutionCancellation
+
+        d = build_dispatch_adapters(db)
+        return RequestExecutionCancellation(d.executions, d.tasks, d.attempts, d.cancellation_requests, d.commands,
+                                            d.reservations, d.locks, d.leases, d.outbox, d.transaction
+                                            ).execute(execucao, actor=_actor(user, request), reason=razao or "parada pedida no Portal")
+
+    try:
+        resultado = build_parar(db, cancelar_no_agent).execute(
+            execution_id=execution_id, modo=str(corpo.get("modo") or ""), motivo=motivo, now=_agora())
+    except FilaError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _auditar(db, user, "execucao.parada_pedida", execution_id, {"modo": resultado["modo"], "motivo": motivo,
+             "canceladas_na_fila": resultado["canceladas_na_fila"], "avisadas": resultado["avisadas"]})
+    db.commit()
+    _mudou()
+    from modules.telemetry.infrastructure.realtime.postgres import CANAL_EXECUCAO, notificar as avisar
+
+    avisar(CANAL_EXECUCAO, execution_id)
+    return resultado
+
+
+@router.post("/execucoes/{execution_id}/encerrar")
+def encerrar_no_portal(execution_id: str, db: Session = Depends(get_db),
+                       user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """O cancelamento foi pedido e a automação não respondeu em 2 min: encerra no Portal (job
+    cancelado com erro, máquina liberada, token revogado). O processo pode seguir aberto na
+    máquina; o SDK 0.4.0 se encerra sozinho quando o Portal recusa o token."""
+    from modules.access.api.authorization import ensure_automation_grant
+    from modules.access.domain.concessao import CONTROLAR
+    from modules.dispatch.domain.comunicacao import PRAZO_DO_CANCELAMENTO
+    from modules.dispatch.infrastructure.repositories.sqlalchemy_job_tokens import SqlAlchemyDirectCommandStore
+
+    fila = build_fila(db)
+    ensure_automation_grant(db, user, _automacao_da_execucao(db, fila, execution_id), CONTROLAR)
+    agora = _agora()
+    ativas = [t for t in fila.tasks.list_for_execution(execution_id) if t.status in ("running", "cancelling")]
+    tentativas = [a for a in (fila.store.last_attempt(t.id) for t in ativas) if a is not None and a.executor_type == "direct"]
+    paradas = SqlAlchemyDirectCommandStore(db).paradas_pedidas([a.id for a in tentativas])
+    vencidas = [a for a in tentativas if (paradas.get(a.id) or {}).get("tipo") == "cancelar"
+                and agora - paradas[a.id]["pedido_em"] >= PRAZO_DO_CANCELAMENTO]
+    if not vencidas:
+        raise HTTPException(status_code=409, detail="Só dá para encerrar no Portal depois de 2 min de cancelamento sem resposta.")
+    encerrar = build_encerrar(db)
+    for tentativa in vencidas:
+        recebido = bool(paradas[tentativa.id].get("recebido_em"))
+        encerrar.execute(attempt_id=tentativa.id, codigo="CANCEL_NOT_CONFIRMED", now=agora, motivo=(
+            "Encerrada no Portal: a automação recebeu o cancelamento e não parou em 2 min." if recebido
+            else "Encerrada no Portal: a automação não recebeu o cancelamento em 2 min."))
+    _auditar(db, user, "execucao.encerrada_no_portal", execution_id, {"tentativas": [a.id for a in vencidas]})
+    db.commit()
+    _mudou()
+    return {"execution_id": execution_id, "encerradas": len(vencidas)}
+
+
+@router.get("/execucoes/{execution_id}/continuar")
+def previa_de_continuar(execution_id: str, db: Session = Depends(get_db),
+                        user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """O que rodaria de novo: os itens que não deram certo. Os outros são pulados."""
+    from modules.access.api.authorization import ensure_automation_grant
+    from modules.access.domain.concessao import VER_EXECUCOES
+
+    fila = build_fila(db)
+    ensure_automation_grant(db, user, _automacao_da_execucao(db, fila, execution_id), VER_EXECUCOES)
+    try:
+        return build_continuar(db).previa(execution_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/execucoes/{execution_id}/continuar", status_code=201)
+def continuar_execucao(execution_id: str, db: Session = Depends(get_db),
+                       user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    from modules.access.api.authorization import ensure_automation_grant
+    from modules.access.domain.concessao import CONTROLAR
+
+    fila = build_fila(db)
+    ensure_automation_grant(db, user, _automacao_da_execucao(db, fila, execution_id), CONTROLAR)
+    try:
+        resultado = build_continuar(db).execute(execution_id=execution_id, solicitante=str(getattr(user, "id", "") or ""),
+                                               now=_agora())
+    except FilaError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _auditar(db, user, "execucao.continuada", execution_id, {"nova_execucao": resultado.get("execution_id"),
+             "itens": resultado["itens"], "pulados": resultado["pulados"]})
+    db.commit()
+    _mudou()
+    return resultado
 
 
 @router.post("/jobs/{job_id}/decisao")

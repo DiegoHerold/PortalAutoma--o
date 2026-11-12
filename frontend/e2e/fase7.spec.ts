@@ -10,7 +10,7 @@ import { API_DE_TESTE } from "../playwright.config";
  * da automação e o editor de campos. A API é simulada só aqui.
  */
 
-const TELAS = "../docs/fase-7-telas";
+const TELAS = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "../docs/fase-7-telas";
 const IMAGEM = readFileSync(path.join(__dirname, "fixtures", "tela-a.jpg"));
 
 const FORMULARIO = {

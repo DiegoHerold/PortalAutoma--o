@@ -19,10 +19,12 @@ from modules.telemetry.domain.notificacoes import (
     Ocorrencia,
     Pessoa,
     atencao,
+    cancelamento_sem_resposta,
     destinatarios,
     fila_parada,
     fim_de_execucao,
     maquina_offline,
+    sem_comunicacao,
 )
 
 # E-mail que não saiu em 6 h não sai mais: aviso velho confunde mais do que ajuda.
@@ -54,6 +56,13 @@ class DetectarOcorrencias:
                  for t in self.leitor.terminadas(desde)]
         saida += [atencao(a["execution_id"], a["item"], a["motivo"], a["automation_id"], a["automacao"], a["quando"])
                   for a in self.leitor.atencoes(desde)]
+        comunicacao = getattr(self.leitor, "comunicacao", None)
+        for c in (comunicacao(agora) if comunicacao is not None else []):
+            if c["tipo"] == "sem_comunicacao":
+                saida.append(sem_comunicacao(c["execution_id"], c["attempt_id"], c["automation_id"], c["automacao"], c["desde"]))
+            else:
+                saida.append(cancelamento_sem_resposta(c["execution_id"], c["attempt_id"], c["automation_id"],
+                                                       c["automacao"], c["recebido"], c["desde"]))
         gestores = [p for p in pessoas if p.gestor]
         querem_maquina = any(MAQUINA_OFFLINE in p.tipos for p in gestores)
         minutos = sorted({p.fila_minutos for p in gestores if FILA_PARADA in p.tipos})

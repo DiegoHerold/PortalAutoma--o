@@ -73,11 +73,12 @@ class LoginUser:
         record = self.access.get_user_record_by_email(normalized)
         password_hash = getattr(record, "password_hash", None)
         if not password_hash or not self.passwords.verify(password, password_hash):
-            self._audit("login_failed", normalized, str(user.id), ip, user_agent, {"reason": "invalid_password"})
+            # Quem é a pessoa (número), como no resto da auditoria; o e-mail fica nos detalhes.
+            self._audit("login_failed", str(user.id), str(user.id), ip, user_agent, {"reason": "invalid_password", "email": normalized})
             self.transaction.commit()
             raise AuthenticationFailed("Invalid email or password.")
         self.access.mark_login(user.id)
-        self._audit("login_succeeded", normalized, str(user.id), ip, user_agent, None)
+        self._audit("login_succeeded", str(user.id), str(user.id), ip, user_agent, {"email": normalized})
         self.transaction.commit()
         return TokenDTO(access_token=self.tokens.create_access_token(str(user.id)))
 

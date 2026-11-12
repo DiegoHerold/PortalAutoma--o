@@ -46,6 +46,8 @@ from modules.catalog.api.itens import router as itens_router
 from modules.catalog.api.formulario import router as formulario_router
 from modules.telemetry.api.notificacoes import router as notificacoes_router
 from modules.governance.api.retencao import router as retencao_router
+from modules.governance.api.auditoria import router as auditoria_router
+from modules.governance.api import registro_de_requisicoes
 from modules.telemetry.api.realtime import router as realtime_router
 from modules.telemetry.api.routes import automation_times_router as telemetry_times_router
 from modules.telemetry.api.routes import router as telemetry_module_router
@@ -77,6 +79,9 @@ def create_api_application() -> FastAPI:
         if settings.environment == "production":
             response.headers.setdefault("strict-transport-security", "max-age=31536000; includeSubDomains")
         return response
+
+    # Toda alteração feita por uma pessoa vai para a auditoria (12/11/2026).
+    registro_de_requisicoes.instalar(app, settings.api_v1_prefix)
 
     api_router = APIRouter()
     register_access_routes(api_router)
@@ -165,6 +170,7 @@ def register_schedule_routes(router: APIRouter) -> None:
 def register_governance_routes(router: APIRouter) -> None:
     router.include_router(governance_module_router, tags=["governance"])
     router.include_router(retencao_router)
+    router.include_router(auditoria_router)
 
 
 def register_compatibility_routes(router: APIRouter) -> None:

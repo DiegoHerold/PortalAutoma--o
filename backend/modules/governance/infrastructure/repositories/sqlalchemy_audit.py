@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from infrastructure.requisicao import atual
 from modules.governance.domain.audit import AuditEvent
 from modules.governance.infrastructure.orm.models import AuditEventRecord
 
@@ -14,6 +16,12 @@ class SqlAlchemyAuditEventRepository:
         self.db = db
 
     def append(self, event: AuditEvent) -> AuditEvent:
+        # Sem identificador próprio, o evento herda o da requisição em andamento (liga tudo o
+        # que uma mesma ação gravou) e, se faltar, o IP e o navegador de quem pediu.
+        requisicao = atual.get()
+        if requisicao is not None:
+            event = replace(event, correlation_id=event.correlation_id or requisicao.correlacao,
+                            ip=event.ip or requisicao.ip, user_agent=event.user_agent or requisicao.navegador)
         row = AuditEventRecord(
             id=event.id,
             organization_id=event.organization_id,

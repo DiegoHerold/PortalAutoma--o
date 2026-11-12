@@ -54,15 +54,20 @@ class SqlAlchemyPainelReader:
 
     def rodando(self) -> list[dict[str, Any]]:
         """Jobs rodando agora, com a tentativa atual e a máquina."""
+        from modules.fleet.infrastructure.orm.models import DirectInstanceRecord
+
         maquina = func.coalesce(ExecutionAttemptRecord.machine_id, AgentRecord.machine_id)
         linhas = self.db.execute(
-            select(TaskExecutionRecord, ExecutionAttemptRecord, maquina, MachineRecord.name, OrchestrationExecutionRecord.created_at)
+            select(TaskExecutionRecord, ExecutionAttemptRecord, maquina, MachineRecord.name, OrchestrationExecutionRecord.created_at,
+                   DirectInstanceRecord.last_seen_at)
             .join(ExecutionAttemptRecord, (ExecutionAttemptRecord.task_execution_id == TaskExecutionRecord.id)
                   & (ExecutionAttemptRecord.attempt_number == TaskExecutionRecord.current_attempt_number))
             .join(OrchestrationExecutionRecord, OrchestrationExecutionRecord.id == TaskExecutionRecord.execution_id)
             .outerjoin(AgentRecord, AgentRecord.id == ExecutionAttemptRecord.agent_id)
             .outerjoin(MachineRecord, MachineRecord.id == maquina)
-            .where(TaskExecutionRecord.status == "running")
+            .outerjoin(DirectInstanceRecord, (ExecutionAttemptRecord.executor_type == "direct")
+                       & (DirectInstanceRecord.id == ExecutionAttemptRecord.executor_id))
+            .where(TaskExecutionRecord.status.in_(("running", "cancelling")))
             .order_by(ExecutionAttemptRecord.created_at)
         ).all()
         nomes = _automacoes(self.db, {t.automation_version_id for t, *_ in linhas})
@@ -72,8 +77,10 @@ class SqlAlchemyPainelReader:
             "automation_id": nomes.get(t.automation_version_id, (None, None))[0],
             "automacao": nomes.get(t.automation_version_id, (None, None))[1], "pool": t.pool,
             "modo": a.executor_type, "maquina_id": m, "maquina_nome": nome, "itens": itens.get(t.id, []),
-            "desde": a.started_at or a.committed_at or a.created_at, "pedida_em": criada,
-        } for t, a, m, nome, criada in linhas]
+            "desde": a.started_at or a.committed_at or a.created_at, "pedida_em": criada, "job_status": t.status,
+            # Modo direto: o último pedido da instância. Antes da tentativa existir não conta.
+            "sinal_da_instancia": max(sinal or a.created_at, a.created_at) if a.executor_type == "direct" else None,
+        } for t, a, m, nome, criada, sinal in linhas]
 
     def tentativas_desde(self, inicio: datetime) -> list[dict[str, Any]]:
         """Tentativas com máquina que tocam a janela: terminaram depois de ``inicio`` ou seguem ativas."""
@@ -138,7 +145,8 @@ class SqlAlchemyPainelReader:
                 momento = e.completed_at or e.started_at or e.created_at
                 atual = saida[e.id] = {"execucao_id": e.id, "status": e.status, "automation_id": automation_id,
                                        "automacao": nome, "quando": momento.isoformat() if momento else None,
-                                       "itens": [], "maquinas": []}
+                                       "itens": [], "maquinas": [],
+                                       "continuada_em": (e.result or {}).get("continuada_em")}
             atual["itens"] += [i["chave"] for i in itens.get(tarefa, []) if i["chave"] not in atual["itens"]]
             atual["maquinas"] += [m for m in nomes_de_maquina.get(tarefa, []) if m not in atual["maquinas"]]
         return list(saida.values())
@@ -151,8 +159,27 @@ class SqlAlchemyPainelReader:
                                                   CatalogAutomationRecord.is_active.is_(True))
             .order_by(CatalogAutomationRecord.name))]
 
+    def resumo(self, *, desde: datetime | None, automation_id: int | None) -> list[dict[str, Any]]:
+        """Execuções terminadas no período: situação, automação e duração (para o resumo do Histórico)."""
+        from modules.catalog.infrastructure.orm.models import CatalogAutomationVersionRecord
+
+        quando = func.coalesce(OrchestrationExecutionRecord.completed_at, OrchestrationExecutionRecord.created_at)
+        consulta = (select(OrchestrationExecutionRecord.id, OrchestrationExecutionRecord.status,
+                           func.min(CatalogAutomationVersionRecord.automation_id),
+                           OrchestrationExecutionRecord.started_at, OrchestrationExecutionRecord.completed_at)
+                    .join(TaskExecutionRecord, TaskExecutionRecord.execution_id == OrchestrationExecutionRecord.id)
+                    .join(CatalogAutomationVersionRecord, CatalogAutomationVersionRecord.id == TaskExecutionRecord.automation_version_id)
+                    .where(OrchestrationExecutionRecord.status.in_(FINAIS))
+                    .group_by(OrchestrationExecutionRecord.id))
+        if desde is not None:
+            consulta = consulta.where(quando >= desde)
+        if automation_id is not None:
+            consulta = consulta.having(func.min(CatalogAutomationVersionRecord.automation_id) == automation_id)
+        return [{"status": s, "automation_id": a, "duracao_s": (fim - inicio).total_seconds() if fim and inicio else None}
+                for _, s, a, inicio, fim in self.db.execute(consulta)]
+
     def historico(self, *, busca: str | None, automation_id: int | None, situacao: str | None,
-                  antes_de: datetime | None, limite: int) -> tuple[list[dict[str, Any]], str | None]:
+                  antes_de: datetime | None, limite: int, desde: datetime | None = None) -> tuple[list[dict[str, Any]], str | None]:
         """Execuções terminadas, da mais recente. O cursor é o horário da última linha lida
         (não da última devolvida): filtro por texto ou automação nunca trava a paginação."""
         consulta = (select(OrchestrationExecutionRecord)
@@ -165,6 +192,9 @@ class SqlAlchemyPainelReader:
         if antes_de is not None:
             consulta = consulta.where(func.coalesce(OrchestrationExecutionRecord.completed_at,
                                                     OrchestrationExecutionRecord.created_at) < antes_de)
+        if desde is not None:
+            consulta = consulta.where(func.coalesce(OrchestrationExecutionRecord.completed_at,
+                                                    OrchestrationExecutionRecord.created_at) >= desde)
         execucoes = list(self.db.scalars(consulta))
         ids = [e.id for e in execucoes]
         if not ids:

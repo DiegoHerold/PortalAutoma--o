@@ -32,6 +32,7 @@ import {
 import { duracao, horario, relativo, rotuloItem } from "@/lib/fila";
 import { abrirStream } from "@/lib/stream";
 import { cn } from "@/lib/utils";
+import { BotaoContinuar, BotaoEncerrar, BotaoParar, LinhaDaSituacao } from "@/components/painel/controle-da-execucao";
 import { PageTitle } from "@/components/shared/page-title";
 import { ErrorState } from "@/components/shared/error-state";
 import { Badge } from "@/components/ui/badge";
@@ -127,6 +128,16 @@ export function AcompanharExecucao({ id }: { id: string }) {
               <Radio className={cn("h-3.5 w-3.5", aoVivo ? "text-success" : "text-warning")} />
               {aoVivo ? "Ao vivo" : "Reconectando"}
             </span>
+            {data.pode.controlar && data.rodando && data.situacao?.tipo === "cancelamento_sem_resposta" && (
+              <BotaoEncerrar execucaoId={data.execucao.id} recebido={data.situacao.recebido} grande aoEncerrar={() => void refetch()} />
+            )}
+            {data.pode.controlar && data.rodando && (
+              <BotaoParar execucaoId={data.execucao.id} grande situacao={data.situacao} aoParar={() => void refetch()}
+                modo={data.jobs.find((j) => j.status === "running" || j.status === "cancelling")?.modo ?? null} />
+            )}
+            {data.pode.controlar && !data.rodando && data.execucao.status === "cancelled" && !data.execucao.continuada_em && (
+              <BotaoContinuar execucaoId={data.execucao.id} size="md" />
+            )}
             <Button variant="outline" size="sm" asChild>
               <Link href={`/executions/${data.execucao.id}`}>Detalhes técnicos</Link>
             </Button>
@@ -136,6 +147,17 @@ export function AcompanharExecucao({ id }: { id: string }) {
 
       <Faixa data={data} passou={passou} situacao={situacao} />
 
+      {data.situacao && data.situacao.tipo !== "pausa" && <LinhaDaSituacao situacao={data.situacao} className="py-2.5 text-base" />}
+      {(data.execucao.continua_de || data.execucao.continuada_em) && (
+        <p className="flex flex-wrap gap-x-4 text-sm text-muted-foreground" data-testid="continuacao">
+          {data.execucao.continua_de && (
+            <span>Continua a execução <Link href={`/execucoes/${data.execucao.continua_de}`} className="font-medium text-primary hover:underline">que foi cancelada</Link>: só com o que faltava.</span>
+          )}
+          {data.execucao.continuada_em && (
+            <span>Esta execução foi <Link href={`/execucoes/${data.execucao.continuada_em}`} className="font-medium text-primary hover:underline">continuada numa nova</Link>.</span>
+          )}
+        </p>
+      )}
       {data.agora.pausa && (
         <div className="flex items-center gap-2 rounded-lg border border-info/30 bg-info/10 px-4 py-2.5 text-sm">
           <PauseCircle className="h-4 w-4 text-info" />

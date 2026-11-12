@@ -24,12 +24,12 @@ from infrastructure.database import get_db, get_session_factory
 from modules.access.api.authorization import acesso_por_automacao
 from modules.access.api.dependencies import get_current_user
 from modules.access.application.use_cases import PermissionChecker
-from modules.access.domain.concessao import CENTRAL_DE_TELAS, EXECUTAR, VER_EXECUCOES, VER_TELAS_E_LOGS
+from modules.access.domain.concessao import CENTRAL_DE_TELAS, CONTROLAR, EXECUTAR, VER_EXECUCOES, VER_TELAS_E_LOGS
 from modules.access.infrastructure.adapters import build_access_adapters
 from modules.dispatch.domain.linha_do_tempo import FEITO, PREVISTO, RODANDO, Bloco, marcas, montar
 from modules.telemetry.api.acompanhar import fluxo_de_avisos, usuario_do_cabecalho
 from modules.telemetry.application.use_cases.estimates import QueueEstimates
-from modules.telemetry.domain.acompanhamento import estado
+from modules.telemetry.domain.acompanhamento import estado, situacao_do_agora
 from modules.telemetry.infrastructure.adapters import build_telemetry_adapters
 from modules.telemetry.infrastructure.repositories.sqlalchemy_images import SqlAlchemyStepImageRepository
 from modules.telemetry.infrastructure.repositories.sqlalchemy_painel import SqlAlchemyPainelReader
@@ -64,6 +64,18 @@ class _Permissoes:
         return self._cache[chave]
 
 
+from modules.dispatch.domain.comunicacao import AVISO_SEM_COMUNICACAO, PRAZO_DO_CANCELAMENTO, SEM_COMUNICACAO  # noqa: E402
+
+PRAZOS = {"aviso_sem_comunicacao": AVISO_SEM_COMUNICACAO, "sem_comunicacao": SEM_COMUNICACAO,
+          "prazo_do_cancelamento": PRAZO_DO_CANCELAMENTO}
+
+
+def _paradas_pedidas(db: Session, tentativas: list[str]) -> dict[str, dict[str, Any]]:
+    from modules.dispatch.infrastructure.repositories.sqlalchemy_job_tokens import SqlAlchemyDirectCommandStore
+
+    return SqlAlchemyDirectCommandStore(db).paradas_pedidas(tentativas)
+
+
 def _fila(db: Session, agora: datetime) -> dict[str, Any]:
     from modules.dispatch.infrastructure.adapters.fila import build_fila
 
@@ -78,7 +90,9 @@ def painel(db: Session = Depends(get_db), user: Any = Depends(get_current_user))
     t = build_telemetry_adapters(db)
     execucoes = []
     ocupadas: dict[str, str | None] = {}
-    for r in leitor.rodando():
+    rodando = leitor.rodando()
+    paradas = _paradas_pedidas(db, [r["tentativa_id"] for r in rodando])
+    for r in rodando:
         visivel = permissoes.pode(r["automation_id"], VER_EXECUCOES)
         if r["maquina_id"]:
             ocupadas[r["maquina_id"]] = r["automacao"] if visivel else None
@@ -102,6 +116,11 @@ def painel(db: Session = Depends(get_db), user: Any = Depends(get_current_user))
             "etapa": agora_da_tela["etapa_atual"], "item": agora_da_tela["item_atual"],
             "progresso": agora_da_tela["progresso"], "pausa": agora_da_tela["pausa"],
             "atencoes": len(agora_da_tela["atencoes"]),
+            "situacao": situacao_do_agora(job_status=r["job_status"], parada=paradas.get(r["tentativa_id"]),
+                                          pausa=agora_da_tela["pausa"], espera=agora_da_tela["espera"],
+                                          ultimo_sinal=agora_da_tela["ultimo_sinal"], desde=r["desde"], agora=agora,
+                                          sinal_da_instancia=r["sinal_da_instancia"], **PRAZOS),
+            "pode_controlar": permissoes.pode(r["automation_id"], CONTROLAR),
             "pode_ver_tela": telas, "tela": tela,
             "log": imagens.logs(r["execucao_id"], depois_de=None, limite=LINHAS_DE_LOG, esconder_espera=True)[0] if telas else None,
         })
@@ -167,7 +186,7 @@ def linha_do_tempo(horas_antes: int = Query(default=6, ge=1, le=48), horas_depoi
 @router.get("/historico")
 def historico(busca: str | None = Query(default=None, max_length=120), automacao: int | None = None,
               situacao: str | None = Query(default=None, max_length=30), antes: str | None = None,
-              limite: int = Query(default=30, ge=1, le=100),
+              dias: int | None = Query(default=None, ge=1, le=3650), limite: int = Query(default=30, ge=1, le=100),
               db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     try:
         antes_de = datetime.fromisoformat(antes) if antes else None
@@ -175,7 +194,7 @@ def historico(busca: str | None = Query(default=None, max_length=120), automacao
         raise HTTPException(status_code=422, detail="antes: data inválida.") from exc
     permissoes = _Permissoes(db, user)
     linhas, cursor = SqlAlchemyPainelReader(db).historico(busca=busca, automation_id=automacao, situacao=situacao,
-                                                          antes_de=antes_de, limite=limite)
+                                                          antes_de=antes_de, limite=limite, desde=_desde(dias))
     return {"execucoes": [l for l in linhas if permissoes.pode(l["automation_id"], VER_EXECUCOES)], "cursor": cursor}
 
 
@@ -193,7 +212,9 @@ def recentes(maquina: str | None = Query(default=None, max_length=80), limite: i
         vistas.add(e["automation_id"])
         automacoes.append({"automation_id": e["automation_id"], "automacao": e["automacao"],
                            "pode_executar": permissoes.acesso.pode(user, e["automation_id"], EXECUTAR),
-                           "ultima": {k: e[k] for k in ("execucao_id", "status", "quando", "maquinas", "itens")}})
+                           "pode_controlar": permissoes.acesso.pode(user, e["automation_id"], CONTROLAR),
+                           "ultima": {k: e[k] for k in ("execucao_id", "status", "quando", "maquinas", "itens",
+                                                        "continuada_em")}})
         if len(automacoes) >= limite:
             break
     return {"automacoes": automacoes, "maquinas": [{"id": i, "nome": n} for i, n in leitor.maquinas()]}
@@ -204,6 +225,30 @@ def executaveis(db: Session = Depends(get_db), user: Any = Depends(get_current_u
     """Para o botão "Executar automação" do Painel: só o que a pessoa pode executar."""
     acesso = acesso_por_automacao(db)
     return {"automacoes": [a for a in SqlAlchemyPainelReader(db).automacoes_ativas() if acesso.pode(user, a["id"], EXECUTAR)]}
+
+
+def _desde(dias: int | None) -> datetime | None:
+    """Os últimos ``dias`` dias contando o de hoje (1 = só hoje), no fuso de São Paulo."""
+    if not dias:
+        return None
+    from zoneinfo import ZoneInfo
+
+    hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).replace(hour=0, minute=0, second=0, microsecond=0)
+    return hoje - timedelta(days=dias - 1)
+
+
+@router.get("/historico/resumo")
+def resumo_do_historico(dias: int | None = Query(default=7, ge=1, le=3650), automacao: int | None = None,
+                        db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
+    """Quantas execuções terminaram no período, quantas deram certo, falharam ou pararam, e o tempo médio."""
+    permissoes = _Permissoes(db, user)
+    linhas = [l for l in SqlAlchemyPainelReader(db).resumo(desde=_desde(dias), automation_id=automacao)
+              if permissoes.pode(l["automation_id"], VER_EXECUCOES)]
+    duracoes = [l["duracao_s"] for l in linhas if l["duracao_s"] is not None and l["status"] in ("succeeded", "partially_succeeded")]
+    conta = lambda *s: sum(1 for l in linhas if l["status"] in s)  # noqa: E731
+    return {"dias": dias, "total": len(linhas), "concluidas": conta("succeeded", "partially_succeeded"),
+            "com_falha": conta("failed", "timed_out", "lost"), "canceladas": conta("cancelled"),
+            "duracao_media_s": round(sum(duracoes) / len(duracoes)) if duracoes else None}
 
 
 @router.get("/painel/avisos")

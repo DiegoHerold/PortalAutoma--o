@@ -40,7 +40,7 @@ from modules.storage.application.use_cases.objetos import LerObjeto
 from modules.storage.domain.errors import ArtifactNotFound
 from modules.storage.infrastructure.adapters import build_storage_adapters
 from modules.telemetry.application.use_cases.estimates import GetExecutionEstimate, QueueEstimates
-from modules.telemetry.domain.acompanhamento import estado
+from modules.telemetry.domain.acompanhamento import estado, situacao_do_agora
 from modules.telemetry.domain.imagens import TAMANHOS
 from modules.telemetry.infrastructure.adapters import build_telemetry_adapters
 from modules.telemetry.infrastructure.realtime.postgres import CANAL_EXECUCAO, esperar_aviso, ouvinte
@@ -102,7 +102,7 @@ def acompanhar(execution_id: str, db: Session = Depends(get_db), user: Any = Dep
     imagens = SqlAlchemyStepImageRepository(db)
     agora = _agora()
     execucao = detalhes.execution
-    rodando = any(t.status == "running" for t in detalhes.tasks)
+    rodando = any(t.status in ("running", "cancelling") for t in detalhes.tasks)
 
     ultima_por_tarefa: dict[str, Any] = {}
     for tentativa in sorted(detalhes.attempts, key=lambda a: a.attempt_number):
@@ -139,6 +139,23 @@ def acompanhar(execution_id: str, db: Session = Depends(get_db), user: Any = Dep
     inicio = execucao.started_at or execucao.created_at
     fim = execucao.completed_at if execucao.status in FINAIS else None
     rodando_jobs = [j for j in jobs if j["status"] == "running"]
+    ativa = next((t for t in detalhes.tasks if t.status in ("running", "cancelling")), None)
+    tentativa_ativa = ultima_por_tarefa.get(ativa.id) if ativa else None
+    situacao = None
+    if ativa is not None and tentativa_ativa is not None:
+        from modules.dispatch.infrastructure.repositories.sqlalchemy_job_tokens import SqlAlchemyDirectCommandStore
+
+        from modules.telemetry.api.painel import PRAZOS
+
+        parada = SqlAlchemyDirectCommandStore(db).paradas_pedidas([tentativa_ativa.id]).get(tentativa_ativa.id)
+        sinal = None
+        if tentativa_ativa.executor_type == "direct":
+            sinal = max(imagens.sinal_da_instancia(tentativa_ativa.executor_id) or tentativa_ativa.created_at,
+                        tentativa_ativa.created_at)
+        situacao = situacao_do_agora(job_status=ativa.status, parada=parada, pausa=agora_da_tela["pausa"],
+                                     espera=agora_da_tela["espera"], ultimo_sinal=agora_da_tela["ultimo_sinal"],
+                                     desde=tentativa_ativa.started_at or tentativa_ativa.created_at, agora=agora,
+                                     sinal_da_instancia=sinal, **PRAZOS)
     falta_total = (max(j["falta_s"] for j in rodando_jobs)
                    if rodando_jobs and all(j["falta_s"] is not None for j in rodando_jobs) else None)
     t = build_telemetry_adapters(db)
@@ -147,7 +164,10 @@ def acompanhar(execution_id: str, db: Session = Depends(get_db), user: Any = Dep
         "execucao": {"id": execucao.id, "status": execucao.status, "criada_em": execucao.created_at.isoformat(),
                      "iniciada_em": execucao.started_at.isoformat() if execucao.started_at else None,
                      "concluida_em": execucao.completed_at.isoformat() if execucao.completed_at else None,
-                     "falha": execucao.failure_summary, "solicitante": execucao.requested_by},
+                     "falha": execucao.failure_summary, "solicitante": execucao.requested_by,
+                     "continua_de": (execucao.input or {}).get("continua_de"),
+                     "continuada_em": (execucao.result or {}).get("continuada_em")},
+        "situacao": situacao,
         "automacao": {"id": automation_id, "nome": getattr(detalhes.automation_version, "automation_name", None),
                       "versao": getattr(detalhes.automation_version, "version", None)},
         "pode": {"ver_telas_e_logs": pode_telas, "controlar": acesso.pode(user, automation_id, CONTROLAR)},

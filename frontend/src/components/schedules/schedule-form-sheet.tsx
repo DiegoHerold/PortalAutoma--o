@@ -50,7 +50,9 @@ type FormState = {
   overlap_policy: OverlapPolicy;
 };
 
-function emptyForm(prefill?: { targetType?: TargetType; specificDate?: string; automationId?: string }): FormState {
+export type PrefillDoAgendamento = { targetType?: TargetType; specificDate?: string; automationId?: string; timeOfDay?: string };
+
+function emptyForm(prefill?: PrefillDoAgendamento): FormState {
   return {
     target_type: prefill?.targetType ?? "automation",
     automation_id: prefill?.automationId ?? "",
@@ -61,7 +63,7 @@ function emptyForm(prefill?: { targetType?: TargetType; specificDate?: string; a
     is_active: true,
     mode: "recurrence",
     recurrence_type: prefill?.specificDate ? "once" : "daily",
-    time_of_day: "08:00",
+    time_of_day: prefill?.timeOfDay ?? "08:00",
     weekdays: [0, 1, 2, 3, 4],
     day_of_month: 1,
     specific_date: prefill?.specificDate ?? "",
@@ -152,7 +154,7 @@ export function ScheduleFormSheet({
   open: boolean;
   onClose: () => void;
   editingId: number | null;
-  prefill?: { targetType?: TargetType; specificDate?: string; automationId?: string };
+  prefill?: PrefillDoAgendamento;
   automations: Automation[];
   flows: Flow[];
   onSaved: (schedule: Schedule) => void | Promise<void>;

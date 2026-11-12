@@ -147,6 +147,26 @@ class SqlAlchemyLeituraDeOcorrencias:
                  "automation_id": nomes.get(e.id, (None, None))[0], "automacao": nomes.get(e.id, (None, None))[1]}
                 for e in execucoes]
 
+    def comunicacao(self, agora: datetime) -> list[dict[str, Any]]:
+        """Execuções diretas rodando sem comunicação há 30 s, ou com cancelamento sem resposta há 2 min."""
+        from modules.dispatch.domain.comunicacao import AVISO_SEM_COMUNICACAO, PRAZO_DO_CANCELAMENTO
+        from modules.dispatch.infrastructure.repositories.sqlalchemy_job_tokens import SqlAlchemyDirectCommandStore
+        from modules.telemetry.infrastructure.repositories.sqlalchemy_painel import SqlAlchemyPainelReader
+
+        rodando = [r for r in SqlAlchemyPainelReader(self.db).rodando() if r["modo"] == "direct"]
+        paradas = SqlAlchemyDirectCommandStore(self.db).paradas_pedidas([r["tentativa_id"] for r in rodando])
+        saida = []
+        for r in rodando:
+            base = {"execution_id": r["execucao_id"], "attempt_id": r["tentativa_id"], "automation_id": r["automation_id"],
+                    "automacao": r["automacao"]}
+            parada = paradas.get(r["tentativa_id"])
+            if parada and parada["tipo"] == "cancelar" and agora - parada["pedido_em"] >= PRAZO_DO_CANCELAMENTO:
+                saida.append({**base, "tipo": "cancelamento_sem_resposta", "recebido": bool(parada["recebido_em"]),
+                              "desde": parada["pedido_em"]})
+            elif r["sinal_da_instancia"] is not None and agora - r["sinal_da_instancia"] >= AVISO_SEM_COMUNICACAO:
+                saida.append({**base, "tipo": "sem_comunicacao", "desde": r["sinal_da_instancia"]})
+        return saida
+
     def atencoes(self, desde: datetime) -> list[dict[str, Any]]:
         linhas = self.db.execute(
             select(ExecutionEventRecord.execution_id, ExecutionEventRecord.payload, ExecutionEventRecord.occurred_at)

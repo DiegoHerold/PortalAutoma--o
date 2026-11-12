@@ -104,14 +104,23 @@ def test_notificacoes_quem_recebe_sem_repetir_aviso_no_portal_e_email_desligado(
                    {"q": sinal, "i": ag.agent_id})
     sessao.commit()
 
-    primeira = build_detectar(sessao).execute()
+    # A mesma hora nas duas detecções: o relógio andando entre elas não pode criar ocorrência nova
+    # (ex.: execução de outro teste cruzando os 30 s sem comunicação bem no meio).
+    instante = datetime.now(UTC)
+
+    def detectar() -> dict:
+        detector = build_detectar(sessao)
+        detector.agora = lambda: instante
+        return detector.execute()
+
+    primeira = detectar()
     fim = f"fim:{falhou}"
     assert _avisos(sessao, fim) == sorted([(email_gestor, "pendente"), (email_operador, "pendente")])  # sem_acesso não
     assert _avisos(sessao, f"atencao:{job.execution_id}:5081") == []  # ninguém escolheu "atenção": registrada sem aviso
     offline = sessao.execute(text("SELECT chave FROM notifications WHERE chave LIKE :c"), {"c": f"offline:{caida}:%"}).scalars().all()
     assert len(offline) == 1 and _avisos(sessao, offline[0]) == [(email_gestor, "pendente")]
 
-    segunda = build_detectar(sessao).execute()
+    segunda = detectar()
     contagem = sessao.execute(text("SELECT count(*) FROM notifications WHERE chave IN (:a, :b, :c)"),
                               {"a": fim, "b": f"atencao:{job.execution_id}:5081", "c": offline[0]}).scalar_one()
     assert contagem == 3 and segunda == {"ocorrencias": 0, "avisos": 0}

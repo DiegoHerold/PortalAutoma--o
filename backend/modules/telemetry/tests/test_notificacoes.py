@@ -53,7 +53,8 @@ def test_parcial_diz_que_parte_dos_itens_falhou() -> None:
 
 @pytest.mark.parametrize("situacao,titulo,texto", [
     ("succeeded", "Folha: concluída", "A execução exe_1 terminou."),
-    ("cancelled", "Folha: cancelada", "A execução exe_1 foi cancelada."),
+    # Cancelada mostra o motivo (ex.: sem comunicação por 2 min), mas não vira erro.
+    ("cancelled", "Folha: cancelada", "A execução exe_1 foi cancelada. Motivo: não aparece"),
 ])
 def test_execucao_sem_erro_e_so_termino(situacao: str, titulo: str, texto: str) -> None:
     o = fim_de_execucao("exe_1", situacao, 7, "Folha", AGORA, "não aparece")

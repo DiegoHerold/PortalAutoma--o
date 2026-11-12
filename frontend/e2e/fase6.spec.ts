@@ -193,10 +193,10 @@ test("configurações: tudo alcançável, o que sai do menu continua nas Configu
   await expect(menu.getByRole("link", { name: "Fluxos" })).toHaveCount(0);
   await expect(areas.getByRole("link", { name: "Fluxos" })).toBeVisible();
   await expect(areas.getByText("Fora do menu").first()).toBeVisible();
-  // liga um item que vinha fora: aparece no menu, na categoria dele, e continua nas Configurações
+  // liga um item que vinha fora: aparece no menu (lista única, no fim) e continua nas Configurações
   await areas.getByLabel("Mostrar Retenção no menu").check();
   await expect(menu.getByRole("link", { name: "Retenção" })).toBeVisible();
-  await expect(menu.locator("[data-grupo='Governança']")).toBeVisible();
+  await expect(menu.locator("[data-grupo]")).toHaveCount(0);
   await expect(areas.getByRole("link", { name: "Retenção" })).toBeVisible();
   await page.screenshot({ path: `${TELAS}/configuracoes-menu.png`, fullPage: true, animations: "disabled" });
   await areas.getByRole("link", { name: "Fluxos" }).click();

@@ -117,7 +117,8 @@ def fim_de_execucao(execution_id: str, situacao: str, automation_id: int | None,
         titulo = f"{nome}: terminou com erro"
         texto = f"A execução {execution_id} terminou com erro." + (f" Motivo: {falha}" if falha else "")
     elif situacao == "cancelled":
-        titulo, texto = f"{nome}: cancelada", f"A execução {execution_id} foi cancelada."
+        titulo = f"{nome}: cancelada"
+        texto = f"A execução {execution_id} foi cancelada." + (f" Motivo: {falha}" if falha else "")
     else:
         titulo, texto = f"{nome}: concluída", f"A execução {execution_id} terminou."
     return Ocorrencia(f"fim:{execution_id}", tipos, titulo, texto, quando, automation_id, execution_id,
@@ -132,6 +133,27 @@ def atencao(execution_id: str, item: str | None, motivo: str | None, automation_
     texto = f"{alvo} precisa de uma pessoa" + (f": {motivo}" if motivo else ".")
     return Ocorrencia(f"atencao:{execution_id}:{item or '-'}", frozenset({ATENCAO}), f"{nome}: precisa de uma pessoa",
                       texto, quando, automation_id, execution_id, f"/execucoes/{execution_id}")
+
+
+def sem_comunicacao(execution_id: str, attempt_id: str, automation_id: int | None, automacao: str | None,
+                    desde: datetime) -> Ocorrencia:
+    """A automação parou de falar com o Portal (modo direto). Um aviso por tentativa; o Portal
+    espera até 2 min e então cancela a execução (aí vem o aviso de término)."""
+    nome = automacao or "Automação"
+    return Ocorrencia(f"sem_comunicacao:{attempt_id}", frozenset({ERRO}), f"{nome}: comunicação não está ativa",
+                      "A automação parou de responder ao Portal. O Portal espera até 2 min; sem retorno, a execução "
+                      "é cancelada.", desde, automation_id, execution_id, f"/execucoes/{execution_id}")
+
+
+def cancelamento_sem_resposta(execution_id: str, attempt_id: str, automation_id: int | None, automacao: str | None,
+                              recebido: bool, desde: datetime) -> Ocorrencia:
+    """Cancelamento pedido e não atendido em 2 min. Um aviso por tentativa."""
+    nome = automacao or "Automação"
+    texto = ("A automação recebeu o cancelamento e não parou em 2 min." if recebido
+             else "A automação não recebeu o cancelamento em 2 min.")
+    return Ocorrencia(f"cancelamento_sem_resposta:{attempt_id}", frozenset({ERRO}),
+                      f"{nome}: o cancelamento não foi atendido", texto + " Confira a máquina ou use Encerrar no Portal.",
+                      desde, automation_id, execution_id, f"/execucoes/{execution_id}")
 
 
 def maquina_offline(maquina_id: str, nome: str, ultimo_sinal: datetime | None, online: bool,

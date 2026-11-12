@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
-import { AuditView } from "@/components/audit/audit-view";
+import { AuditoriaView } from "@/components/audit/auditoria-view";
 import { PageTitle } from "@/components/shared/page-title";
 
 export const metadata: Metadata = { title: "Auditoria" };
@@ -11,9 +12,11 @@ export default function AuditPage() {
       <PageTitle
         eyebrow="Segurança"
         title="Auditoria"
-        description="Trilha de eventos: quem fez o quê, quando, com diff antes/depois."
+        description="Tudo o que acontece no Portal, em ordem. Clique num evento para ver o que mudou e o que veio junto; clique no nome de alguém para ver só essa pessoa."
       />
-      <AuditView />
+      <Suspense fallback={<div className="skeleton h-96 rounded-xl" />}>
+        <AuditoriaView />
+      </Suspense>
     </div>
   );
 }

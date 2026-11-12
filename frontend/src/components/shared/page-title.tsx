@@ -15,7 +15,7 @@ export function PageTitle({ eyebrow, title, description, actions }: PageTitlePro
           <p className="eyebrow">{eyebrow}</p>
         ) : null}
         <h1 className="titulo-condensado text-3xl leading-tight sm:text-4xl">{title}</h1>
-        {description ? <p className="max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
+        {description ? <p className="max-w-3xl text-base text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </div>

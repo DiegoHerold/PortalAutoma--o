@@ -67,16 +67,18 @@ const config: Config = {
         nevoa: "hsl(var(--nevoa))",
         areia: "hsl(var(--areia))",
       },
-      // Escala maior que a padrão (pedido de 10/11/2026: texto pequeno demais). Nada abaixo de 13px.
+      // Escala moderada: texto legível sem pressionar os controles e cartões.
+      // Escala compacta para telas grandes (12/11/2026): os pequenos sobem, os grandes descem.
+      // Em 1920 (raiz ~17px): xs 15,4 · sm 16,5 · base 17 · lg 19 · xl 21 · 2xl 24,5 · 3xl 27,7 · 4xl 32 px.
       fontSize: {
-        xs: ["0.8125rem", { lineHeight: "1.2rem" }],
-        sm: ["0.9375rem", { lineHeight: "1.45rem" }],
+        xs: ["0.9rem", { lineHeight: "1.3rem" }],
+        sm: ["0.96875rem", { lineHeight: "1.45rem" }],
         base: ["1rem", { lineHeight: "1.6rem" }],
         lg: ["1.125rem", { lineHeight: "1.7rem" }],
-        xl: ["1.3rem", { lineHeight: "1.8rem" }],
-        "2xl": ["1.6rem", { lineHeight: "2rem" }],
-        "3xl": ["2rem", { lineHeight: "2.3rem" }],
-        "4xl": ["2.5rem", { lineHeight: "2.75rem" }],
+        xl: ["1.25rem", { lineHeight: "1.8rem" }],
+        "2xl": ["1.4375rem", { lineHeight: "1.95rem" }],
+        "3xl": ["1.625rem", { lineHeight: "2.1rem" }],
+        "4xl": ["1.875rem", { lineHeight: "2.35rem" }],
       },
       borderRadius: {
         lg: "var(--radius)",

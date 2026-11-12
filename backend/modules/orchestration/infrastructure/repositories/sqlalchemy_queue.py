@@ -54,6 +54,12 @@ class SqlAlchemyQueueStore:
         self.db.execute(update(ExecutionItemRecord).where(ExecutionItemRecord.task_execution_id == task_execution_id)
                         .values(status="pendente", summary=None, attention=None, started_at=None, completed_at=None))
 
+    def itens_da_execucao(self, execution_id: str) -> list[dict[str, Any]]:
+        return [{"job_id": t, "chave": c, "rotulo": r, "situacao": s} for t, c, r, s in self.db.execute(
+            select(ExecutionItemRecord.task_execution_id, ExecutionItemRecord.item_key, ExecutionItemRecord.label,
+                   ExecutionItemRecord.status)
+            .where(ExecutionItemRecord.execution_id == execution_id).order_by(ExecutionItemRecord.item_key))]
+
     def last_attempt(self, task_execution_id: str) -> Any:
         return self.db.scalar(select(ExecutionAttemptRecord)
                               .where(ExecutionAttemptRecord.task_execution_id == task_execution_id)

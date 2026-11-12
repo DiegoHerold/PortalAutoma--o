@@ -52,6 +52,14 @@ class SqlAlchemyStepImageRepository:
         except IntegrityError:
             return False
 
+    def sinal_da_instancia(self, instance_id: str | None) -> datetime | None:
+        """Último pedido da instância direta ao Portal (só leitura, da Fleet)."""
+        from modules.fleet.infrastructure.orm.models import DirectInstanceRecord
+
+        if not instance_id:
+            return None
+        return self.db.scalar(select(DirectInstanceRecord.last_seen_at).where(DirectInstanceRecord.id == instance_id))
+
     def eventos_de_estado(self, execution_id: str, limite: int = 3000) -> list[EventoDaAutomacao]:
         """Os eventos da automação que descrevem o agora (sem os logs), dos mais recentes."""
         tipo = ExecutionEventRecord.payload["type"].astext

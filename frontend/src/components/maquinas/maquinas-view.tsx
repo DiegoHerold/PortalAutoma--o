@@ -147,7 +147,7 @@ function Gantt({ dados, aoVivo }: { dados: LinhaDoTempo; aoVivo: boolean }) {
           <div className="relative mb-2 h-10 border-b border-border text-xs text-muted-foreground">
             {marcas.map((m) => (
               <span key={m.quando} className="tabular absolute bottom-1 -translate-x-1/2 whitespace-nowrap text-center" style={{ left: `${m.posicao}%` }}>
-                {m.dia && <span className="block font-sans text-[0.75rem] font-semibold uppercase tracking-wider text-primary">{m.dia}</span>}
+                {m.dia && <span className="block font-sans text-xs font-semibold uppercase tracking-wider text-primary">{m.dia}</span>}
                 {m.hora}
               </span>
             ))}

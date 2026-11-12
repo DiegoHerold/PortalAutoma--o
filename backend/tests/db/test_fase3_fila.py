@@ -229,6 +229,13 @@ def test_cenario_16_direto_e_agente_de_tela_na_mesma_maquina_nunca_juntos(sessao
           f"(início previsto: {linha['inicio_previsto'] or 'sem previsão'}; motivos: {[m['texto'] for m in linha['motivos']]})")
 
 
+def _perder(sessao, job: str) -> None:
+    """O job fica perdido como o DetectLostAttempts deixa: tentativa e job ``lost``, trava de tela mantida."""
+    sessao.execute(text("UPDATE execution_attempts SET status = 'lost', completed_at = now() WHERE task_execution_id = :t"), {"t": job})
+    sessao.execute(text("UPDATE task_executions SET status = 'lost', lost_at = now() WHERE id = :t"), {"t": job})
+    sessao.commit()
+
+
 def test_cenario_2_maquina_cai_job_perdido_nao_volta_sozinho(sessao, cliente) -> None:
     automation_id, version_id = _automacao_publicada(sessao)
     mch, instancia = _maquina_direta(sessao, automation_id, f"cai-{version_id}")
@@ -236,12 +243,8 @@ def test_cenario_2_maquina_cai_job_perdido_nao_volta_sozinho(sessao, cliente) ->
     job = pedido["jobs"][0]["job_id"]
     assert [e["job_id"] for e in despachar_agora(sessao)["entregues"] if e["job_id"] == job] == [job]
 
-    # A instância some: sem sinal há 10 minutos, e a tentativa começou antes disso.
-    sessao.execute(text("UPDATE execution_attempts SET created_at = now() - interval '15 minutes' WHERE task_execution_id = :t"),
-                   {"t": job})
-    instancia_com_sinal(sessao, instancia, datetime.now(UTC) - timedelta(minutes=10))
-    resultado = despachar_agora(sessao)
-    assert resultado["perdidos"] >= 1
+    # Job perdido (modo agente: o Agent sumiu; no modo direto o silêncio cancela, ver test_comunicacao).
+    _perder(sessao, job)
     status = sessao.execute(text("SELECT status FROM task_executions WHERE id = :t"), {"t": job}).scalar_one()
     assert status == "lost"
     for _ in range(3):  # vários ciclos depois, continua perdido: nada volta sozinho
@@ -266,9 +269,7 @@ def test_job_perdido_recomecar_do_zero_libera_qualquer_maquina(sessao, cliente) 
     mch, instancia = _maquina_direta(sessao, automation_id, f"recomeca-{version_id}")
     job = _pedir(cliente, version_id, [_item("9301")])["jobs"][0]["job_id"]
     despachar_agora(sessao)
-    sessao.execute(text("UPDATE execution_attempts SET created_at = now() - interval '15 minutes' WHERE task_execution_id = :t"), {"t": job})
-    instancia_com_sinal(sessao, instancia, datetime.now(UTC) - timedelta(minutes=10))
-    despachar_agora(sessao)
+    _perder(sessao, job)
     resposta = cliente.post(f"/api/v1/fila/jobs/{job}/decisao", json={"decisao": "recomecar"})
     assert resposta.json()["maquina_obrigatoria"] is None
     assert cliente.post(f"/api/v1/fila/jobs/{job}/decisao", json={"decisao": "recomecar"}).status_code == 409
@@ -376,9 +377,7 @@ def test_fila_traz_nome_da_automacao_e_jobs_perdidos(sessao, cliente) -> None:
     linha = next(j for j in _fila(cliente)["jobs"] if j["job_id"] == espera)
     assert linha["automacao"].startswith("Integração Contábil")
     despachar_agora(sessao)
-    sessao.execute(text("UPDATE execution_attempts SET created_at = now() - interval '15 minutes' WHERE task_execution_id = :t"), {"t": job})
-    instancia_com_sinal(sessao, instancia, datetime.now(UTC) - timedelta(minutes=10))
-    despachar_agora(sessao)
+    _perder(sessao, job)
     perdido = next(p for p in _fila(cliente)["perdidos"] if p["job_id"] == job)
     assert perdido["maquina_nome"] == f"nomes-{version_id}" and perdido["itens"] == ["9801"]
 

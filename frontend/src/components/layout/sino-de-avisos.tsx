@@ -31,7 +31,7 @@ export function SinoDeAvisos() {
         aria-label={naoLidas ? `Avisos: ${naoLidas} por ler` : "Avisos"} className="relative">
         <Bell className="h-5 w-5" />
         {naoLidas > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-[1.15rem] min-w-[1.15rem] items-center justify-center rounded-full bg-destructive px-1 text-[0.7rem] font-bold leading-none text-white" data-testid="avisos-por-ler">
+          <span className="absolute -right-0.5 -top-0.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold leading-none text-white" data-testid="avisos-por-ler">
             {naoLidas > 99 ? "99+" : naoLidas}
           </span>
         )}

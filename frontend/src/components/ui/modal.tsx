@@ -49,7 +49,7 @@ export function Modal({
       >
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>
-            {title && <h2 className="font-display text-lg font-semibold tracking-tight">{title}</h2>}
+            {title && <h2 className="font-display text-xl font-semibold tracking-tight">{title}</h2>}
             {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
           </div>
           <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground">

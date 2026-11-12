@@ -507,7 +507,7 @@ function LinhaJob({
           </Campo>
           <Campo rotulo="Início → término">
             {job.inicio_previsto ? (
-              <span className="tabular text-[0.8125rem]">
+              <span className="tabular text-xs">
                 {horario(job.inicio_previsto, agora)}
                 <ArrowRight className="mx-1 inline h-3 w-3 text-muted-foreground" />
                 {job.termino_previsto ? horario(job.termino_previsto, agora) : "?"}
@@ -521,7 +521,7 @@ function LinhaJob({
             {job.estimativa_s != null ? (
               <span className="titulo-condensado text-lg leading-none">{duracao(job.estimativa_s)}</span>
             ) : job.estimativa_minima_s != null ? (
-              <span className="text-[0.8125rem]">
+              <span className="text-xs">
                 pelo menos <span className="titulo-condensado text-lg leading-none">{duracao(job.estimativa_minima_s)}</span>
               </span>
             ) : (
@@ -578,7 +578,7 @@ function LinhaJob({
       </div>
 
       {(semPrevisao || job.motivos.length > 0) && (
-        <ul className="mt-3 space-y-1 rounded-md bg-warning/10 px-3 py-2 text-[0.8125rem] lg:ml-[4rem]">
+        <ul className="mt-3 space-y-1 rounded-md bg-warning/10 px-3 py-2 text-xs lg:ml-[4rem]">
           {job.motivos.length === 0 && (
             <li className="flex gap-2">
               <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
@@ -598,7 +598,7 @@ function LinhaJob({
       )}
 
       {explicar && (
-        <div className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-[0.8125rem] lg:ml-[4rem]">
+        <div className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-xs lg:ml-[4rem]">
           <p className="eyebrow mb-1.5 text-xs">Por que espera</p>
           <PorQueEspera job={job} agora={agora} />
         </div>

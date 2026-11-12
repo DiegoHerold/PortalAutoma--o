@@ -119,8 +119,9 @@ function Invoke-Native([string]$Exe, [string[]]$Arguments, [string]$WorkingDirec
 function Get-PgBin {
     $pgCtl = Get-Command pg_ctl.exe -ErrorAction SilentlyContinue
     if ($pgCtl) { return Split-Path -Parent $pgCtl.Source }
+    # So pastas de versao (18, 17...): ha outras ali, como psqlODBC, que nao sao numero.
     $installed = Get-ChildItem 'C:\Program Files\PostgreSQL' -Directory -ErrorAction SilentlyContinue |
-        Sort-Object { [int]$_.Name } -Descending | Select-Object -First 1
+        Where-Object { $_.Name -match '^\d+$' } | Sort-Object { [int]$_.Name } -Descending | Select-Object -First 1
     if ($installed) { return Join-Path $installed.FullName 'bin' }
     throw 'PostgreSQL nao encontrado. Instale com: winget install PostgreSQL.PostgreSQL.18'
 }
@@ -129,14 +130,24 @@ function Test-ManagedPostgres {
     return (Read-EnvFile)['PORTAL_MANAGED_POSTGRES'] -eq 'true'
 }
 
+function Test-PostgresPronto {
+    # A porta abre antes de o banco aceitar conexoes (ex.: recuperando depois de um desligamento
+    # brusco). pg_isready so devolve 0 quando ele aceita.
+    & (Join-Path (Get-PgBin) 'pg_isready.exe') -h 127.0.0.1 -p $managedPgPort -q 2>$null | Out-Null
+    return $LASTEXITCODE -eq 0
+}
+
 function Start-ManagedPostgres {
     if (-not (Test-ManagedPostgres)) { return }
-    if (Test-TcpPort $managedPgPort) { return }
-    Write-Step 'Iniciando PostgreSQL dedicado'
-    # Sem -w: com -w o pg_ctl herda os handles do terminal e pode nao retornar.
-    Start-Process -FilePath (Join-Path (Get-PgBin) 'pg_ctl.exe') -WindowStyle Hidden `
-        -ArgumentList @('start', '-D', "`"$pgData`"", '-l', "`"$(Join-Path $logDir 'postgres.log')`"") | Out-Null
-    Wait-Until { Test-TcpPort $managedPgPort } 'o PostgreSQL' 30
+    if (-not (Test-TcpPort $managedPgPort)) {
+        Write-Step 'Iniciando PostgreSQL dedicado'
+        # Sem -w: com -w o pg_ctl herda os handles do terminal e pode nao retornar.
+        Start-Process -FilePath (Join-Path (Get-PgBin) 'pg_ctl.exe') -WindowStyle Hidden `
+            -ArgumentList @('start', '-D', "`"$pgData`"", '-l', "`"$(Join-Path $logDir 'postgres.log')`"") | Out-Null
+        Wait-Until { Test-TcpPort $managedPgPort } 'o PostgreSQL' 30
+    }
+    # Mesmo com a porta aberta, espera aceitar conexoes antes das migrations.
+    Wait-Until { Test-PostgresPronto } 'o PostgreSQL aceitar conexoes (recuperacao)' 120
 }
 
 function Stop-ManagedPostgres {

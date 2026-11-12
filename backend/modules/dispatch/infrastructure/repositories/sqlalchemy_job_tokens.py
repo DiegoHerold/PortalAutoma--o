@@ -47,6 +47,29 @@ class SqlAlchemyDirectCommandStore:
         self.db.add(DirectCommandRecord(id=command_id, execution_attempt_id=execution_attempt_id, command=command))
         self.db.flush()
 
+    def tipos_pedidos(self, execution_attempt_id: str) -> set[str]:
+        """Comandos já pedidos para a tentativa (entregues ou não): pedir de novo não duplica."""
+        return {str((c or {}).get("type")) for c in self.db.scalars(
+            select(DirectCommandRecord.command).where(DirectCommandRecord.execution_attempt_id == execution_attempt_id))}
+
+    def paradas_pedidas(self, attempt_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """O pedido de parada mais forte de cada tentativa (cancelar vence parar_apos_item)."""
+        if not attempt_ids:
+            return {}
+        saida: dict[str, dict[str, Any]] = {}
+        for tentativa, comando, quando, entregue in self.db.execute(
+            select(DirectCommandRecord.execution_attempt_id, DirectCommandRecord.command, DirectCommandRecord.created_at,
+                   DirectCommandRecord.delivered_at)
+            .where(DirectCommandRecord.execution_attempt_id.in_(attempt_ids)).order_by(DirectCommandRecord.created_at)
+        ):
+            tipo = (comando or {}).get("type")
+            if tipo not in ("cancelar", "parar_apos_item"):
+                continue
+            atual = saida.get(tentativa)
+            if atual is None or (tipo == "cancelar" and atual["tipo"] != "cancelar"):
+                saida[tentativa] = {"tipo": tipo, "pedido_em": quando, "recebido_em": entregue}
+        return saida
+
     def take_pending(self, execution_attempt_id: str, now: datetime) -> list[dict[str, Any]]:
         linhas = list(self.db.scalars(
             select(DirectCommandRecord)
@@ -92,13 +115,18 @@ class SqlAlchemyDirectDeliveryReader:
         entrada = tarefa.input or {}
         da_entrada = {str(i.get("chave")): i for i in (entrada.get("dados_dos_itens") or entrada.get("itens") or [])
                       if isinstance(i, dict)}
+        def item(k: str, r: str | None) -> dict[str, Any]:
+            dado = da_entrada.get(k) or {}
+            saida = {"chave": k, "rotulo": r, "grupo": dado.get("grupo"), "configuracao": dado.get("configuracao") or {},
+                     "atributos": dado.get("atributos") or {}}
+            if dado.get("retomada"):
+                saida["retomada"] = dado["retomada"]  # execução continuada: o que já tinha sido feito
+            return saida
+
         return {
             "attempt_id": tentativa.id, "attempt_number": tentativa.attempt_number, "job_id": tarefa.id,
             "execution_id": tarefa.execution_id, "parametros": dict(tarefa.parameters or {}),
-            "itens": [{"chave": k, "rotulo": r, "grupo": (da_entrada.get(k) or {}).get("grupo"),
-                       "configuracao": (da_entrada.get(k) or {}).get("configuracao") or {},
-                       "atributos": (da_entrada.get(k) or {}).get("atributos") or {}} for k, r in itens]
-            or list(da_entrada.values()),
+            "itens": [item(k, r) for k, r in itens] or list(da_entrada.values()),
         }
 
     def revogar_tokens(self, attempt_id: str, agora: datetime) -> None:

@@ -215,7 +215,7 @@ export function AutomationsManager() {
           {verArquivadas ? "Voltar ao Catálogo" : `Arquivadas${arquivadas ? ` (${arquivadas})` : ""}`}
         </Button>
         <Button onClick={openCreate} disabled={creationDependenciesLoading}>
-          <Plus className="h-4 w-4" /> Nova automacao
+          <Plus className="h-4 w-4" /> Nova automação
         </Button>
       </div>
 
@@ -235,7 +235,7 @@ export function AutomationsManager() {
           action={
             !query && !categoryFilter ? (
               <Button onClick={openCreate} disabled={creationDependenciesLoading}>
-                <Plus className="h-4 w-4" /> Nova automacao
+                <Plus className="h-4 w-4" /> Nova automação
               </Button>
             ) : undefined
           }

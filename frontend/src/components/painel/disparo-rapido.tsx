@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { ExecutarAutomacao } from "@/components/automacao/executar-automacao";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { BotaoContinuar } from "@/components/painel/controle-da-execucao";
 import { Modal } from "@/components/ui/modal";
 
 type Executavel = { id: number; nome: string; descricao: string | null };
@@ -18,7 +19,9 @@ type Recente = {
   automation_id: number;
   automacao: string;
   pode_executar: boolean;
-  ultima: { execucao_id: string; status: string; quando: string | null; maquinas: string[]; itens: string[] };
+  pode_controlar?: boolean;
+  ultima: { execucao_id: string; status: string; quando: string | null; maquinas: string[]; itens: string[];
+            continuada_em?: string | null };
 };
 type Recentes = { automacoes: Recente[]; maquinas: Array<{ id: string; nome: string }> };
 type Disparo = { id: number; nome: string; itens?: string[] };
@@ -187,6 +190,14 @@ function CartaoRecente({ a, disparar }: { a: Recente; disparar: (d: Disparo) => 
         {itens.length === 0 ? "sem itens" : `${itens.slice(0, 4).join(", ")}${itens.length > 4 ? ` e mais ${itens.length - 4}` : ""}`}
       </p>
       <div className="mt-auto flex flex-wrap gap-2">
+        {a.pode_controlar && a.ultima.status === "cancelled" && !a.ultima.continuada_em && (
+          <BotaoContinuar execucaoId={a.ultima.execucao_id} />
+        )}
+        {a.ultima.continuada_em && (
+          <Link href={`/execucoes/${a.ultima.continuada_em}`} className="self-center text-sm font-medium text-primary hover:underline">
+            Ver a continuação
+          </Link>
+        )}
         {a.pode_executar ? (
           <>
             <Button size="sm" onClick={() => disparar({ id: a.automation_id, nome: a.automacao })}>

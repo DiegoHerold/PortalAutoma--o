@@ -11,7 +11,7 @@ export default function AutomationsPage() {
       <PageTitle
         eyebrow="Catálogo"
         title="Automações"
-        description="Cadastro, organização por categoria e preferência de workers."
+        description="Cadastro, organização por categoria e as máquinas preferidas."
       />
       <AutomationsManager />
     </div>

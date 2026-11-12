@@ -88,7 +88,7 @@ class TransporteDireto:
                 texto = resposta.read()
         except urllib.error.HTTPError as exc:
             if exc.code in (400, 401, 403, 404, 409, 413, 415, 422):
-                raise Recusado(f"Portal recusou ({exc.code}): {_motivo(exc)}") from exc
+                raise Recusado(f"Portal recusou ({exc.code}): {_motivo(exc)}", codigo=exc.code) from exc
             raise FalhaDeTransporte(f"Portal respondeu {exc.code}") from exc
         except (urllib.error.URLError, OSError) as exc:
             # Inclui certificado inválido: a conexão não acontece, e o evento fica na fila.

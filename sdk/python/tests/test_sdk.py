@@ -81,6 +81,8 @@ def _tela() -> Image.Image:
 def test_copia_do_contrato_no_sdk_e_identica_a_de_contracts(nome: str) -> None:
     oficial = RAIZ_REPO / "contracts" / "automation-events" / "v1" / nome
     copia = RAIZ_REPO / "sdk" / "python" / "portal_automacoes" / "contrato" / nome
+    if not oficial.is_file():
+        pytest.skip("contracts/ não está ao lado (branch sdk-python, só com o SDK)")
     assert copia.read_bytes() == oficial.read_bytes(), "rode: copie contracts/automation-events/v1/*.schema.json para o SDK"
 
 
@@ -141,11 +143,11 @@ def test_excecao_na_etapa_marca_erro_no_item_e_na_execucao(automacao: Automacao,
 
 
 def test_parada_solicitada_marca_interrompida(automacao: Automacao, transporte: TransporteMemoria) -> None:
-    transporte.comandos_pendentes.append({"protocol_version": "automation-events/1", "command_id": "cmd_1",
-                                          "type": "parar_apos_item", "issued_at": "2026-11-09T14:00:00Z"})
     with pytest.raises(ParadaSolicitada):
         with automacao as a:
             with a.item("5066"):
+                transporte.comandos_pendentes.append({"protocol_version": "automation-events/1", "command_id": "cmd_1",
+                                                      "type": "parar_apos_item", "issued_at": "2026-11-09T14:00:00Z"})
                 with a.etapa("rubricas"):
                     a.verificar_parada()
 

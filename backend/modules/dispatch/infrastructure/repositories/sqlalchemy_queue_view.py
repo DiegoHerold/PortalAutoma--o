@@ -30,7 +30,9 @@ from modules.orchestration.infrastructure.orm.models import (
 )
 
 ATIVAS = ("offered", "accepted", "committed", "preparing", "running", "cancel_requested")
-SINAL_DIRETO = timedelta(seconds=120)
+from modules.dispatch.domain.comunicacao import SEM_COMUNICACAO
+
+SINAL_DIRETO = SEM_COMUNICACAO  # sem sinal por isso, a execução direta é cancelada
 ESCOPO_TELA = "maquina_tela"
 
 

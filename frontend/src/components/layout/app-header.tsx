@@ -36,7 +36,7 @@ export function AppHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur sm:px-6">
+    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/85 px-5 backdrop-blur sm:px-8 lg:px-12">
       <Button variant="ghost" size="icon" className="lg:hidden" onClick={onOpenSidebar} aria-label="Abrir menu">
         <Menu className="h-5 w-5" />
       </Button>

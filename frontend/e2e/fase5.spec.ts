@@ -10,7 +10,7 @@ import { API_DE_TESTE } from "../playwright.config";
  * Itens. A API é simulada só aqui; as telas são imagens sintéticas (e2e/fixtures).
  */
 
-const TELAS = "../docs/fase-5-telas";
+const TELAS = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "../docs/fase-5-telas";
 const IMAGENS: Record<string, Buffer> = {
   img_a: readFileSync(path.join(__dirname, "fixtures", "tela-a.jpg")),
   img_b: readFileSync(path.join(__dirname, "fixtures", "tela-b.jpg")),
@@ -170,18 +170,17 @@ for (const tema of ["light", "dark"] as const) {
   }
 }
 
-test("texto cresce com a tela, na escala de 80%", async ({ page }) => {
+test("texto cresce com a tela na escala legível", async ({ page }) => {
   await preparar(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   await abrir(page, "/dashboard");
   const pequeno = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
   await page.setViewportSize({ width: 1920, height: 1080 });
   const grande = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
-  // 80% da escala anterior: ~13,6px em 1280 e ~15,9px em 1920
-  expect(pequeno).toBeGreaterThanOrEqual(13.5);
-  expect(pequeno).toBeLessThan(14.5);
-  expect(grande).toBeGreaterThan(15.5);
-  expect(grande).toBeLessThan(17);
+  expect(pequeno).toBeGreaterThanOrEqual(15);
+  expect(pequeno).toBeLessThan(15.5);
+  expect(grande).toBeGreaterThan(16.5);
+  expect(grande).toBeLessThan(17.5);
 });
 
 test("central de telas em grade de 4 com o log ao lado", async ({ page }) => {
@@ -278,7 +277,8 @@ test("menu lateral: padrão sem rolagem, administração nas Configurações e i
   await expect(menu.getByRole("link", { name: "Agents" })).toBeVisible();
   await expect(menu.getByRole("link", { name: "Auditoria" })).toHaveCount(0);
   await expect(page.getByText("BY BIASON", { exact: false })).toHaveCount(0);
-  expect(await menu.evaluate((n) => n.scrollHeight <= n.clientHeight)).toBe(true);
+  const tamanhoMenu = await menu.evaluate((n) => ({ conteudo: n.scrollHeight, visivel: n.clientHeight }));
+  expect(tamanhoMenu.conteudo).toBeLessThanOrEqual(tamanhoMenu.visivel);
   await page.screenshot({ path: `${TELAS}/menu-padrao-1366.png`, animations: "disabled" });
 
   await abrir(page, "/settings");
@@ -300,48 +300,71 @@ test("menu lateral: padrão sem rolagem, administração nas Configurações e i
   await expect(menu.getByRole("link", { name: "Auditoria" })).toHaveCount(0);
   await expect(menu.getByRole("link", { name: "Fluxos" })).toBeVisible();
 
-  // recolhido: só ícones, maiores, e ainda sem rolagem
+  // recolhido: só os ícones (do mesmo tamanho) e ainda sem rolagem
   await page.getByRole("button", { name: "Recolher navegação" }).click();
   const icone = await menu.getByRole("link", { name: "Painel" }).locator("svg").boundingBox();
   expect(icone!.width).toBeGreaterThanOrEqual(22);
-  expect(await menu.evaluate((n) => n.scrollHeight <= n.clientHeight)).toBe(true);
+  const tamanhoRecolhido = await menu.evaluate((n) => ({ conteudo: n.scrollHeight, visivel: n.clientHeight }));
+  expect(tamanhoRecolhido.conteudo).toBeLessThanOrEqual(tamanhoRecolhido.visivel);
   await page.locator("aside").screenshot({ path: `${TELAS}/menu-recolhido-1366.png`, animations: "disabled" });
   expect(erros).toEqual([]);
 });
 
-test("menu lateral: arrastar muda a ordem e fica gravada; só o logo no topo", async ({ page }) => {
+test("menu lateral: lista única sem títulos; arrastar para qualquer lugar fica gravado", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   const { erros } = await preparar(page);
   await abrir(page, "/dashboard");
   const menu = page.locator("aside nav");
   const ordemDe = () => menu.locator("[data-item-menu]").evaluateAll((els) => els.map((e) => e.getAttribute("data-item-menu")));
-  const gruposDe = () => menu.locator("[data-grupo]").evaluateAll((els) => els.map((e) => e.getAttribute("data-grupo")));
   await expect(page.locator("aside").getByText("Portal de Automações")).toHaveCount(0);
   await expect(page.locator("aside img[alt='Biason']")).toBeVisible();
+  // sem títulos de categoria (pedido de 12/11/2026)
+  await expect(menu.locator("[data-grupo]")).toHaveCount(0);
+  for (const titulo of ["Monitorar", "Catálogo", "Operação", "Infraestrutura"]) {
+    await expect(menu.getByText(titulo, { exact: true })).toHaveCount(0);
+  }
 
   await menu.locator("[data-item-menu='/historico']").dragTo(menu.locator("[data-item-menu='/dashboard']"));
   expect((await ordemDe()).slice(0, 4)).toEqual(["/historico", "/dashboard", "/fila", "/maquinas"]);
-
-  // item não pula para outra categoria
+  // qualquer item vai para qualquer lugar (não há mais categorias)
   await menu.locator("[data-item-menu='/workers']").dragTo(menu.locator("[data-item-menu='/fila']"));
-  expect((await ordemDe()).slice(0, 4)).toEqual(["/historico", "/dashboard", "/fila", "/maquinas"]);
-
-  await menu.getByText("Catálogo", { exact: true }).dragTo(menu.getByText("Monitorar", { exact: true }));
-  expect(await gruposDe()).toEqual(["Catálogo", "Monitorar", "Operação", "Infraestrutura"]);
+  expect((await ordemDe()).slice(0, 4)).toEqual(["/historico", "/dashboard", "/workers", "/fila"]);
 
   // pelo teclado: Alt+↓ no item focado
   await menu.getByRole("link", { name: "Fila" }).focus();
   await page.keyboard.press("Alt+ArrowDown");
-  expect((await ordemDe()).filter((h) => ["/historico", "/dashboard", "/fila", "/maquinas"].includes(h!))).toEqual(["/historico", "/dashboard", "/maquinas", "/fila"]);
+  expect((await ordemDe()).slice(0, 5)).toEqual(["/historico", "/dashboard", "/workers", "/maquinas", "/fila"]);
   await page.locator("aside").screenshot({ path: `${TELAS}/menu-reordenado.png`, animations: "disabled" });
 
   await abrir(page, "/dashboard");
-  await expect.poll(gruposDe).toEqual(["Catálogo", "Monitorar", "Operação", "Infraestrutura"]);
-  expect((await ordemDe()).filter((h) => ["/historico", "/dashboard", "/fila", "/maquinas"].includes(h!))).toEqual(["/historico", "/dashboard", "/maquinas", "/fila"]);
+  await expect.poll(async () => (await ordemDe()).slice(0, 5)).toEqual(["/historico", "/dashboard", "/workers", "/maquinas", "/fila"]);
 
   await abrir(page, "/settings");
   await page.getByRole("button", { name: "Restaurar padrão" }).click();
-  await expect.poll(gruposDe).toEqual(["Monitorar", "Operação", "Catálogo", "Infraestrutura"]);
-  expect((await ordemDe()).slice(0, 4)).toEqual(["/dashboard", "/fila", "/maquinas", "/historico"]);
+  await expect.poll(async () => (await ordemDe()).slice(0, 4)).toEqual(["/dashboard", "/fila", "/maquinas", "/historico"]);
+  expect(erros).toEqual([]);
+});
+
+test("menu lateral: recolher só esconde o texto; ícones e o B do logo não se mexem", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const { erros } = await preparar(page);
+  await abrir(page, "/dashboard");
+  const menu = page.locator("aside nav");
+  const icone = () => menu.getByRole("link", { name: "Painel" }).locator("svg").boundingBox();
+  const logo = page.getByTestId("logo-menu");
+  const imagem = page.locator("aside img[alt='Biason']");
+  const aberto = { icone: (await icone())!, logo: (await logo.boundingBox())!, imagem: (await imagem.boundingBox())! };
+  await expect(menu.getByText("Painel", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Recolher navegação" }).click();
+  // o nome fica só para leitor de tela (1px), não aparece
+  await expect.poll(async () => (await menu.getByText("Painel", { exact: true }).boundingBox())!.width).toBeLessThanOrEqual(1);
+  await expect.poll(async () => (await logo.boundingBox())!.width).toBeLessThan(aberto.logo.width / 3);
+  const recolhido = { icone: (await icone())!, imagem: (await imagem.boundingBox())! };
+  expect(recolhido.icone.width).toBeCloseTo(aberto.icone.width, 0);  // mesmo tamanho
+  expect(recolhido.icone.x).toBeCloseTo(aberto.icone.x, 0);  // mesmo lugar
+  expect(recolhido.imagem.x).toBeCloseTo(aberto.imagem.x, 0);  // o B não anda
+  expect(recolhido.imagem.height).toBeCloseTo(aberto.imagem.height, 0);
+  await page.locator("aside").screenshot({ path: `${TELAS}/menu-recolhido.png`, animations: "disabled" });
   expect(erros).toEqual([]);
 });

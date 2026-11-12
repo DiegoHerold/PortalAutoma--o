@@ -60,6 +60,27 @@ Etapas e itens são opcionais. Uma automação simples emite só `execucao.inici
 
 ## Comandos
 
+Quem pede: uma pessoa com "Parar e retomar execuções", pelo botão **Parar** do Painel ou do
+Acompanhar (`POST /api/v1/fila/execucoes/{id}/parar` com `modo` `apos_item` ou `agora`). No
+modo direto o Portal grava o comando e a automação o recebe na próxima consulta de
+`/comandos`. O SDK (0.4.0) atende sozinho:
+
+- `parar_apos_item`: o próximo item não começa;
+- `cancelar`: a automação tem 60 s para encerrar (pelo `ao_cancelar` que registrou); depois o SDK
+  a interrompe.
+
+Ver `sdk/python/README.md`. No modo agente, por enquanto só existe `cancelar`, e o Agent
+encerra o processo.
+
+Prazos do Portal, no modo direto (`backend/modules/dispatch/domain/comunicacao.py`):
+
+- 30 s sem nenhum pedido da instância: o Painel mostra "comunicação não está ativa" e quem
+  pediu é avisado;
+- 2 min sem nenhum pedido: a execução é cancelada com erro, a máquina é liberada e o token do
+  job é revogado;
+- cancelamento sem resposta em 2 min: o Painel mostra o erro e oferece **Encerrar no Portal**
+  (`POST /api/v1/fila/execucoes/{id}/encerrar`).
+
 ```json
 {"protocol_version": "automation-events/1", "command_id": "cmd_1", "type": "parar_apos_item", "issued_at": "..."}
 ```
@@ -97,6 +118,21 @@ e `AUTOMATION_EVENTS_TOKEN`. Mensagens em JSON, uma por linha (UTF-8, máximo 64
   `passos/<imagem_id>.jpg` e o envia na hora, pelo mesmo caminho dos artefatos (URL
   temporária por HTTPS, nunca pelo WebSocket). O Portal confere a imagem e gera as três
   medidas. O coletor do fim da execução não reenvia a pasta `passos/`.
+
+## Continuar uma execução cancelada
+
+`POST /api/v1/fila/execucoes/{id}/continuar` cria uma execução nova só com os itens que não
+deram certo (pendentes, interrompidos e com erro). Os itens `ok`, `ignorado` e `atencao` são
+pulados. Cada item entregue leva `retomada`:
+
+```json
+{"chave": "5076", "rotulo": "Filial A", "grupo": "5081", "configuracao": {}, "atributos": {},
+ "retomada": {"execucao_anterior": "exe_...", "situacao_anterior": "cancelado", "etapas_concluidas": ["exportar"]}}
+```
+
+`etapas_concluidas` são as etapas daquele item que terminaram `ok` na execução anterior. A
+automação pode pulá-las se souber retomar dali; se não souber, faz o item inteiro de novo.
+O campo só aparece em execução continuada.
 
 ## Exemplo de retomada
 

@@ -4,14 +4,14 @@
 
 @layer base {
   /*
-   * Identidade Biason (ADR-020): navy da marca, névoa como acento, Barlow no texto
-   * e Barlow Condensed em títulos e números. As cores ficam só aqui; as telas usam
+   * Identidade Biason (ADR-020): navy da marca, névoa como acento e Arial na interface.
+   * As cores ficam só aqui; as telas usam
    * os nomes semânticos (primary, muted, success…) pelo Tailwind.
    */
   :root {
     --radius: 0.625rem;
-    --font-sans: var(--fonte-barlow), "Segoe UI", Arial, Helvetica, sans-serif;
-    --font-display: var(--fonte-barlow-condensada), var(--fonte-barlow), "Segoe UI", Arial, sans-serif;
+    --font-sans: Arial, "Helvetica Neue", Helvetica, sans-serif;
+    --font-display: Arial, "Helvetica Neue", Helvetica, sans-serif;
     --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 
     /* Superfícies — fundo névoa-claro, cartões brancos */
@@ -124,17 +124,17 @@
   /*
    * O portal cresce com a tela (pedido de 10/11/2026: texto pequeno em telas grandes).
    * Tudo no Tailwind é rem, então texto, ícones e espaços crescem juntos:
-   * ~14px até 1280px, ~14px em 1440px, ~16px em 1920px, no máximo 17,6px.
+   * 15px até 1280px, ~15px em 1440px, ~17px em 1920px, no máximo 18px.
    */
   html {
-    /* 80% da escala anterior (pedido de 10/11/2026: "em 80% fica ótimo") */
-    font-size: clamp(13.6px, calc(0.36vw + 9px), 17.6px);
+    font-size: clamp(15px, calc(0.42vw + 9px), 18px);
   }
 
   body {
     @apply bg-background text-foreground antialiased;
     font-size: 1rem;
-    line-height: 1.6;
+    line-height: 1.55;
+    letter-spacing: 0.005em;
   }
 
   h1,
@@ -174,7 +174,7 @@
   .titulo-condensado {
     font-family: var(--font-display);
     font-weight: 600;
-    letter-spacing: 0.01em;
+    letter-spacing: 0;
   }
   /* Faixa de resumo: cartão claro no tema claro; noite em degradê no escuro (como o Comunica) */
   .faixa-noite {

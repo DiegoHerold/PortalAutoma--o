@@ -1,6 +1,7 @@
 /** Formato de `GET /painel`, `/painel/linha-do-tempo` e `/historico` (backend/modules/telemetry/api/painel.py). */
 
 import type { LinhaDeLog, SituacaoImagem } from "@/lib/acompanhar";
+import type { SituacaoDoAgora } from "@/components/painel/controle-da-execucao";
 
 export type ExecucaoAoVivo = {
   execucao_id: string;
@@ -22,6 +23,9 @@ export type ExecucaoAoVivo = {
   progresso: { atual: number; total: number; rotulo: string | null } | null;
   pausa: { motivo: string; detalhe: string | null } | null;
   atencoes: number;
+  /** Por que não está andando (cancelando, parando, pausa, espera, sem sinal); null rodando normal. */
+  situacao?: SituacaoDoAgora | null;
+  pode_controlar?: boolean;
   pode_ver_tela: boolean;
   tela: {
     imagem_id: string;

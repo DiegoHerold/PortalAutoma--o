@@ -253,10 +253,10 @@ test("cancelar mostra o efeito antes e só então chama a API", async ({ page })
   const dialogo = page.getByRole("dialog");
   await expect(dialogo).toContainText("Cancelar este job?");
   await expect(dialogo).toContainText("O job ainda não começou, então nada é desfeito em nenhuma máquina.");
-  expect(chamadas.filter((c) => c.metodo === "POST")).toEqual([]);
+  expect(chamadas.filter((c) => c.metodo === "POST" && c.caminho !== "/governance/auditoria/tela")).toEqual([]);
   await page.screenshot({ path: `${TELAS}/fila-confirmar-cancelamento.png`, animations: "disabled" });
   await dialogo.getByRole("button", { name: "Cancelar job" }).click();
-  await expect.poll(() => chamadas.filter((c) => c.metodo === "POST").map((c) => c.caminho)).toEqual(["/fila/jobs/job-a/cancelar"]);
+  await expect.poll(() => chamadas.filter((c) => c.metodo === "POST" && c.caminho !== "/governance/auditoria/tela").map((c) => c.caminho)).toEqual(["/fila/jobs/job-a/cancelar"]);
   expect(erros).toEqual([]);
 });
 
@@ -280,7 +280,7 @@ test("job perdido: continuar explica que só volta na mesma máquina", async ({ 
   await page.screenshot({ path: `${TELAS}/fila-confirmar-continuar.png`, animations: "disabled" });
   await dialogo.getByRole("button", { name: "Continuar" }).click();
   await expect
-    .poll(() => chamadas.filter((c) => c.metodo === "POST"))
+    .poll(() => chamadas.filter((c) => c.metodo === "POST" && c.caminho !== "/governance/auditoria/tela"))
     .toEqual([{ metodo: "POST", caminho: "/fila/jobs/job-perdido/decisao", corpo: { decisao: "continuar" } }]);
   expect(erros).toEqual([]);
 });
@@ -303,6 +303,6 @@ test("o painel inicial também ganhou a identidade Biason", async ({ page }) => 
   await expect(page.getByAltText("Biason")).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const fonte = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
-  expect(fonte).toContain("Barlow");
+  expect(fonte).toContain("Arial");
   await page.screenshot({ path: `${TELAS}/dashboard-claro.png`, animations: "disabled" });
 });

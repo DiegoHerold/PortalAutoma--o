@@ -11,7 +11,12 @@ class FalhaDeTransporte(RuntimeError):
 
 
 class Recusado(RuntimeError):
-    """O receptor recusou definitivamente (credencial inválida, evento fora do contrato)."""
+    """O receptor recusou definitivamente (credencial inválida, evento fora do contrato).
+    ``codigo``: o status HTTP no modo direto (401/409: o Portal não aceita mais este job)."""
+
+    def __init__(self, mensagem: str = "", codigo: int | None = None) -> None:
+        super().__init__(mensagem)
+        self.codigo = codigo
 
 
 class Transporte(Protocol):

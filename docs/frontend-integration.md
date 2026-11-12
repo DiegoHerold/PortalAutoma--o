@@ -19,7 +19,7 @@ sera feita depois, sem redesenhar as telas.
 | Gatilhos | `/triggers` | Trigger legado | Orchestration | Converter para origem/flow/schedule conforme dominio | Etapa Orchestration |
 | Agendamentos | `/schedules`, `/schedules/calendar` | Schedule legado | Orchestration | Preservar UX, trocar backend para Schedule/ScheduleExecution | Etapa Scheduling |
 | Usuarios, roles, categorias | `/users`, `/roles`, `/categories` | Access atual | Access, Catalog | Reaproveitar auth/permissoes validas | Etapa Access |
-| Auditoria | `/audit` | AuditEntry | Governance | Migrar para AuditEvent | Etapa Governance |
+| Auditoria | `/audit` | AuditEvent (`/governance/auditoria/*`) | Governance | Linha do tempo (12/11/2026) | Ver "Rotas da Auditoria" |
 | GitHub integrations | `/integrations/github/*` | GitHubIntegration/discovery | Catalog infrastructure | Criar porta GitHubSourcePort | Etapa Catalog |
 
 ## Rotas Catalog migradas nesta etapa
@@ -77,8 +77,9 @@ Os tipos TypeScript ficam em `frontend/src/lib/fila.ts` e seguem
 |---|---|---|---|
 | Painel | `GET /painel`, `GET /painel/avisos` (SSE) | `/dashboard` (`components/painel/`) | `ver_execucoes` por automação; tela e log com `ver_telas_e_logs`; `central_de_telas` vê todas (Central de telas) |
 | Linha do tempo | `GET /painel/linha-do-tempo?horas_antes=&horas_depois=` | `/maquinas` | idem; job de automação alheia aparece só como "ocupada" |
-| Histórico | `GET /historico?busca=&automacao=&situacao=&antes=&limite=` | `/historico` | `ver_execucoes` |
-| Tempos por item | `GET /automations/{id}/tempos?item=` | `/historico`, aba "Tempos por item" | `can_view` (já existia) |
+| Histórico | `GET /historico?busca=&automacao=&situacao=&dias=&antes=&limite=` (`dias`: últimos N dias contando hoje, fuso de São Paulo) | `/historico` | `ver_execucoes` |
+| Resumo do período | `GET /historico/resumo?dias=7&automacao=` → `{total, concluidas, com_falha, canceladas, duracao_media_s}` (média só das que deram certo) | `/historico`, faixa do topo | `ver_execucoes` por automação |
+| Quanto tempo leva | `GET /automations/{id}/tempos?item=` e a lista `GET /automations/{id}/itens?limite=500` | `/historico?aba=tempos` | `can_view` (já existia) |
 | Itens | `GET/POST /automations/{id}/itens`, `PUT /automations/{id}/itens/{chave}`, `POST .../{chave}/situacao` | `/automations/[id]/itens` | ver: `executar` ou `editar_itens`; atributos e mudanças: `editar_itens` |
 | Importação | `POST /automations/{id}/itens/importar/previa` (arquivo `empresas.db`), `POST /automations/{id}/itens/importar` | modal "Importar" | `editar_itens` |
 | Pedido | `POST /automations/{id}/itens/pedir-execucao` | barra de pedido nos itens | `executar` |
@@ -86,6 +87,49 @@ Os tipos TypeScript ficam em `frontend/src/lib/fila.ts` e seguem
 
 Nenhuma rota aceita credencial na URL. O `EventSource` do navegador nao manda
 cabecalho, por isso os streams sao lidos por `fetch` (`lib/stream.ts`).
+
+## Parar e continuar (12/11/2026)
+
+| Rota | Uso | Permissao |
+|---|---|---|
+| `POST /fila/execucoes/{id}/parar {modo: apos_item\|agora, motivo?}` | botão Parar (Painel e Acompanhar). Job na fila ou perdido: cancelado na hora. Rodando no modo direto: o comando vai para a automação; `agora` deixa o job em `cancelling`. No modo agente só `agora` (409 para `apos_item`) | concessão `controlar` |
+| `POST /fila/execucoes/{id}/encerrar` | botão "Encerrar no Portal": só quando o cancelamento ficou 2 min sem resposta (409 antes); job cancelado com erro, máquina liberada, token revogado | concessão `controlar` |
+| `GET /fila/execucoes/{id}/continuar` | prévia: `{pode, motivo, refazer[], pular, sem_itens, continuada_em}` | `ver_execucoes` |
+| `POST /fila/execucoes/{id}/continuar` | execução nova só com o que não deu certo; responde `{execution_id, itens, pulados}` | concessão `controlar` |
+
+Campos novos nas leituras:
+
+- `GET /painel`: cada execução tem `situacao` e `pode_controlar`.
+  - Os tipos de `situacao` são, nesta ordem: `cancelamento_sem_resposta`, `sem_comunicacao`, `cancelando`, `parando`, `pausa`, `espera`, `sem_sinal`.
+  - `sem_comunicacao` (modo direto) aparece com 30 s sem nenhum pedido da instância e traz `cancela_em`.
+  - `situacao` é `null` quando roda normal; senão `{tipo: cancelando|parando|pausa|espera|sem_sinal, desde, ...}`.
+  - "Sem sinal" aparece depois de 10 minutos sem nenhum evento da automação.
+  - O Painel também mostra os jobs em `cancelling`.
+- `GET /painel/recentes`: `pode_controlar` e `ultima.continuada_em`.
+- `GET /execucoes/{id}/acompanhar`: `situacao`, `execucao.continua_de` e `execucao.continuada_em`.
+
+## Rotas da Auditoria (12/11/2026)
+
+| Rota | Uso | Permissao |
+|---|---|---|
+| `GET /governance/auditoria/eventos?de=&ate=&usuario=&tipo=&acao=&recurso_tipo=&recurso_id=&correlacao=&busca=&tecnicos=&antes=&limite=` | linha do tempo; `cursor` para "Carregar mais" | `audit.read` |
+| `GET /governance/auditoria/grupos?por=dia\|usuario\|acao&...` | total de cada grupo (mesmos filtros) | `audit.read` |
+| `GET /governance/auditoria/pessoas` | quem aparece no filtro de pessoa | `audit.read` |
+| `POST /governance/auditoria/tela {caminho, titulo}` | anota a tela aberta (`components/layout/registro-de-telas.tsx`); só o caminho, sem `?`; a mesma tela em 2 min conta uma vez | qualquer pessoa logada |
+
+O que fica registrado:
+
+- Toda alteração feita por uma pessoa (POST, PUT, PATCH, DELETE na API) vira um evento
+  `api.<metodo>` com rota, resposta e duração, pelo middleware
+  `modules/governance/api/registro_de_requisicoes.py`. Ficam fora: o login (já tem
+  evento próprio) e o que vem de Agent, automação direta e gateway.
+- Cada requisição tem um número de correlação (`x-request-id`). Os eventos de negócio
+  da mesma requisição recebem o mesmo número, e assim "Na mesma ação" junta tudo o que
+  um clique fez.
+- O registro técnico `api.*` some da linha do tempo quando a mesma requisição já tem um
+  evento de negócio. Ele aparece em "Na mesma ação", em "Do item" e com `tecnicos=true`.
+- O login guarda o número da pessoa, e não o e-mail. Os registros antigos, que guardavam o
+  e-mail, continuam aparecendo na pessoa certa.
 
 ## Rotas de Notificações e Retenção (Fase 6)
 

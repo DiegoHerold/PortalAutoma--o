@@ -1,6 +1,6 @@
 [project]
 name = "portal-automacoes-sdk"
-version = "0.3.0"
+version = "0.4.0"
 description = "SDK para automações emitirem eventos ao Portal de Automações, pelo Agent local ou direto ao Portal"
 readme = "README.md"
 requires-python = ">=3.10"
