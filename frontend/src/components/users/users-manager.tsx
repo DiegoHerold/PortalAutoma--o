@@ -19,11 +19,14 @@ import { apiRequest } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types/user";
 import type { Role } from "@/types/role";
-import type { Category } from "@/types/category";
 import type { TeamResponse } from "@/types/access";
+import { ResumoDeAcesso } from "@/components/users/resumo-de-acesso";
 
-const PERMS = ["can_view", "can_execute", "can_create", "can_edit", "can_delete", "can_approve"] as const;
-type Perm = (typeof PERMS)[number];
+/*
+ * Usuários (12/11/2026, etapa 3): cada pessoa tem UM papel (quais telas) e os TIMES dela (em quais
+ * automações). Permissão por categoria não fica mais na pessoa: fica no time.
+ */
+type TimeDaPessoa = { id: number; nome: string; ativo: boolean };
 
 const emptyForm = { name: "", email: "", password: "", role_id: "", is_active: true, times: [] as number[] };
 
@@ -32,17 +35,16 @@ export function UsersManager() {
   const { toast } = useToast();
   const users = useApi<User[]>("/users");
   const roles = useApi<Role[]>("/roles");
-  const categories = useApi<Category[]>("/categories");
   const teams = useApi<TeamResponse[]>("/teams");
+  const timesDasPessoas = useApi<{ times: Record<string, TimeDaPessoa[]> }>("/acesso/pessoas");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [draft, setDraft] = useState<User[] | null>(null);
   const [editing, setEditing] = useState<User | null>(null);
   const [form, setForm] = useState(emptyForm);
 
-  const list = draft ?? users.data ?? [];
+  const list = users.data ?? [];
 
   function openCreate() {
     setEditing(null);
@@ -90,8 +92,7 @@ export function UsersManager() {
       setForm(emptyForm);
       setEditing(null);
       setModalOpen(false);
-      await users.refetch();
-      setDraft(null);
+      await Promise.all([users.refetch(), timesDasPessoas.refetch()]);
     } catch (err) {
       toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
@@ -106,71 +107,8 @@ export function UsersManager() {
       await apiRequest<void>(`/users/${user.id}`, { method: "DELETE", token });
       toast({ title: "Usuário apagado", kind: "success" });
       await users.refetch();
-      setDraft(null);
     } catch (err) {
       toast({ title: "Falha ao apagar", description: err instanceof Error ? err.message : undefined, kind: "error" });
-    }
-  }
-
-  function toggle(userId: number, categoryId: number, field: Perm) {
-    setDraft((prev) => {
-      const base = prev ?? users.data ?? [];
-      return base.map((u) => {
-        if (u.id !== userId) return u;
-        const existing = u.category_permissions.find((p) => p.category_id === categoryId);
-        if (existing) {
-          return {
-            ...u,
-            category_permissions: u.category_permissions.map((p) =>
-              p.category_id === categoryId ? { ...p, [field]: !p[field] } : p,
-            ),
-          };
-        }
-        return {
-          ...u,
-          category_permissions: [
-            ...u.category_permissions,
-            {
-              category_id: categoryId,
-              can_view: field === "can_view",
-              can_execute: field === "can_execute",
-              can_create: field === "can_create",
-              can_edit: field === "can_edit",
-              can_delete: field === "can_delete",
-              can_approve: field === "can_approve",
-            },
-          ],
-        };
-      });
-    });
-  }
-
-  async function savePermissions(user: User) {
-    if (!token) return;
-    try {
-      await apiRequest<User>(`/users/${user.id}/permissions`, {
-        method: "PUT",
-        token,
-        body: JSON.stringify({
-          permissions: (categories.data ?? []).map((c) => {
-            const p = user.category_permissions.find((x) => x.category_id === c.id);
-            return {
-              category_id: c.id,
-              can_view: p?.can_view ?? false,
-              can_execute: p?.can_execute ?? false,
-              can_create: p?.can_create ?? false,
-              can_edit: p?.can_edit ?? false,
-              can_delete: p?.can_delete ?? false,
-              can_approve: p?.can_approve ?? false,
-            };
-          }),
-        }),
-      });
-      toast({ title: "Permissões salvas", kind: "success" });
-      await users.refetch();
-      setDraft(null);
-    } catch (err) {
-      toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     }
   }
 
@@ -178,7 +116,7 @@ export function UsersManager() {
     <div className="space-y-5">
       <div className="flex justify-end">
         <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" /> Novo usuario
+          <Plus className="h-4 w-4" /> Novo usuário
         </Button>
       </div>
 
@@ -196,6 +134,7 @@ export function UsersManager() {
                 <TH>Nome</TH>
                 <TH>E-mail</TH>
                 <TH>Papel</TH>
+                <TH>Times</TH>
                 <TH>Status</TH>
                 <TH className="text-right">Ações</TH>
               </TR>
@@ -210,6 +149,16 @@ export function UsersManager() {
                       <Badge tone="primary">{user.role.name}</Badge>
                     </TD>
                     <TD>
+                      <div className="flex flex-wrap gap-1" data-testid="times-da-pessoa">
+                        {(timesDasPessoas.data?.times?.[String(user.id)] ?? []).map((t) => (
+                          <Badge key={t.id} tone={t.ativo ? "outline" : "neutral"}>{t.nome}</Badge>
+                        ))}
+                        {(timesDasPessoas.data?.times?.[String(user.id)] ?? []).length === 0 && (
+                          <span className="text-sm text-muted-foreground">nenhum</span>
+                        )}
+                      </div>
+                    </TD>
+                    <TD>
                       <Badge tone={user.is_active ? "success" : "neutral"}>{user.is_active ? "Ativo" : "Inativo"}</Badge>
                     </TD>
                     <TD>
@@ -218,7 +167,7 @@ export function UsersManager() {
                           variant="ghost"
                           size="icon"
                           onClick={() => setExpanded(expanded === user.id ? null : user.id)}
-                          title="Permissões"
+                          title="O que acessa" aria-label={`O que ${user.name} acessa`}
                         >
                           <ShieldCheck className="h-4 w-4" />
                           <ChevronDown className={cn("h-3 w-3 transition-transform", expanded === user.id && "rotate-180")} />
@@ -234,35 +183,8 @@ export function UsersManager() {
                   </TR>
                   {expanded === user.id && (
                     <TR className="hover:bg-transparent">
-                      <TD colSpan={5} className="bg-muted/30">
-                        <div className="space-y-3 py-1">
-                          {(categories.data ?? []).map((category) => {
-                            const perm = user.category_permissions.find((p) => p.category_id === category.id);
-                            return (
-                              <div key={category.id} className="rounded-md border border-border bg-card p-3">
-                                <p className="text-sm font-medium">{category.name}</p>
-                                <div className="mt-2 flex flex-wrap gap-3">
-                                  {PERMS.map((field) => (
-                                    <label key={field} className="flex items-center gap-1.5 text-xs">
-                                      <input
-                                        type="checkbox"
-                                        checked={perm?.[field] ?? false}
-                                        onChange={() => toggle(user.id, category.id, field)}
-                                        className="h-3.5 w-3.5 accent-primary"
-                                      />
-                                      {field.replace("can_", "")}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                          <div className="flex justify-end">
-                            <Button size="sm" onClick={() => savePermissions(user)}>
-                              Salvar permissões
-                            </Button>
-                          </div>
-                        </div>
+                      <TD colSpan={6} className="bg-muted/30">
+                        <ResumoDeAcesso userId={user.id} />
                       </TD>
                     </TR>
                   )}
@@ -305,7 +227,7 @@ export function UsersManager() {
             <Input id="u-pass" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           </Field>
           <Field>
-            <Label htmlFor="u-role">Papel</Label>
+            <Label htmlFor="u-role">Papel <span className="font-normal text-muted-foreground">— quais telas a pessoa usa</span></Label>
             <Select id="u-role" value={form.role_id} onChange={(e) => setForm({ ...form, role_id: e.target.value })}>
               <option value="">Selecione...</option>
               {roles.data?.map((r) => (
@@ -318,7 +240,7 @@ export function UsersManager() {
           {(teams.data ?? []).length > 0 && (
             <fieldset className="space-y-2" data-testid="times-do-usuario">
               <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Times</legend>
-              <p className="text-xs text-muted-foreground">A pessoa ganha as permissões dos times ativos em que estiver.</p>
+              <p className="text-xs text-muted-foreground">Em quais automações a pessoa trabalha: ela ganha o que os times ativos dão.</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {(teams.data ?? []).map((t) => (
                   <label key={t.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
@@ -338,7 +260,7 @@ export function UsersManager() {
               onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
               className="h-4 w-4 accent-primary"
             />
-            Usuario ativo
+            Usuário ativo
           </label>
         </div>
       </Modal>

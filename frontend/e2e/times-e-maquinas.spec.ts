@@ -101,6 +101,15 @@ async function preparar(page: Page) {
     }
     if (caminho === "/users/2" && req.method() === "PUT") return json({ id: 2, name: "Ana de Teste", email: "ana@teste.invalid", is_active: true,
       role: { id: 3, name: "Operador", slug: "operator", permissions: [] }, category_permissions: [] });
+    if (caminho === "/acesso/pessoas") return json({ times: { "2": [{ id: 4, nome: "Folha", ativo: true }] } });
+    if (caminho === "/acesso/pessoas/2") return json({
+      pessoa: { id: 2, nome: "Ana de Teste", email: "ana@teste.invalid" },
+      papel: { id: 3, nome: "Operador", slug: "operator", telas: [
+        { chave: "painel", nome: "Painel", grupo: "Monitorar", nivel: "ver" }, { chave: "fila", nome: "Fila", grupo: "Monitorar", nivel: "gerenciar" },
+        { chave: "historico", nome: "Histórico", grupo: "Monitorar", nivel: "ver" }] },
+      times: [{ id: 4, nome: "Folha", ativo: true, categorias: [{ categoria: "Folha", ver: true, executar: true, editar: false, publicar: false }],
+                automacoes: [{ automation_id: 7, automacao: "Integração Contábil · Folha", acoes: ["ver_telas_e_logs"] }] }],
+      excecoes: [{ automation_id: 9, automacao: "Conferência de guias", acoes: ["controlar"] }], permissoes_soltas: false });
     if (caminho === "/users/2/times" && req.method() === "GET") return json({ times: [{ id: 4, nome: "Folha", situacao: "active" }] });
     if (/^\/users\/\d+\/times$/.test(caminho)) return json({ times: [] });
     if (caminho === "/notificacoes") return json({ avisos: [], nao_lidas: 0 });
@@ -163,9 +172,12 @@ test("time: membros, permissões por categoria e por automação", async ({ page
 
   await painel.getByLabel("Executar Fiscal").check();
   await expect(painel.getByLabel("Ver Fiscal")).toBeChecked();  // quem executa vê
+  await painel.getByLabel("Editar Folha").check();  // editar = criar, editar e apagar o cadastro
   await painel.getByTestId("time-categorias").locator("..").getByRole("button", { name: "Salvar" }).click();
+  const sem = { can_create: false, can_edit: false, can_delete: false, can_approve: false };
   await expect.poll(() => pedidos.find((p) => p.caminho === "/teams/4/categorias")?.corpo).toEqual({ categorias: [
-    { category_id: 1, can_view: true, can_execute: false }, { category_id: 2, can_view: true, can_execute: true }] });
+    { category_id: 1, can_view: true, can_execute: false, can_create: true, can_edit: true, can_delete: true, can_approve: false },
+    { category_id: 2, can_view: true, can_execute: true, ...sem }] });
 
   await painel.getByLabel("Ver telas e logs em Integração Contábil · Folha").check();
   await expect.poll(() => pedidos.filter((p) => p.caminho === "/automations/7/acessos").at(-1)?.corpo)
@@ -175,6 +187,28 @@ test("time: membros, permissões por categoria e por automação", async ({ page
   await expect(painel.getByTestId("time-automacoes").getByText("Conferência de guias")).toBeVisible();
   await page.screenshot({ path: `${TELAS}/time-membros-e-permissoes.png`, fullPage: true, animations: "disabled" });
   expect(pedidos.filter((p) => p.caminho === "/automations/9/acessos").map((p) => p.corpo)).toEqual([{ team_id: 4, acoes: ["ver_execucoes"] }]);
+  expect(erros).toEqual([]);
+});
+
+test("usuário: a lista mostra os times e o que a pessoa acessa (telas, automações e exceções)", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const { pedidos, erros } = await preparar(page);
+  await abrir(page, "/users");
+  const linhas = page.getByTestId("times-da-pessoa");
+  await expect(linhas.nth(0)).toContainText("Folha");
+  await expect(linhas.nth(1)).toContainText("nenhum");
+  await page.getByRole("button", { name: "O que Ana de Teste acessa" }).click();
+  const resumo = page.getByTestId("resumo-de-acesso");
+  await expect(resumo).toContainText("Pelo papel Operador");
+  await expect(resumo).toContainText("Vê e altera: Fila");
+  await expect(resumo).toContainText("Só vê: Painel, Histórico");
+  await expect(resumo).toContainText("Folha: ver, executar");
+  await expect(resumo).toContainText("Integração Contábil · Folha: ver telas e logs");
+  await expect(resumo).toContainText("Conferência de guias: parar e retomar");
+  // O editor antigo de permissões soltas saiu.
+  await expect(page.getByText("Salvar permissões")).toHaveCount(0);
+  expect(pedidos.some((p) => p.caminho.endsWith("/permissions"))).toBe(false);
+  await page.screenshot({ path: `${TELAS}/usuario-o-que-acessa.png`, fullPage: true, animations: "disabled" });
   expect(erros).toEqual([]);
 });
 

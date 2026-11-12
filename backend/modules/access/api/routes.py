@@ -50,7 +50,6 @@ from modules.access.application.use_cases import (
     UpdateServiceAccount,
     UpdateTeam,
     UpdateUser,
-    UpdateUserPermissions,
 )
 from modules.access.domain import AccessConflict, AccessResourceNotFound, AuthenticationFailed, AuthorizationDenied
 from modules.access.infrastructure.adapters import build_access_adapters
@@ -126,18 +125,10 @@ def update_user_permissions(
     db: Session = Depends(get_db),
     user: Any = Depends(get_current_user),
 ) -> UserResponse:
-    adapters = build_access_adapters(db)
-    try:
-        result = UpdateUserPermissions(adapters.access, adapters.audit, adapters.transaction).execute(
-            user,
-            user_id,
-            [item.model_dump() for item in payload.permissions],
-        )
-    except AuthorizationDenied as exc:
-        raise http_error(status.HTTP_403_FORBIDDEN, "PERMISSION_DENIED", str(exc)) from exc
-    except AccessResourceNotFound as exc:
-        raise http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc)) from exc
-    return UserResponse(**to_payload(result))
+    """Desligada em 12/11/2026: o acesso às automações de uma categoria fica no time (Times), não
+    solto na pessoa. Ver ``domain/times.py`` e a migration ``b2c3d4e5f6a8``."""
+    raise http_error(status.HTTP_410_GONE, "GONE",
+                     "As permissões por categoria ficam nos times: ponha a pessoa num time em Times.")
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

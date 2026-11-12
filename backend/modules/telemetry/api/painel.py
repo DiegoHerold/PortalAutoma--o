@@ -21,7 +21,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from infrastructure.database import get_db, get_session_factory
-from modules.access.api.authorization import acesso_por_automacao
+from modules.access.api.authorization import acesso_por_automacao, precisa
 from modules.access.api.dependencies import get_current_user
 from modules.access.application.use_cases import PermissionChecker
 from modules.access.domain.concessao import CENTRAL_DE_TELAS, CONTROLAR, EXECUTAR, VER_EXECUCOES, VER_TELAS_E_LOGS
@@ -107,7 +107,7 @@ def _fila(db: Session, agora: datetime) -> dict[str, Any]:
     return build_fila(db).ver.execute(agora)
 
 
-@router.get("/painel")
+@router.get("/painel", dependencies=[Depends(precisa("painel.ver"))])
 def painel(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     agora = _agora()
     permissoes = _Permissoes(db, user)
@@ -174,7 +174,7 @@ def painel(db: Session = Depends(get_db), user: Any = Depends(get_current_user))
     }
 
 
-@router.get("/painel/linha-do-tempo")
+@router.get("/painel/linha-do-tempo", dependencies=[Depends(precisa("maquinas.ver", "painel.ver"))])
 def linha_do_tempo(horas_antes: int = Query(default=6, ge=1, le=48), horas_depois: int = Query(default=6, ge=1, le=48),
                    db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     agora = _agora()
@@ -209,7 +209,7 @@ def linha_do_tempo(horas_antes: int = Query(default=6, ge=1, le=48), horas_depoi
             "marcas": marcas(inicio, fim), "maquinas": montar(leitor.maquinas(), blocos, inicio, fim, agora)}
 
 
-@router.get("/historico")
+@router.get("/historico", dependencies=[Depends(precisa("historico.ver", "automacoes.ver"))])
 def historico(busca: str | None = Query(default=None, max_length=120), automacao: int | None = None,
               situacao: str | None = Query(default=None, max_length=30), antes: str | None = None,
               dias: int | None = Query(default=None, ge=1, le=3650), limite: int = Query(default=30, ge=1, le=100),
@@ -224,7 +224,7 @@ def historico(busca: str | None = Query(default=None, max_length=120), automacao
     return {"execucoes": [l for l in linhas if permissoes.pode(l["automation_id"], VER_EXECUCOES)], "cursor": cursor}
 
 
-@router.get("/painel/recentes")
+@router.get("/painel/recentes", dependencies=[Depends(precisa("painel.ver"))])
 def recentes(maquina: str | None = Query(default=None, max_length=80), limite: int = Query(default=3, ge=1, le=12),
              db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     """Uma linha por automação (a execução mais recente dela), só das que a pessoa vê."""
@@ -246,7 +246,7 @@ def recentes(maquina: str | None = Query(default=None, max_length=80), limite: i
     return {"automacoes": automacoes, "maquinas": [{"id": i, "nome": n} for i, n in leitor.maquinas()]}
 
 
-@router.get("/painel/executaveis")
+@router.get("/painel/executaveis", dependencies=[Depends(precisa("painel.ver"))])
 def executaveis(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     """Para o botão "Executar automação" do Painel: só o que a pessoa pode executar."""
     acesso = acesso_por_automacao(db)
@@ -263,7 +263,7 @@ def _desde(dias: int | None) -> datetime | None:
     return hoje - timedelta(days=dias - 1)
 
 
-@router.get("/historico/resumo")
+@router.get("/historico/resumo", dependencies=[Depends(precisa("historico.ver", "automacoes.ver"))])
 def resumo_do_historico(dias: int | None = Query(default=7, ge=1, le=3650), automacao: int | None = None,
                         db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     """Quantas execuções terminaram no período, quantas deram certo, falharam ou pararam, e o tempo médio."""

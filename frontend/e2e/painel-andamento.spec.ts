@@ -45,7 +45,7 @@ async function preparar(page: Page, vazio = false) {
     const caminho = url.pathname.replace("/api/v1", "");
     pedidos.push(caminho + url.search);
     const json = (b: unknown) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(b) });
-    if (caminho === "/auth/me") return json({ id: 1, email: "ti@teste.invalid", name: "TI Biason", role: "operator", permissions: [], rbac_permissions: [] });
+    if (caminho === "/auth/me") return json({ id: 1, email: "ti@teste.invalid", name: "TI Biason", role: "operator", permissions: [], rbac_permissions: ["painel.ver", "fila.ver", "fila.gerenciar", "maquinas.ver", "historico.ver", "execucoes.ver", "automacoes.ver", "categorias.ver"] });
     if (caminho.endsWith("/avisos")) return route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: pronto\ndata: {}\n\n" });
     if (caminho === "/painel") return json({
       gerado_em: em(0), central: false, fila: { esperando: 1, perdidos: 1, termina_em: null, sem_previsao: 0 },

@@ -1,6 +1,6 @@
 """Retenção por automação (Fase 6): ver e definir os dias de imagens, de logs e (Fase 8) de arquivos.
 
-Só quem tem ``admin.system``, como as políticas de retenção. Sem prazo, nada é apagado.
+Só quem tem a funcionalidade Retenção (ver ou gerenciar). Sem prazo, nada é apagado.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class PrazoDaAutomacao(BaseModel):
 def listar(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     from modules.catalog.infrastructure.orm.models import CatalogAutomationRecord
 
-    _ensure(db, user, "admin.system")
+    _ensure(db, user, "retencao.ver")
     prazos = SqlAlchemyRetencaoPorAutomacao(db).todas()
     automacoes = db.execute(select(CatalogAutomationRecord.id, CatalogAutomationRecord.name)
                             .order_by(CatalogAutomationRecord.name)).all()
@@ -51,7 +51,7 @@ def definir(automation_id: int, corpo: PrazoDaAutomacao, db: Session = Depends(g
             user: Any = Depends(get_current_user)) -> dict[str, Any]:
     from modules.catalog.infrastructure.orm.models import CatalogAutomationRecord
 
-    _ensure(db, user, "admin.system")
+    _ensure(db, user, "retencao.gerenciar")
     if db.get(CatalogAutomationRecord, automation_id) is None:
         raise http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", "Automação não encontrada.")
     g = build_governance_adapters(db)

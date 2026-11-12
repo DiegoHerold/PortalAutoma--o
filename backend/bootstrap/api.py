@@ -24,6 +24,7 @@ from modules.catalog.api.routes import router as catalog_module_router
 from modules.dispatch.api.routes import router as dispatch_module_router
 from gateway.direct_gateway.instancias import router as instancias_diretas_router
 from modules.access.api.concessoes import router as concessoes_router
+from modules.access.api.acesso_da_pessoa import router as acesso_da_pessoa_router
 from modules.access.api.papeis import router as papeis_router
 from modules.access.api.times import router as times_router
 from modules.fleet.api.instancias_diretas import router as admin_instancias_router
@@ -147,6 +148,7 @@ def register_execution_routes(router: APIRouter) -> None:
     router.include_router(concessoes_router)
     router.include_router(times_router)
     router.include_router(papeis_router)
+    router.include_router(acesso_da_pessoa_router)
     router.include_router(instancias_diretas_router)
     router.include_router(admin_instancias_router)
     router.include_router(telemetry_module_router, tags=["telemetry"])

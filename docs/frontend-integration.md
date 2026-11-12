@@ -108,23 +108,64 @@ Campos novos nas leituras:
 - `GET /painel/recentes`: `pode_controlar` e `ultima.continuada_em`.
 - `GET /execucoes/{id}/acompanhar`: `situacao`, `execucao.continua_de` e `execucao.continuada_em`.
 
-## Papéis globais e Painel (12/11/2026)
+## Papéis, funcionalidades e Painel (12/11/2026)
 
-| Rota | Uso | Permissao |
+O acesso fica separado assim:
+
+| Camada | Responde | Onde se configura |
 |---|---|---|
-| `GET /papeis` | `{papeis: [{id, nome, slug, descricao, sistema, pessoas, abas, pode_mudar_abas, pode_apagar}], pode_editar}` | admin ou `admin.roles` |
-| `GET /papeis/abas` | as abas que dá para ligar e desligar (`backend/modules/access/domain/abas.py`) | admin ou `admin.roles` |
-| `POST /papeis {nome, descricao?, abas?, baseado_em?}` | cria o papel; `baseado_em` copia as permissões e as abas | só admin |
-| `PUT /papeis/{id} {nome?, descricao?, abas?}` | ligar uma aba dá a leitura dela; o Admin não muda de abas | só admin |
-| `DELETE /papeis/{id}?substituto=` | os papéis do sistema não podem ser apagados; um papel com pessoas exige o substituto | só admin |
+| **Papel** | Quais telas a pessoa usa | Papéis: tabela de funcionalidades com **—**, **Ver** ou **Gerenciar** |
+| **Time** | Em quais automações ela trabalha | Times: categorias e ações (ver, executar, parar...) |
+| **Usuário** | Quem é | Usuários: um papel e os times |
+| **Automação** | Exceções | Automação, aba Acessos |
 
-- `GET /auth/me` traz `abas` (null = todas). O menu, a busca (Ctrl+K) e a tela usam `podeVerAba`
-  (`lib/permissions.ts`), e uma aba desligada mostra "Sem acesso" mesmo aberta pelo link.
-- Na API, as permissões só de uma aba desligada deixam de valer (Agendamentos, Runtimes,
-  Auditoria, Segredos, Usuários, Papéis). As abas que dividem `execution.read` são bloqueadas na
-  tela.
-- `GET /painel` traz `aguardando: {fila, perdidos}`: jobs esperando máquina e jobs perdidos, só das
-  automações que a pessoa vê.
+- **Funcionalidades:** são as 22 do menu, em `backend/modules/access/domain/funcionalidades.py`.
+  - Cada nível dá a chave própria da área (`historico.ver`, `usuarios.gerenciar`...) e as permissões técnicas que ela já usava.
+  - `GET /auth/me` traz essas chaves em `rbac_permissions`.
+  - O menu, a busca (Ctrl+K) e a guarda das telas usam `podeVer` e `podeGerenciar` (`lib/permissions.ts`), com `funcionalidade` em cada item de `lib/navigation.ts`.
+  - Sem o Painel, a entrada vai para a primeira tela do papel.
+- **API:** as checagens "admin ou gestor" e `admin.system` viraram chaves de funcionalidade:
+  - Usuários, Times, Organizações e Contas de serviço;
+  - Limites e Retenção;
+  - Categorias (gerenciar) e Automações (importar, GitHub, acessos);
+  - Máquinas (gerenciar).
+- **Rotas de acompanhamento** liberadas pelo papel:
+  - `/painel` exige `painel.ver`;
+  - `/painel/linha-do-tempo` exige `maquinas.ver` ou `painel.ver`;
+  - `/historico` exige `historico.ver` ou `automacoes.ver`;
+  - `GET /fila` exige `fila.ver` ou `automacoes.ver`;
+  - as ações da Fila exigem `fila.gerenciar`.
+- **Papéis de antes** (sem tabela salva): o nível é deduzido das permissões gravadas e do nome do papel. Ninguém ganhou nem perdeu acesso.
+
+| Rota | Uso | Permissão |
+|---|---|---|
+| `GET /papeis` | `{papeis: [{id, nome, slug, descricao, sistema, pessoas, funcionalidades, editavel, pode_apagar}], pode_editar}` | admin ou `papeis.ver` |
+| `GET /papeis/funcionalidades` | o catálogo: `{chave, nome, grupo, href, niveis, o_que_gerenciar}` | admin ou `papeis.ver` |
+| `POST /papeis {nome, descricao?, funcionalidades?, baseado_em?}` | sem base, o papel começa só com o Painel | só admin |
+| `PUT /papeis/{id} {nome?, descricao?, funcionalidades?}` | `{"historico": "ver", "auditoria": null}`; o Admin não muda | só admin |
+| `DELETE /papeis/{id}?substituto=` | os papéis do sistema não são apagados; um papel com pessoas exige o substituto | só admin |
+
+**Times (etapa 2):**
+- `PUT /teams/{id}/categorias` aceita `can_view`, `can_execute`, `can_edit` (que vale pelas três de cadastro: criar, editar e apagar), `can_approve` (publicar) e, se precisar separar, `can_create` e `can_delete`. Quem executa, edita ou publica também vê.
+- A migration `b2c3d4e5f6a8` passou as permissões por categoria que estavam direto em cada pessoa para times "Acessos de \<nome\>". Pessoas com o mesmo conjunto ficaram no mesmo time. Ninguém ganhou nem perdeu acesso.
+- O admin padrão não ganha mais permissões soltas na inicialização.
+
+**Usuários (etapa 3):**
+- `GET /acesso/pessoas`: os times de cada pessoa, para a coluna Times.
+- `GET /acesso/pessoas/{id}`: o resumo de acesso, com `papel.telas` (funcionalidade e nível), `times` (categorias e concessões de cada time), `excecoes` (concessões direto na pessoa) e `permissoes_soltas`. Exige `usuarios.ver`.
+- O formulário de usuário tem só papel e times.
+- `PUT /users/{id}/permissions` responde **410**: permissão por categoria não fica mais na pessoa.
+
+**Funcionalidade nova:**
+1. Acrescente uma `Funcionalidade` em `FUNCIONALIDADES` (backend).
+2. Proteja as rotas com `precisa("<chave>.ver")` ou `precisa("<chave>.gerenciar")` (`modules/access/api/authorization.py`).
+3. Ponha `funcionalidade: "<chave>"` no item do menu.
+
+Ela aparece na tabela de Papéis com "—" em todos os papéis menos o Admin.
+
+`GET /painel` traz `aguardando: {fila, perdidos}`: os jobs esperando máquina e os perdidos, só das automações que a pessoa vê.
+
+**Sessão vencida:** o login vale 60 minutos. Um 401 com token dispara `portal:sessao-expirada` (`lib/api.ts`): o AuthProvider sai, a tela de login avisa e, depois de entrar, volta para onde a pessoa estava.
 
 ## Rotas da Auditoria (12/11/2026)
 

@@ -134,7 +134,6 @@ class GetAuthenticatedUser:
             organization_id=user.organization_id,
             permissions=efetivas(user.category_permissions, self.access.categorias_pelos_times(user.id)),
             rbac_permissions=user.permissions,
-            abas=self.access.abas_do_papel(user.role.id) if hasattr(self.access, "abas_do_papel") else None,
         )
 
 
@@ -143,7 +142,7 @@ class ListUsers:
         self.access = access
 
     def execute(self, actor: Any) -> list[UserDTO]:
-        PermissionChecker(self.access).ensure_admin_or_manager(actor)
+        PermissionChecker(self.access).ensure_permission(actor, "usuarios.ver")
         return self.access.list_users()
 
 
@@ -155,7 +154,7 @@ class CreateUser:
         self.transaction = transaction
 
     def execute(self, actor: Any, payload: dict[str, Any]) -> UserDTO:
-        PermissionChecker(self.access).ensure_admin_or_manager(actor)
+        PermissionChecker(self.access).ensure_permission(actor, "usuarios.gerenciar")
         email = normalize_email(payload["email"])
         if self.access.get_user_by_email(email) is not None:
             raise AccessConflict("User email already exists.")
@@ -184,7 +183,7 @@ class UpdateUser:
         self.transaction = transaction
 
     def execute(self, actor: Any, user_id: int, payload: dict[str, Any]) -> UserDTO:
-        PermissionChecker(self.access).ensure_admin_or_manager(actor)
+        PermissionChecker(self.access).ensure_permission(actor, "usuarios.gerenciar")
         current = self.access.get_user(user_id)
         if current is None:
             raise AccessResourceNotFound("User not found.")
@@ -212,7 +211,7 @@ class UpdateUserPermissions:
         self.transaction = transaction
 
     def execute(self, actor: Any, user_id: int, permissions: list[dict[str, Any]]) -> UserDTO:
-        PermissionChecker(self.access).ensure_admin_or_manager(actor)
+        PermissionChecker(self.access).ensure_permission(actor, "usuarios.gerenciar")
         if self.access.get_user(user_id) is None:
             raise AccessResourceNotFound("User not found.")
         updated = self.access.set_user_permissions(user_id, permissions)
@@ -228,7 +227,7 @@ class DeleteUser:
         self.transaction = transaction
 
     def execute(self, actor: Any, user_id: int) -> None:
-        PermissionChecker(self.access).ensure_admin_or_manager(actor)
+        PermissionChecker(self.access).ensure_permission(actor, "usuarios.gerenciar")
         actor_id = int(getattr(actor, "id"))
         if actor_id == user_id:
             raise AccessConflict("You cannot delete your own user.")
@@ -268,7 +267,7 @@ class ListOrganizations:
         self.access = access
 
     def execute(self, actor: Any) -> list:
-        PermissionChecker(self.access).ensure_admin_or_manager(actor)
+        PermissionChecker(self.access).ensure_permission(actor, "organizacoes.ver")
         return self.access.list_organizations()
 
 
@@ -279,7 +278,7 @@ class CreateOrganization:
         self.transaction = transaction
 
     def execute(self, actor: Any, payload: dict[str, Any]):
-        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        PermissionChecker(self.access).ensure_permission(actor, "organizacoes.gerenciar")
         created = self.access.create_organization(payload)
         _audit(self.audit, actor, "organization_created", "organization", str(created.id), after={"key": created.key})
         self.transaction.commit()
@@ -293,7 +292,7 @@ class UpdateOrganization:
         self.transaction = transaction
 
     def execute(self, actor: Any, organization_id: int, payload: dict[str, Any]):
-        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        PermissionChecker(self.access).ensure_permission(actor, "organizacoes.gerenciar")
         updated = self.access.update_organization(organization_id, payload)
         _audit(self.audit, actor, "organization_updated", "organization", str(updated.id), after={"key": updated.key, "status": updated.status})
         self.transaction.commit()
@@ -307,7 +306,7 @@ class DeleteOrganization:
         self.transaction = transaction
 
     def execute(self, actor: Any, organization_id: int) -> None:
-        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        PermissionChecker(self.access).ensure_permission(actor, "organizacoes.gerenciar")
         self.access.delete_organization(organization_id)
         _audit(self.audit, actor, "organization_deleted", "organization", str(organization_id))
         self.transaction.commit()
@@ -318,7 +317,7 @@ class ListTeams:
         self.access = access
 
     def execute(self, actor: Any, organization_id: int | None = None) -> list:
-        PermissionChecker(self.access).ensure_admin_or_manager(actor)
+        PermissionChecker(self.access).ensure_permission(actor, "times.ver")
         return self.access.list_teams(organization_id)
 
 
@@ -329,7 +328,7 @@ class CreateTeam:
         self.transaction = transaction
 
     def execute(self, actor: Any, payload: dict[str, Any]):
-        PermissionChecker(self.access).ensure_permission(actor, "admin.users")
+        PermissionChecker(self.access).ensure_permission(actor, "times.gerenciar")
         created = self.access.create_team(payload)
         _audit(self.audit, actor, "team_created", "team", str(created.id), after={"key": created.key})
         self.transaction.commit()
@@ -343,7 +342,7 @@ class UpdateTeam:
         self.transaction = transaction
 
     def execute(self, actor: Any, team_id: int, payload: dict[str, Any]):
-        PermissionChecker(self.access).ensure_permission(actor, "admin.users")
+        PermissionChecker(self.access).ensure_permission(actor, "times.gerenciar")
         updated = self.access.update_team(team_id, payload)
         _audit(self.audit, actor, "team_updated", "team", str(updated.id), after={"key": updated.key, "organization_id": updated.organization_id, "status": updated.status})
         self.transaction.commit()
@@ -357,7 +356,7 @@ class DeleteTeam:
         self.transaction = transaction
 
     def execute(self, actor: Any, team_id: int) -> None:
-        PermissionChecker(self.access).ensure_permission(actor, "admin.users")
+        PermissionChecker(self.access).ensure_permission(actor, "times.gerenciar")
         self.access.delete_team(team_id)
         _audit(self.audit, actor, "team_deleted", "team", str(team_id))
         self.transaction.commit()
@@ -368,7 +367,7 @@ class ListServiceAccounts:
         self.access = access
 
     def execute(self, actor: Any) -> list[ServiceAccountDTO]:
-        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.ver")
         return self.access.list_service_accounts()
 
 
@@ -380,7 +379,7 @@ class CreateServiceAccount:
         self.transaction = transaction
 
     def execute(self, actor: Any, payload: dict[str, Any]) -> CreatedServiceAccountDTO:
-        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.gerenciar")
         credential = f"psa_{secrets.token_urlsafe(32)}"
         created = self.access.create_service_account(
             {
@@ -403,7 +402,7 @@ class RevokeServiceAccount:
         self.transaction = transaction
 
     def execute(self, actor: Any, service_account_id: str) -> ServiceAccountDTO:
-        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.gerenciar")
         revoked = self.access.revoke_service_account(service_account_id)
         _audit(self.audit, actor, "service_account_revoked", "service_account", service_account_id)
         self.transaction.commit()
@@ -417,7 +416,7 @@ class UpdateServiceAccount:
         self.transaction = transaction
 
     def execute(self, actor: Any, service_account_id: str, payload: dict[str, Any]) -> ServiceAccountDTO:
-        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.gerenciar")
         updated = self.access.update_service_account(service_account_id, payload)
         _audit(self.audit, actor, "service_account_updated", "service_account", service_account_id, after={"permission_count": len(updated.permissions), "status": updated.status})
         self.transaction.commit()
@@ -431,7 +430,7 @@ class DeleteServiceAccount:
         self.transaction = transaction
 
     def execute(self, actor: Any, service_account_id: str) -> None:
-        PermissionChecker(self.access).ensure_permission(actor, "admin.system")
+        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.gerenciar")
         self.access.delete_service_account(service_account_id)
         _audit(self.audit, actor, "service_account_deleted", "service_account", service_account_id)
         self.transaction.commit()

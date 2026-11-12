@@ -39,6 +39,14 @@ def test_resumo_e_periodo(cliente, sessao) -> None:
     pessoa, _ = _usuario(sessao, "sem_permissao")
     _conceder(sessao, a2, pessoa, ["ver_execucoes"])
     with como(cliente, pessoa, "sem_permissao"):
+        # O papel não tem a funcionalidade Histórico: a área não abre, mesmo com a concessão.
+        assert cliente.get("/api/v1/historico/resumo", params={"dias": 2}).status_code == 403
+    analista, _ = _usuario(sessao, "analista_historico")
+    sessao.execute(text("""UPDATE roles SET funcionalidades = '{"painel": "ver", "historico": "ver"}'::jsonb"""
+                        " WHERE slug = 'analista_historico'"))
+    sessao.commit()
+    _conceder(sessao, a2, analista, ["ver_execucoes"])
+    with como(cliente, analista, "analista_historico"):
         dela = cliente.get("/api/v1/historico/resumo", params={"dias": 2}).json()
-        assert dela["total"] == 1 and dela["concluidas"] == 1  # só a automação que ela vê
+        assert dela["total"] == 1 and dela["concluidas"] == 1  # papel abre a área; o time/concessão diz quais automações
     assert cliente.get("/api/v1/historico/resumo", params={"dias": 0}).status_code == 422

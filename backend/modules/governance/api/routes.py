@@ -172,7 +172,7 @@ def revoke_secret_grant(grant_id: str, db: Session = Depends(get_db), user: Any 
 
 @router.get("/governance/system-limits", response_model=list[SystemLimitResponse])
 def list_system_limits(organization_id: int | None = None, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> list[SystemLimitResponse]:
-    _ensure(db, user, "admin.system")
+    _ensure(db, user, "limites.ver")
     adapters = build_governance_adapters(db)
     return [SystemLimitResponse(**to_payload(item)) for item in ListSystemLimits(adapters.governance).execute(organization_id)]
 
@@ -184,7 +184,7 @@ def upsert_system_limit(
     db: Session = Depends(get_db),
     user: Any = Depends(get_current_user),
 ) -> SystemLimitResponse:
-    _ensure(db, user, "admin.system")
+    _ensure(db, user, "limites.gerenciar")
     adapters = build_governance_adapters(db)
     data = payload.model_dump()
     data["key"] = key
@@ -194,7 +194,7 @@ def upsert_system_limit(
 
 @router.get("/governance/retention-policies", response_model=list[RetentionPolicyResponse])
 def list_retention_policies(organization_id: int | None = None, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> list[RetentionPolicyResponse]:
-    _ensure(db, user, "admin.system")
+    _ensure(db, user, "retencao.ver")
     adapters = build_governance_adapters(db)
     return [RetentionPolicyResponse(**to_payload(item)) for item in ListRetentionPolicies(adapters.governance).execute(organization_id)]
 
@@ -206,7 +206,7 @@ def upsert_retention_policy(
     db: Session = Depends(get_db),
     user: Any = Depends(get_current_user),
 ) -> RetentionPolicyResponse:
-    _ensure(db, user, "admin.system")
+    _ensure(db, user, "retencao.gerenciar")
     adapters = build_governance_adapters(db)
     data = payload.model_dump()
     data["resource_type"] = resource_type

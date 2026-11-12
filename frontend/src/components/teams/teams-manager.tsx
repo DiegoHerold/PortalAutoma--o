@@ -15,7 +15,7 @@ import { Modal } from "@/components/ui/modal";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { createTeam, deleteTeam, updateTeam } from "@/lib/access-api";
-import { hasPermission, isAdminOrManager } from "@/lib/permissions";
+import { podeGerenciar, podeVer } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import type { OrganizationResponse, TeamResponse } from "@/types/access";
@@ -24,7 +24,7 @@ import { TimeDetalhes } from "@/components/teams/time-detalhes";
 const STATES = ["active", "disabled", "archived"];
 
 export function TeamsManager() {
-  const { user } = useAuth(); const canList = isAdminOrManager(user); const canCreate = hasPermission(user, "admin.users"); const pathname = usePathname(); const router = useRouter(); const searchParams = useSearchParams();
+  const { user } = useAuth(); const canList = podeVer(user, "times"); const canCreate = podeGerenciar(user, "times"); const pathname = usePathname(); const router = useRouter(); const searchParams = useSearchParams();
   const organizationId = searchParams.get("organization_id") ?? ""; const [query, setQuery] = useState(""); const [status, setStatus] = useState(""); const [creating, setCreating] = useState(false); const [selected, setSelected] = useState<TeamResponse | null>(null); const [editing, setEditing] = useState<TeamResponse | null>(null); const [deleting, setDeleting] = useState<TeamResponse | null>(null);
   const organizations = useApi<OrganizationResponse[]>(canList ? "/organizations" : null, { enabled: canList }); const teamsPath = organizationId ? `/teams?organization_id=${encodeURIComponent(organizationId)}` : "/teams"; const teams = useApi<TeamResponse[]>(canList ? teamsPath : null, { enabled: canList });
   const filtered = useMemo(() => (teams.data ?? []).filter((team) => { const text = query.trim().toLowerCase(); return (!text || team.name.toLowerCase().includes(text) || team.key.toLowerCase().includes(text)) && (!status || team.status === status); }), [teams.data, query, status]);

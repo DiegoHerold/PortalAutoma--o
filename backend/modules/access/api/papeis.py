@@ -1,6 +1,6 @@
 """API dos papéis globais (12/11/2026).
 
-- ``GET /papeis``, ``GET /papeis/abas``: quem administra pessoas (``admin.roles``) vê.
+- ``GET /papeis``, ``GET /papeis/funcionalidades``: quem tem a funcionalidade Papéis vê.
 - ``POST /papeis``, ``PUT /papeis/{id}``, ``DELETE /papeis/{id}?substituto=``: só administradores.
 """
 
@@ -15,7 +15,7 @@ from infrastructure.database import get_db
 from modules.access.api.dependencies import get_current_user
 from modules.access.application.papeis import ADMIN, Papeis, PapelNaoEncontrado
 from modules.access.application.use_cases import PermissionChecker
-from modules.access.domain.abas import PapelInvalido
+from modules.access.domain.funcionalidades import FuncionalidadeInvalida as PapelInvalido
 from modules.access.infrastructure.adapters import build_access_adapters
 from modules.access.infrastructure.repositories.sqlalchemy_papeis import SqlAlchemyPapeis
 
@@ -42,7 +42,7 @@ def _slug(user: Any) -> str | None:
 
 
 def _ver(db: Session, user: Any) -> None:
-    if _slug(user) != ADMIN and not PermissionChecker(build_access_adapters(db).access).has_permission(user, "admin.roles"):
+    if _slug(user) != ADMIN and not PermissionChecker(build_access_adapters(db).access).has_permission(user, "papeis.ver"):
         raise HTTPException(status_code=403, detail="Sem permissão para ver os papéis.")
 
 
@@ -68,10 +68,10 @@ def listar(db: Session = Depends(get_db), user: Any = Depends(get_current_user))
     return {"papeis": _papeis(db).listar(), "pode_editar": _slug(user) == ADMIN}
 
 
-@router.get("/abas")
-def abas(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
+@router.get("/funcionalidades")
+def funcionalidades(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     _ver(db, user)
-    return {"abas": _papeis(db).abas()}
+    return {"funcionalidades": _papeis(db).funcionalidades()}
 
 
 @router.post("", status_code=201)
@@ -79,8 +79,8 @@ def criar(corpo: dict[str, Any] = Body(...), db: Session = Depends(get_db), user
     _admin(user)
     base = corpo.get("baseado_em")
     return _executar(db, lambda: _papeis(db).criar(
-        str(user.id), nome=corpo.get("nome"), descricao=corpo.get("descricao"), abas=_lista(corpo.get("abas")),
-        baseado_em=int(base) if base not in (None, "") else None))
+        str(user.id), nome=corpo.get("nome"), descricao=corpo.get("descricao"),
+        funcionalidades=_tabela(corpo.get("funcionalidades")), baseado_em=int(base) if base not in (None, "") else None))
 
 
 @router.put("/{papel_id}")
@@ -88,7 +88,8 @@ def alterar(papel_id: int, corpo: dict[str, Any] = Body(...), db: Session = Depe
             user: Any = Depends(get_current_user)) -> dict[str, Any]:
     _admin(user)
     return _executar(db, lambda: _papeis(db).alterar(
-        str(user.id), papel_id, nome=corpo.get("nome"), descricao=corpo.get("descricao"), abas=_lista(corpo.get("abas"))))
+        str(user.id), papel_id, nome=corpo.get("nome"), descricao=corpo.get("descricao"),
+        funcionalidades=_tabela(corpo.get("funcionalidades"))))
 
 
 @router.delete("/{papel_id}")
@@ -98,9 +99,9 @@ def apagar(papel_id: int, substituto: int | None = Query(default=None), db: Sess
     return _executar(db, lambda: _papeis(db).apagar(str(user.id), papel_id, substituto=substituto))
 
 
-def _lista(valor: Any) -> list[str] | None:
+def _tabela(valor: Any) -> dict[str, str | None] | None:
     if valor is None:
         return None
-    if not isinstance(valor, list) or not all(isinstance(v, str) for v in valor):
-        raise HTTPException(status_code=422, detail="abas: lista de abas, como [\"/fila\", \"/historico\"].")
+    if not isinstance(valor, dict) or not all(isinstance(k, str) and (v is None or isinstance(v, str)) for k, v in valor.items()):
+        raise HTTPException(status_code=422, detail='funcionalidades: {"historico": "ver", "usuarios": "gerenciar", ...}')
     return valor

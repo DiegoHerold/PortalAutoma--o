@@ -99,14 +99,16 @@ class SqlAlchemyTimes:
             select(TeamCategoryPermissionRecord, AccessCategoryRecord.name)
             .join(AccessCategoryRecord, AccessCategoryRecord.id == TeamCategoryPermissionRecord.category_id)
             .where(TeamCategoryPermissionRecord.team_id == team_id).order_by(AccessCategoryRecord.name)).all()
-        return [{"category_id": p.category_id, "categoria": nome, "can_view": p.can_view, "can_execute": p.can_execute}
+        return [{"category_id": p.category_id, "categoria": nome, "can_view": p.can_view, "can_execute": p.can_execute,
+                 "can_create": p.can_create, "can_edit": p.can_edit, "can_delete": p.can_delete, "can_approve": p.can_approve}
                 for p, nome in linhas]
 
     def definir_categorias(self, team_id: int, permissoes: list[PermissaoDoTime]) -> None:
         self.db.execute(delete(TeamCategoryPermissionRecord).where(TeamCategoryPermissionRecord.team_id == team_id))
         for p in permissoes:
             self.db.add(TeamCategoryPermissionRecord(team_id=team_id, category_id=p.category_id,
-                                                     can_view=p.can_view, can_execute=p.can_execute))
+                                                     can_view=p.can_view, can_execute=p.can_execute, can_create=p.can_create,
+                                                     can_edit=p.can_edit, can_delete=p.can_delete, can_approve=p.can_approve))
         self.db.flush()
 
     def automacoes(self, team_id: int) -> list[dict[str, Any]]:
@@ -127,5 +129,5 @@ class SqlAlchemyTimes:
             .join(AccessTeamRecord, AccessTeamRecord.id == TeamCategoryPermissionRecord.team_id)
             .where(TeamMembershipRecord.user_id == user_id, AccessTeamRecord.status == "active")).all()
         return [CategoryPermissionDTO(id=None, category_id=p.category_id, category_name=nome, can_view=p.can_view,
-                                      can_execute=p.can_execute, can_create=False, can_edit=False, can_delete=False,
-                                      can_approve=False) for p, nome in linhas]
+                                      can_execute=p.can_execute, can_create=p.can_create, can_edit=p.can_edit,
+                                      can_delete=p.can_delete, can_approve=p.can_approve) for p, nome in linhas]

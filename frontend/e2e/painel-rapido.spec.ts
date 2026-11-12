@@ -48,7 +48,7 @@ async function preparar(page: Page, tema: "light" | "dark" = "light") {
     const corpo = req.postData() ? JSON.parse(req.postData()!) : null;
     pedidos.push({ metodo: req.method(), caminho: caminho + url.search, corpo });
     const json = (b: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(b) });
-    if (caminho === "/auth/me") return json({ id: 1, email: "operador@teste.invalid", name: "Operador de Teste", role: "operator", permissions: [], rbac_permissions: [] });
+    if (caminho === "/auth/me") return json({ id: 1, email: "operador@teste.invalid", name: "Operador de Teste", role: "operator", permissions: [], rbac_permissions: ["painel.ver", "fila.ver", "fila.gerenciar", "maquinas.ver", "historico.ver", "execucoes.ver", "automacoes.ver", "categorias.ver"] });
     if (caminho.endsWith("/avisos")) return route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: pronto\ndata: {}\n\n" });
     if (caminho === "/painel") return json({ gerado_em: em(0), central: false, execucoes: [], fila: { esperando: 0, perdidos: 0, termina_em: null, sem_previsao: 0 },
       maquinas: [{ id: "mch_194", nome: "MAQ194", online: true, sessao_bloqueada: false, job_perdido: false, ocupada: false, rodando: null, proximo: null },

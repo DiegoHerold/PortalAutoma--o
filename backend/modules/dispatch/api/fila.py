@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from infrastructure.database import get_db, get_session_factory
-from modules.access.api.authorization import ensure_automation_action
+from modules.access.api.authorization import ensure_automation_action, precisa
 from modules.access.api.dependencies import get_current_user
 from modules.access.application.use_cases import PermissionChecker
 from modules.access.domain import AuthorizationDenied
@@ -54,7 +54,7 @@ def _job_da_fila(db: Session, fila: Any, job_id: str, user: Any, acao: str) -> A
     return tarefa
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(precisa("fila.ver", "automacoes.ver"))])
 def ver_fila(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     """Jobs esperando, na ordem: posição, máquina prevista, início e término previstos e por que esperam."""
     visao = build_fila(db).ver.execute(_agora())
@@ -96,7 +96,7 @@ def pedir_execucao(corpo: dict[str, Any] = Body(...), db: Session = Depends(get_
     return resultado
 
 
-@router.patch("/jobs/{job_id}")
+@router.patch("/jobs/{job_id}", dependencies=[Depends(precisa("fila.gerenciar"))])
 def reordenar(job_id: str, corpo: dict[str, Any] = Body(...), db: Session = Depends(get_db),
               user: Any = Depends(get_current_user)) -> dict[str, Any]:
     """Prioridade e posição manual, só para job que ainda não começou."""
@@ -117,7 +117,7 @@ def reordenar(job_id: str, corpo: dict[str, Any] = Body(...), db: Session = Depe
             "posicao_manual": mudancas.get("manual_position", tarefa.manual_position)}
 
 
-@router.post("/jobs/{job_id}/cancelar")
+@router.post("/jobs/{job_id}/cancelar", dependencies=[Depends(precisa("fila.gerenciar"))])
 def cancelar(job_id: str, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
     fila = build_fila(db)
     tarefa = _job_da_fila(db, fila, job_id, user, "can_execute")
@@ -267,7 +267,7 @@ def continuar_execucao(execution_id: str, db: Session = Depends(get_db),
     return resultado
 
 
-@router.post("/jobs/{job_id}/decisao")
+@router.post("/jobs/{job_id}/decisao", dependencies=[Depends(precisa("fila.gerenciar"))])
 def decidir_perdido(job_id: str, corpo: dict[str, Any] = Body(...), db: Session = Depends(get_db),
                     user: Any = Depends(get_current_user)) -> dict[str, Any]:
     """Job perdido: ``continuar`` (mesma máquina, salvo estado central) ou ``recomecar`` (do zero)."""

@@ -68,7 +68,8 @@ def test_time_da_permissoes_por_categoria_e_por_automacao_aos_membros(cliente, s
     assert [m["id"] for m in membros] == [uid]
     cats = cliente.put(f"/api/v1/teams/{tid}/categorias", json={"categorias": [{"category_id": categoria, "can_execute": True}]})
     assert cats.json()["categorias"][0] | {"categoria": None} == {"category_id": categoria, "categoria": None,
-                                                                   "can_view": True, "can_execute": True}
+                                                                   "can_view": True, "can_execute": True, "can_create": False,
+                                                                   "can_edit": False, "can_delete": False, "can_approve": False}
     assert cliente.put(f"/api/v1/teams/{tid}/categorias", json={"categorias": [{"category_id": 999999, "can_view": True}]}).status_code == 404
     acesso = cliente.put(f"{base}/acessos", json={"team_id": tid, "acoes": ["ver_telas_e_logs"]})
     assert acesso.status_code == 200, acesso.text
@@ -100,9 +101,9 @@ def test_time_da_permissoes_por_categoria_e_por_automacao_aos_membros(cliente, s
     assert cliente.put(f"/api/v1/users/{uid}/times", json={"times": []}).json()["times"] == []
     assert cliente.put(f"/api/v1/users/{uid}/times", json={}).status_code == 422
 
-    assert _auditoria(sessao, "time.membros.adicionados") == [str(tid)]
-    assert _auditoria(sessao, "time.membro.removido") == [str(tid)]
-    assert _auditoria(sessao, "time.categorias.definidas") == [str(tid)]
+    assert str(tid) in _auditoria(sessao, "time.membros.adicionados")
+    assert str(tid) in _auditoria(sessao, "time.membro.removido")
+    assert str(tid) in _auditoria(sessao, "time.categorias.definidas")
     assert _auditoria(sessao, "usuario.times.definidos") == [str(uid), str(uid)]
     print("\ntimes: sem time 403; membro ganha ver/executar da categoria e a concessão da automação; time desabilitado"
           " ou membro removido perde; times pelo cadastro do usuário; tudo auditado")

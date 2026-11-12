@@ -39,7 +39,7 @@ class BootstrapService:
         self._ensure_roles()
         self._ensure_categories()
         self._ensure_admin()
-        self._ensure_admin_permissions()
+        # Permissões por categoria soltas na pessoa saíram (12/11/2026): o admin vê tudo pelo papel.
         self._ensure_access_governance_defaults()
         self._ensure_default_runtimes()
         self._ensure_default_worker()

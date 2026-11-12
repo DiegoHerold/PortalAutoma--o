@@ -1,29 +1,28 @@
-"""Papéis globais (12/11/2026): criar, alterar as abas, renomear e apagar. Só administradores.
+"""Papéis globais (12/11/2026): a tabela de funcionalidades de cada papel. Só administradores mudam.
 
-- O papel Admin vê tudo: não muda de abas e não é apagado. Papéis do sistema (Manager,
-  Operator, Viewer) mudam de abas, mas não são apagados.
-- Criar "baseado em" outro papel copia as permissões e as abas dele.
-- Ligar uma aba dá ao papel a permissão de leitura dela (ver ``domain.abas``).
+- O Admin tem tudo: a tabela dele não muda e ele não é apagado. Os papéis do sistema (Manager,
+  Operator, Viewer) mudam de tabela, mas não são apagados.
+- Criar "baseado em" outro papel copia a tabela dele. Sem base, o papel novo só vê o Painel.
 - Apagar um papel com pessoas exige o papel para onde elas vão.
+- O que cada funcionalidade dá está em ``domain.funcionalidades``.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 from uuid import uuid4
 
-from modules.access.domain.abas import (
-    ABAS,
-    PapelInvalido,
-    abas_efetivas,
-    permissoes_para_ligar,
-    slug_do_nome,
-    validar_abas,
+from modules.access.domain.funcionalidades import (
+    FuncionalidadeInvalida,
+    catalogo,
+    deduzir,
+    validar,
 )
 
 ADMIN = "admin"
 SISTEMA = frozenset({"admin", "manager", "operator", "viewer"})
+PapelInvalido = FuncionalidadeInvalida
 
 
 class PapelNaoEncontrado(LookupError):
@@ -35,16 +34,19 @@ class RepositorioDePapeis(Protocol):
     def obter(self, papel_id: int) -> dict[str, Any] | None: ...
     def slugs(self) -> set[str]: ...
     def nome_em_uso(self, nome: str, exceto: int | None = None) -> bool: ...
-    def criar(self, *, nome: str, slug: str, descricao: str | None, abas: list[str]) -> int: ...
+    def criar(self, *, nome: str, slug: str, descricao: str | None, funcionalidades: dict[str, str]) -> int: ...
     def alterar(self, papel_id: int, campos: dict[str, Any]) -> None: ...
-    def permissoes(self, papel_id: int) -> set[str]: ...
-    def dar_permissoes(self, papel_id: int, chaves: list[str]) -> None: ...
     def mover_pessoas(self, de: int, para: int) -> int: ...
     def apagar(self, papel_id: int) -> None: ...
 
 
-def _catalogo() -> list[dict[str, str]]:
-    return [{"chave": a.chave, "rotulo": a.rotulo, "grupo": a.grupo} for a in ABAS]
+def tabela_do_papel(p: Mapping[str, Any]) -> dict[str, str]:
+    """A tabela salva ou, no papel de antes, a deduzida das permissões."""
+    if p["slug"] == ADMIN:
+        return deduzir(ADMIN, [])
+    if p.get("funcionalidades") is not None:
+        return dict(p["funcionalidades"])
+    return deduzir(p["slug"], p.get("gravadas") or [], p.get("abas"))
 
 
 class Papeis:
@@ -54,18 +56,16 @@ class Papeis:
         self.transaction = transaction
 
     # -- leitura ------------------------------------------------------------------
-    def abas(self) -> list[dict[str, str]]:
-        return _catalogo()
+    def funcionalidades(self) -> list[dict[str, Any]]:
+        return catalogo()
 
     def listar(self) -> list[dict[str, Any]]:
         return [self._saida(p) for p in self.repo.listar()]
 
     def _saida(self, p: dict[str, Any]) -> dict[str, Any]:
-        admin = p["slug"] == ADMIN
         return {"id": p["id"], "nome": p["nome"], "slug": p["slug"], "descricao": p["descricao"],
-                "sistema": p["slug"] in SISTEMA, "pessoas": p["pessoas"],
-                "abas": abas_efetivas(None if admin else p["abas"]),
-                "pode_mudar_abas": not admin, "pode_apagar": p["slug"] not in SISTEMA}
+                "sistema": p["slug"] in SISTEMA, "pessoas": p["pessoas"], "funcionalidades": tabela_do_papel(p),
+                "editavel": p["slug"] != ADMIN, "pode_apagar": p["slug"] not in SISTEMA}
 
     def _obter(self, papel_id: int) -> dict[str, Any]:
         papel = self.repo.obter(papel_id)
@@ -74,27 +74,27 @@ class Papeis:
         return papel
 
     # -- escrita ------------------------------------------------------------------
-    def criar(self, ator: str | None, *, nome: str, descricao: str | None, abas: list[str] | None,
-              baseado_em: int | None) -> dict[str, Any]:
+    def criar(self, ator: str | None, *, nome: str, descricao: str | None,
+              funcionalidades: Mapping[str, str | None] | None, baseado_em: int | None) -> dict[str, Any]:
+        from modules.access.domain.abas import slug_do_nome
+
         nome = _nome(nome)
         if self.repo.nome_em_uso(nome):
             raise PapelInvalido("Já existe um papel com esse nome.")
         base = self._obter(baseado_em) if baseado_em else None
         if base is not None and base["slug"] == ADMIN:
             raise PapelInvalido("Para outro administrador, use o próprio papel Admin.")
-        escolhidas = validar_abas(abas if abas is not None else (abas_efetivas(base["abas"]) if base else []))
+        tabela = validar(funcionalidades if funcionalidades is not None
+                         else (tabela_do_papel(base) if base else {"painel": "ver"}))
         slug = _slug_livre(slug_do_nome(nome), self.repo.slugs())
-        papel_id = self.repo.criar(nome=nome, slug=slug, descricao=_descricao(descricao), abas=escolhidas)
-        if base is not None:
-            self.repo.dar_permissoes(papel_id, sorted(self.repo.permissoes(base["id"])))
-        self.repo.dar_permissoes(papel_id, permissoes_para_ligar(escolhidas))
-        self._auditar(ator, "papel.criado", papel_id, None, {"nome": nome, "slug": slug, "abas": escolhidas,
+        papel_id = self.repo.criar(nome=nome, slug=slug, descricao=_descricao(descricao), funcionalidades=tabela)
+        self._auditar(ator, "papel.criado", papel_id, None, {"nome": nome, "slug": slug, "funcionalidades": tabela,
                                                              "baseado_em": base["slug"] if base else None})
         self.transaction.commit()
         return self._saida(self._obter(papel_id))
 
     def alterar(self, ator: str | None, papel_id: int, *, nome: str | None = None, descricao: str | None = None,
-                abas: list[str] | None = None) -> dict[str, Any]:
+                funcionalidades: Mapping[str, str | None] | None = None) -> dict[str, Any]:
         papel = self._obter(papel_id)
         campos: dict[str, Any] = {}
         if nome is not None:
@@ -103,16 +103,14 @@ class Papeis:
                 raise PapelInvalido("Já existe um papel com esse nome.")
         if descricao is not None:
             campos["descricao"] = _descricao(descricao)
-        if abas is not None:
+        if funcionalidades is not None:
             if papel["slug"] == ADMIN:
-                raise PapelInvalido("O papel Admin vê todas as abas.")
-            campos["abas"] = validar_abas(abas)
+                raise PapelInvalido("O papel Admin tem todas as funcionalidades.")
+            campos["funcionalidades"] = validar(funcionalidades)
         if not campos:
             return self._saida(papel)
+        antes = {k: (tabela_do_papel(papel) if k == "funcionalidades" else papel[k]) for k in campos}
         self.repo.alterar(papel_id, campos)
-        if "abas" in campos:
-            self.repo.dar_permissoes(papel_id, permissoes_para_ligar(campos["abas"]))
-        antes = {k: (abas_efetivas(papel["abas"]) if k == "abas" else papel[k]) for k in campos}
         self._auditar(ator, "papel.alterado", papel_id, antes, campos)
         self.transaction.commit()
         return self._saida(self._obter(papel_id))
@@ -129,7 +127,7 @@ class Papeis:
             movidas = self.repo.mover_pessoas(papel_id, destino["id"])
         self.repo.apagar(papel_id)
         self._auditar(ator, "papel.apagado", papel_id, {"nome": papel["nome"], "slug": papel["slug"],
-                                                        "abas": abas_efetivas(papel["abas"])},
+                                                        "funcionalidades": tabela_do_papel(papel)},
                       {"pessoas_movidas": movidas, "para": substituto if movidas else None})
         self.transaction.commit()
         return {"id": papel_id, "pessoas_movidas": movidas}

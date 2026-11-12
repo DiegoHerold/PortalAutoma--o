@@ -6,7 +6,7 @@ import { ArrowUpRight, GripVertical, RotateCcw } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { aplicarOrdem, restaurarMenu, salvarMenu, useMenuItens, useMenuOrdem } from "@/lib/menu";
 import { NAV_GROUPS, type NavItem } from "@/lib/navigation";
-import { hasAnyPermission, hasPermission, isAdminOrManager } from "@/lib/permissions";
+import { itemVisivel } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -36,11 +36,8 @@ const DESCRICOES: Record<string, string> = {
   "/governance/retention": "Por quanto tempo guardar imagens e logs.",
 };
 
-export function podeVer(item: NavItem, user: Parameters<typeof hasPermission>[0]): boolean {
-  if (item.adminOnly && !isAdminOrManager(user)) return false;
-  if (item.permission && !hasPermission(user, item.permission)) return false;
-  if (item.anyPermission && !hasAnyPermission(user, item.anyPermission)) return false;
-  return true;
+export function podeVer(item: NavItem, user: Parameters<typeof itemVisivel>[1]): boolean {
+  return itemVisivel(item, user);
 }
 
 /**

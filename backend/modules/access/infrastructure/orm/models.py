@@ -52,8 +52,10 @@ class AccessRoleRecord(Base):
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="active")
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # Abas do menu que o papel vê (12/11/2026). Nulo = todas.
+    # Abas da etapa anterior (só para deduzir os papéis de antes). Nulo = todas.
     abas: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # {funcionalidade: "ver"|"gerenciar"} salvo na tela Papéis. Nulo = deduzido (papel de antes).
+    funcionalidades: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -141,7 +143,7 @@ class TeamMembershipRecord(Base):
 
 
 class TeamCategoryPermissionRecord(Base):
-    """Ver e executar por categoria, dados a um time: quem é membro de um time ativo ganha."""
+    """Permissões por categoria dadas a um time (as mesmas de antes na pessoa): quem é membro de um time ativo ganha."""
 
     __tablename__ = "access_team_category_permissions"
     __table_args__ = (UniqueConstraint("team_id", "category_id", name="uq_team_category_permissions"),)
@@ -151,6 +153,10 @@ class TeamCategoryPermissionRecord(Base):
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True)
     can_view: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_execute: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    can_create: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    can_edit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    can_delete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    can_approve: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 

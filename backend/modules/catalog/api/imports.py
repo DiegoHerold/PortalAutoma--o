@@ -98,6 +98,6 @@ def _actor(user: Any) -> ActorDTO:
 
 def _ensure_admin_or_manager(db: Session, user: Any) -> None:
     try:
-        PermissionChecker(build_access_adapters(db).access).ensure_admin_or_manager(user)
+        PermissionChecker(build_access_adapters(db).access).ensure_permission(user, "automacoes.gerenciar")
     except AuthorizationDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

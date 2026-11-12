@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Papéis" };
 export default function RolesPage() {
   return (
     <div className="space-y-6">
-      <PageTitle eyebrow="Pessoas e acesso" title="Papéis globais" description="Cada papel diz quais abas as pessoas veem. Só administradores mudam." />
+      <PageTitle eyebrow="Pessoas e acesso" title="Papéis globais" description="O que cada papel pode usar no Portal. Só administradores mudam." />
       <RolesManager />
     </div>
   );

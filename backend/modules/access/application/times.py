@@ -23,8 +23,8 @@ class GerenciarTimes:
         self.audit = audit
         self.transaction = transaction
 
-    def _garantir(self, ator: Any, team_id: int | None = None) -> None:
-        PermissionChecker(self.access).ensure_permission(ator, "admin.users")
+    def _garantir(self, ator: Any, team_id: int | None = None, nivel: str = "gerenciar") -> None:
+        PermissionChecker(self.access).ensure_permission(ator, f"times.{nivel}")
         if team_id is not None and self.times.time(team_id) is None:
             raise AccessResourceNotFound("Time não encontrado.")
 
@@ -35,7 +35,7 @@ class GerenciarTimes:
 
     # -- leitura -------------------------------------------------------------------------------
     def ver(self, ator: Any, team_id: int) -> dict[str, Any]:
-        self._garantir(ator, team_id)
+        self._garantir(ator, team_id, "ver")
         return {"membros": self.times.membros(team_id), "categorias": self.times.categorias(team_id),
                 "automacoes": self.times.automacoes(team_id)}
 
@@ -63,7 +63,7 @@ class GerenciarTimes:
         return self.times.membros(team_id)
 
     def times_do_usuario(self, ator: Any, user_id: int) -> list[dict[str, Any]]:
-        self._garantir(ator)
+        self._garantir(ator, nivel="ver")
         return self.times.times_do_usuario(user_id)
 
     def definir_times_do_usuario(self, ator: Any, user_id: int, brutos: Any) -> list[dict[str, Any]]:

@@ -21,7 +21,8 @@ class SqlAlchemyPapeis:
         self.db = db
 
     def _linha(self, r: AccessRoleRecord, pessoas: int) -> dict[str, Any]:
-        return {"id": r.id, "nome": r.name, "slug": r.slug, "descricao": r.description, "abas": r.abas, "pessoas": pessoas}
+        return {"id": r.id, "nome": r.name, "slug": r.slug, "descricao": r.description, "abas": r.abas,
+                "funcionalidades": r.funcionalidades, "gravadas": sorted(self.permissoes(r.id)), "pessoas": pessoas}
 
     def _pessoas(self) -> dict[int, int]:
         return dict(self.db.execute(select(AccessUserRecord.role_id, func.count()).group_by(AccessUserRecord.role_id)).all())
@@ -45,14 +46,15 @@ class SqlAlchemyPapeis:
             consulta = consulta.where(AccessRoleRecord.id != exceto)
         return self.db.scalar(consulta.limit(1)) is not None
 
-    def criar(self, *, nome: str, slug: str, descricao: str | None, abas: list[str]) -> int:
-        r = AccessRoleRecord(name=nome, slug=slug, description=descricao, status="active", is_system=False, abas=abas)
+    def criar(self, *, nome: str, slug: str, descricao: str | None, funcionalidades: dict[str, str]) -> int:
+        r = AccessRoleRecord(name=nome, slug=slug, description=descricao, status="active", is_system=False,
+                             funcionalidades=funcionalidades)
         self.db.add(r)
         self.db.flush()
         return r.id
 
     def alterar(self, papel_id: int, campos: dict[str, Any]) -> None:
-        colunas = {"nome": "name", "descricao": "description", "abas": "abas"}
+        colunas = {"nome": "name", "descricao": "description", "funcionalidades": "funcionalidades"}
         self.db.execute(update(AccessRoleRecord).where(AccessRoleRecord.id == papel_id)
                         .values(**{colunas[k]: v for k, v in campos.items()}))
 

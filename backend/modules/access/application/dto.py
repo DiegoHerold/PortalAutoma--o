@@ -54,8 +54,6 @@ class AuthenticatedUserDTO:
     organization_id: int | None
     permissions: list[CategoryPermissionDTO]
     rbac_permissions: list[str]
-    # Abas do menu que o papel vê; None = todas.
-    abas: list[str] | None = None
 
 
 @dataclass(frozen=True)

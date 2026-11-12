@@ -27,6 +27,4 @@ export type CurrentUser = {
     can_approve: boolean;
   }>;
   rbac_permissions?: string[];
-  /** Abas do menu que o papel vê (Papéis globais); ausente ou null = todas. */
-  abas?: string[] | null;
 };

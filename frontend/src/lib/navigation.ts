@@ -25,6 +25,9 @@ import {
 } from "lucide-react";
 
 export type NavItem = {
+  /** Funcionalidade do papel que libera este item (Papéis globais; backend/modules/access/domain/funcionalidades.py).
+   * Sem funcionalidade (Configurações): aparece para qualquer pessoa logada. */
+  funcionalidade?: string;
   href: string;
   label: string;
   icon: LucideIcon;
@@ -48,58 +51,58 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Monitorar",
     items: [
-      { href: "/dashboard", label: "Painel", icon: LayoutDashboard },
-      { href: "/fila", label: "Fila", icon: ListOrdered, anyPermission: ["execution.read", "automation.read"] },
-      { href: "/maquinas", label: "Máquinas", icon: Monitor, anyPermission: ["execution.read", "agent.read"] },
-      { href: "/historico", label: "Histórico", icon: History, anyPermission: ["execution.read", "flow.read"] },
+      { href: "/dashboard", funcionalidade: "painel", label: "Painel", icon: LayoutDashboard },
+      { href: "/fila", funcionalidade: "fila", label: "Fila", icon: ListOrdered },
+      { href: "/maquinas", funcionalidade: "maquinas", label: "Máquinas", icon: Monitor },
+      { href: "/historico", funcionalidade: "historico", label: "Histórico", icon: History },
     ],
   },
   {
     label: "Operação",
     items: [
-      { href: "/executions", label: "Execuções", icon: ScrollText, anyPermission: ["execution.read", "flow.read"] },
-      { href: "/flows", label: "Fluxos", icon: GitBranch, permission: "flow.read" },
-      { href: "/webhooks", label: "Webhooks", icon: Webhook, permission: "flow.read" },
-      { href: "/schedules", label: "Agendamentos", icon: CalendarClock, permission: "schedule.read" },
+      { href: "/executions", funcionalidade: "execucoes", label: "Execuções", icon: ScrollText },
+      { href: "/flows", funcionalidade: "fluxos", label: "Fluxos", icon: GitBranch },
+      { href: "/webhooks", funcionalidade: "webhooks", label: "Webhooks", icon: Webhook },
+      { href: "/schedules", funcionalidade: "agendamentos", label: "Agendamentos", icon: CalendarClock },
     ],
   },
   {
     label: "Catálogo",
     items: [
-      { href: "/automations", label: "Automações", icon: Workflow, permission: "automation.read" },
-      { href: "/categories", label: "Categorias", icon: Layers },
-      { href: "/runtimes", label: "Runtimes", icon: Package, permission: "runtime.read" },
+      { href: "/automations", funcionalidade: "automacoes", label: "Automações", icon: Workflow },
+      { href: "/categories", funcionalidade: "categorias", label: "Categorias", icon: Layers },
+      { href: "/runtimes", funcionalidade: "runtimes", label: "Runtimes", icon: Package },
     ],
   },
   {
     label: "Infraestrutura",
     items: [
-      { href: "/workers", label: "Agents", icon: Server, permission: "agent.read" },
-      { href: "/storage", label: "Armazenamento", icon: Database, permission: "artifact.read", padrao: false },
+      { href: "/workers", funcionalidade: "agents", label: "Agents", icon: Server },
+      { href: "/storage", funcionalidade: "armazenamento", label: "Armazenamento", icon: Database, padrao: false },
     ],
   },
   {
     label: "Segurança",
     items: [
-      { href: "/audit", label: "Auditoria", icon: ScrollText, permission: "audit.read", padrao: false },
-      { href: "/secrets", label: "Segredos", icon: KeyRound, permission: "secret.read_metadata", padrao: false },
-      { href: "/service-accounts", label: "Contas de serviço", icon: IdCard, adminOnly: true, padrao: false },
+      { href: "/audit", funcionalidade: "auditoria", label: "Auditoria", icon: ScrollText, padrao: false },
+      { href: "/secrets", funcionalidade: "segredos", label: "Segredos", icon: KeyRound, padrao: false },
+      { href: "/service-accounts", funcionalidade: "contas_de_servico", label: "Contas de serviço", icon: IdCard, padrao: false },
     ],
   },
   {
     label: "Pessoas e acesso",
     items: [
-      { href: "/users", label: "Usuários", icon: Users, permission: "admin.users", padrao: false },
-      { href: "/teams", label: "Times", icon: UsersRound, adminOnly: true, padrao: false },
-      { href: "/roles", label: "Papéis", icon: ShieldCheck, permission: "admin.roles", padrao: false },
-      { href: "/organizations", label: "Organizações", icon: Building2, adminOnly: true, padrao: false },
+      { href: "/users", funcionalidade: "usuarios", label: "Usuários", icon: Users, padrao: false },
+      { href: "/teams", funcionalidade: "times", label: "Times", icon: UsersRound, padrao: false },
+      { href: "/roles", funcionalidade: "papeis", label: "Papéis", icon: ShieldCheck, padrao: false },
+      { href: "/organizations", funcionalidade: "organizacoes", label: "Organizações", icon: Building2, padrao: false },
     ],
   },
   {
     label: "Governança",
     items: [
-      { href: "/governance/limits", label: "Limites", icon: Gauge, adminOnly: true, padrao: false },
-      { href: "/governance/retention", label: "Retenção", icon: Archive, adminOnly: true, padrao: false },
+      { href: "/governance/limits", funcionalidade: "limites", label: "Limites", icon: Gauge, padrao: false },
+      { href: "/governance/retention", funcionalidade: "retencao", label: "Retenção", icon: Archive, padrao: false },
     ],
   },
 ];

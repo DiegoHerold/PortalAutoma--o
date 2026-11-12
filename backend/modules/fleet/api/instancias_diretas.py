@@ -29,9 +29,9 @@ router = APIRouter(tags=["fleet"])
 
 def _gestor(db: Session, user: Any) -> str:
     try:
-        PermissionChecker(build_access_adapters(db).access).ensure_admin_or_manager(user)
+        PermissionChecker(build_access_adapters(db).access).ensure_permission(user, "maquinas.gerenciar")
     except AuthorizationDenied as exc:
-        raise HTTPException(status_code=403, detail="Só administrador ou gestor.") from exc
+        raise HTTPException(status_code=403, detail="O seu papel não gerencia máquinas.") from exc
     return str(getattr(user, "id", "")) or "desconhecido"
 
 

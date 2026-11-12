@@ -48,7 +48,7 @@ class GerenciarConcessoes:
         self.transaction = transaction
 
     def _garantir_gestor(self, ator: Any, automation_id: int) -> None:
-        PermissionChecker(self.access).ensure_admin_or_manager(ator)
+        PermissionChecker(self.access).ensure_permission(ator, "automacoes.gerenciar")
         if self.access.get_automation_category_id(automation_id) is None:
             raise AccessResourceNotFound("Automação não encontrada.")
 

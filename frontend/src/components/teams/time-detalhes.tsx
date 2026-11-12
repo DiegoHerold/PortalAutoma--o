@@ -16,7 +16,18 @@ import type { User } from "@/types/user";
 import type { Automation } from "@/types/automation";
 
 type Membro = { id: number; nome: string; email: string; ativo: boolean };
-type Categoria = { category_id: number; categoria?: string; can_view: boolean; can_execute: boolean };
+type Categoria = {
+  category_id: number; categoria?: string; can_view: boolean; can_execute: boolean;
+  can_create?: boolean; can_edit?: boolean; can_delete?: boolean; can_approve?: boolean;
+};
+type Marca = "can_view" | "can_execute" | "can_edit" | "can_approve";
+/** O que o time pode nas automações da categoria. "Editar" vale pelas três de cadastro (criar, editar, apagar). */
+const MARCAS: Array<{ campo: Marca; rotulo: string; dica: string }> = [
+  { campo: "can_view", rotulo: "Ver", dica: "ver as automações e as execuções" },
+  { campo: "can_execute", rotulo: "Executar", dica: "pedir execução" },
+  { campo: "can_edit", rotulo: "Editar", dica: "criar, editar e apagar o cadastro das automações" },
+  { campo: "can_approve", rotulo: "Publicar", dica: "publicar versões" },
+];
 type NaAutomacao = { automation_id: number; automacao: string; acoes: string[] };
 type Detalhes = { membros: Membro[]; categorias: Categoria[]; automacoes: NaAutomacao[]; acoes_possiveis: string[] };
 
@@ -76,14 +87,18 @@ function Conteudo({ time }: { time: TeamResponse }) {
   const catMudou = JSON.stringify(cats) !== JSON.stringify(d.categorias);
   const comAcesso = new Set(d.automacoes.map((a) => a.automation_id));
 
-  function marcarCategoria(id: number, campo: "can_view" | "can_execute", valor: boolean) {
+  function marcarCategoria(id: number, campo: Marca, valor: boolean) {
     setCats((atuais) => {
-      const atual = atuais.find((c) => c.category_id === id) ?? { category_id: id, can_view: false, can_execute: false };
-      let nova = { ...atual, [campo]: valor };
-      if (campo === "can_execute" && valor) nova = { ...nova, can_view: true };  // quem executa vê
-      if (campo === "can_view" && !valor) nova = { ...nova, can_execute: false };
+      const atual: Categoria = atuais.find((c) => c.category_id === id) ?? { category_id: id, can_view: false, can_execute: false };
+      let nova: Categoria = { ...atual, [campo]: valor };
+      if (campo === "can_edit") nova = { ...nova, can_create: valor, can_delete: valor };
+      if (campo !== "can_view" && valor) nova = { ...nova, can_view: true };  // quem executa, edita ou publica vê
+      if (campo === "can_view" && !valor) {
+        nova = { ...nova, can_execute: false, can_create: false, can_edit: false, can_delete: false, can_approve: false };
+      }
       const resto = atuais.filter((c) => c.category_id !== id);
-      return nova.can_view || nova.can_execute ? [...resto, nova].sort((a, b) => a.category_id - b.category_id) : resto;
+      const alguma = nova.can_view || nova.can_execute || nova.can_edit || nova.can_approve || nova.can_create || nova.can_delete;
+      return alguma ? [...resto, nova].sort((a, b) => a.category_id - b.category_id) : resto;
     });
   }
 
@@ -140,10 +155,12 @@ function Conteudo({ time }: { time: TeamResponse }) {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="titulo-condensado text-xl">Por categoria</h3>
-            <p className="text-sm text-muted-foreground">Vale para todas as automações da categoria.</p>
+            <p className="text-sm text-muted-foreground">Vale para todas as automações da categoria. É aqui que se dá acesso às automações; as telas vêm do papel.</p>
           </div>
           <Button size="sm" disabled={!catMudou} onClick={() => void chamar(`/teams/${time.id}/categorias`, "PUT",
-            { categorias: cats.map(({ category_id, can_view, can_execute }) => ({ category_id, can_view, can_execute })) }, "Permissões salvas")}>
+            { categorias: cats.map(({ category_id, can_view, can_execute, can_create, can_edit, can_delete, can_approve }) =>
+              ({ category_id, can_view, can_execute, can_create: !!can_create, can_edit: !!can_edit, can_delete: !!can_delete,
+                 can_approve: !!can_approve })) }, "Permissões salvas")}>
             Salvar
           </Button>
         </div>
@@ -153,14 +170,12 @@ function Conteudo({ time }: { time: TeamResponse }) {
             return (
               <li key={c.id} className="flex flex-wrap items-center gap-4 px-3 py-2">
                 <span className="min-w-0 flex-1 truncate font-medium">{c.name}</span>
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input type="checkbox" className="h-4 w-4 accent-primary" checked={!!atual?.can_view}
-                    onChange={(e) => marcarCategoria(c.id, "can_view", e.target.checked)} aria-label={`Ver ${c.name}`} /> Ver
-                </label>
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input type="checkbox" className="h-4 w-4 accent-primary" checked={!!atual?.can_execute}
-                    onChange={(e) => marcarCategoria(c.id, "can_execute", e.target.checked)} aria-label={`Executar ${c.name}`} /> Executar
-                </label>
+                {MARCAS.map((m) => (
+                  <label key={m.campo} className="flex items-center gap-1.5 text-sm" title={m.dica}>
+                    <input type="checkbox" className="h-4 w-4 accent-primary" checked={!!atual?.[m.campo]}
+                      onChange={(e) => marcarCategoria(c.id, m.campo, e.target.checked)} aria-label={`${m.rotulo} ${c.name}`} /> {m.rotulo}
+                  </label>
+                ))}
               </li>
             );
           })}

@@ -1,55 +1,63 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Pencil, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ErrorState } from "@/components/shared/error-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 
 /*
- * Papéis globais (12/11/2026): cada papel diz quais abas do menu a pessoa vê. Só administradores
- * criam, mudam e apagam. Desligar uma aba tira o acesso a ela; ligar dá a leitura dela.
+ * Papéis globais (12/11/2026): uma tabela com as funcionalidades do Portal (linhas, agrupadas como
+ * no menu) e os papéis (colunas). Cada célula: — (não entra), Ver ou Gerenciar (vê e altera).
+ * O papel diz QUAIS TELAS a pessoa usa; o time diz EM QUAIS AUTOMAÇÕES. Só administradores mudam.
  */
 
+type Nivel = "ver" | "gerenciar";
 type Papel = {
   id: number; nome: string; slug: string; descricao: string | null; sistema: boolean; pessoas: number;
-  abas: string[]; pode_mudar_abas: boolean; pode_apagar: boolean;
+  funcionalidades: Record<string, Nivel>; editavel: boolean; pode_apagar: boolean;
 };
-type Aba = { chave: string; rotulo: string; grupo: string };
-type Formulario = { id: number | null; nome: string; descricao: string; abas: string[]; baseado_em: string; pode_mudar_abas: boolean };
+type Funcionalidade = { chave: string; nome: string; grupo: string; href: string; niveis: Nivel[]; o_que_gerenciar: string | null };
+type Formulario = { id: number | null; nome: string; descricao: string; baseado_em: string };
 
-const VAZIO: Formulario = { id: null, nome: "", descricao: "", abas: [], baseado_em: "", pode_mudar_abas: true };
+const ROTULO: Record<string, string> = { "": "—", ver: "Ver", gerenciar: "Gerenciar" };
+const TOM: Record<string, string> = {
+  "": "text-muted-foreground",
+  ver: "bg-info/10 text-info font-medium",
+  gerenciar: "bg-primary/15 text-primary font-semibold",
+};
 
 export function RolesManager() {
   const { token } = useAuth();
   const { toast } = useToast();
   const papeis = useApi<{ papeis: Papel[]; pode_editar: boolean }>("/papeis");
-  const abas = useApi<{ abas: Aba[] }>("/papeis/abas");
+  const catalogo = useApi<{ funcionalidades: Funcionalidade[] }>("/papeis/funcionalidades");
   const [form, setForm] = useState<Formulario | null>(null);
   const [apagando, setApagando] = useState<Papel | null>(null);
   const [substituto, setSubstituto] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  const [mudancas, setMudancas] = useState<Record<number, Record<string, Nivel>>>({});
 
+  const funcionalidades = useMemo(() => (Array.isArray(catalogo.data?.funcionalidades) ? catalogo.data.funcionalidades : []),
+    [catalogo.data]);
   const grupos = useMemo(() => {
-    const mapa = new Map<string, Aba[]>();
-    for (const a of Array.isArray(abas.data?.abas) ? abas.data.abas : []) mapa.set(a.grupo, [...(mapa.get(a.grupo) ?? []), a]);
+    const mapa = new Map<string, Funcionalidade[]>();
+    for (const f of funcionalidades) mapa.set(f.grupo, [...(mapa.get(f.grupo) ?? []), f]);
     return [...mapa.entries()];
-  }, [abas.data]);
-  const rotulo = (chave: string) => abas.data?.abas.find((a) => a.chave === chave)?.rotulo ?? chave;
+  }, [funcionalidades]);
 
-  async function enviar(caminho: string, metodo: string, corpo: unknown, sucesso: string): Promise<boolean> {
+  async function enviar(caminho: string, metodo: string, corpo: unknown, sucesso: string | null): Promise<boolean> {
     setOcupado(true);
     try {
       await apiRequest(caminho, { token, method: metodo, body: corpo === undefined ? undefined : JSON.stringify(corpo) });
-      toast({ title: sucesso, kind: "success" });
+      if (sucesso) toast({ title: sucesso, kind: "success" });
       await papeis.refetch();
       return true;
     } catch (err) {
@@ -60,13 +68,22 @@ export function RolesManager() {
     }
   }
 
+  /** Muda uma célula e salva na hora (a configuração é rara: um clique, um registro na auditoria). */
+  async function mudar(papel: Papel, f: Funcionalidade, nivel: string) {
+    const atual = { ...papel.funcionalidades, ...(mudancas[papel.id] ?? {}) };
+    const nova: Record<string, Nivel | null> = { ...atual, [f.chave]: (nivel || null) as Nivel | null };
+    setMudancas((m) => ({ ...m, [papel.id]: Object.fromEntries(Object.entries(nova).filter(([, v]) => v)) as Record<string, Nivel> }));
+    const ok = await enviar(`/papeis/${papel.id}`, "PUT", { funcionalidades: nova }, null);
+    setMudancas((m) => { const resto = { ...m }; delete resto[papel.id]; return resto; });
+    if (ok) toast({ title: `${papel.nome}: ${f.nome} em "${ROTULO[nivel]}"`, kind: "success" });
+  }
+
   async function salvar() {
     if (!form) return;
-    const corpo = { nome: form.nome, descricao: form.descricao, ...(form.pode_mudar_abas ? { abas: form.abas } : {}) };
     const ok = form.id
-      ? await enviar(`/papeis/${form.id}`, "PUT", corpo, "Papel salvo")
-      : await enviar("/papeis", "POST", { ...corpo, ...(form.baseado_em ? { baseado_em: Number(form.baseado_em) } : {}) },
-        "Papel criado");
+      ? await enviar(`/papeis/${form.id}`, "PUT", { nome: form.nome, descricao: form.descricao }, "Papel salvo")
+      : await enviar("/papeis", "POST", { nome: form.nome, descricao: form.descricao,
+          ...(form.baseado_em ? { baseado_em: Number(form.baseado_em) } : {}) }, "Papel criado");
     if (ok) setForm(null);
   }
 
@@ -78,66 +95,100 @@ export function RolesManager() {
   }
 
   if (papeis.error) return <ErrorState message={papeis.error} onRetry={papeis.refetch} />;
-  if (!papeis.data || !Array.isArray(papeis.data.papeis)) {
-    return <div className="grid gap-4 lg:grid-cols-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-44 rounded-xl" />)}</div>;
-  }
+  if (!papeis.data || !Array.isArray(papeis.data.papeis) || !catalogo.data) return <Skeleton className="h-[60vh] rounded-xl" />;
   const lista = papeis.data.papeis;
   const editar = papeis.data.pode_editar;
-  const total = abas.data?.abas.length ?? 0;
+  const tabelaDe = (p: Papel) => ({ ...p.funcionalidades, ...(mudancas[p.id] ?? {}) });
 
   return (
     <div className="space-y-5" data-testid="papeis">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-muted-foreground">
-          {editar ? "Desligar uma aba tira o acesso a ela; ligar dá a leitura dela." : "Só administradores mudam os papéis."}
-        </p>
-        {editar && (
-          <Button onClick={() => setForm({ ...VAZIO })}><Plus className="h-4 w-4" /> Novo papel</Button>
-        )}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-3xl space-y-1 text-sm text-muted-foreground">
+          <p><strong className="text-titulo">Ver</strong>: a pessoa abre a tela. <strong className="text-titulo">Gerenciar</strong>: vê e altera (criar, editar, apagar).</p>
+          <p>O papel diz quais telas a pessoa usa; em quais automações ela trabalha é o time que diz.
+            {!editar && " Só administradores mudam os papéis."}</p>
+        </div>
+        {editar && <Button onClick={() => setForm({ id: null, nome: "", descricao: "", baseado_em: "" })}><Plus className="h-4 w-4" /> Novo papel</Button>}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {lista.map((p) => (
-          <article key={p.id} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm" data-papel={p.slug}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-lg font-semibold text-titulo">
-                  <ShieldCheck className="h-5 w-5 text-primary" /> {p.nome}
-                  {p.sistema && <Badge tone="outline" className="text-xs">Sistema</Badge>}
-                </p>
-                <p className="text-sm text-muted-foreground">{p.descricao || "Sem descrição."}</p>
-              </div>
-              {editar && (
-                <div className="flex shrink-0 gap-1">
-                  <Button size="sm" variant="ghost" aria-label={`Editar ${p.nome}`}
-                    onClick={() => setForm({ id: p.id, nome: p.nome, descricao: p.descricao ?? "", abas: p.abas, baseado_em: "",
-                                             pode_mudar_abas: p.pode_mudar_abas })}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  {p.pode_apagar && (
-                    <Button size="sm" variant="ghost" aria-label={`Apagar ${p.nome}`} onClick={() => { setApagando(p); setSubstituto(""); }}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-            <p className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {p.pessoas} pessoa(s)</span>
-              <span>{p.pode_mudar_abas ? `${p.abas.length} de ${total} abas` : "Todas as abas"}</span>
-            </p>
-            {p.pode_mudar_abas && (
-              <div className="flex flex-wrap gap-1.5" data-testid="abas-do-papel">
-                {p.abas.length === 0 ? <span className="text-sm text-muted-foreground">Só o Painel.</span>
-                  : p.abas.map((a) => <span key={a} className="rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">{rotulo(a)}</span>)}
-              </div>
-            )}
-          </article>
-        ))}
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+        <table className="w-full border-collapse text-sm" data-testid="tabela-de-papeis">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="sticky left-0 z-10 min-w-[15rem] bg-card px-4 py-3 text-left align-bottom font-semibold text-muted-foreground">
+                Funcionalidade
+              </th>
+              {lista.map((p) => (
+                <th key={p.id} className="min-w-[9.5rem] px-3 py-3 text-left align-bottom" data-papel={p.slug}>
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-semibold text-titulo" title={p.descricao ?? undefined}>{p.nome}</p>
+                      <p className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                        <Users className="h-3.5 w-3.5" /> {p.pessoas}{p.sistema ? " · sistema" : ""}
+                      </p>
+                    </div>
+                    {editar && (
+                      <div className="flex shrink-0">
+                        <button className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Editar ${p.nome}`}
+                          onClick={() => setForm({ id: p.id, nome: p.nome, descricao: p.descricao ?? "", baseado_em: "" })}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        {p.pode_apagar && (
+                          <button className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive" aria-label={`Apagar ${p.nome}`}
+                            onClick={() => { setApagando(p); setSubstituto(""); }}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {grupos.map(([grupo, itens]) => (
+              <Fragment key={grupo}>
+                <tr className="bg-muted/50">
+                  <td colSpan={lista.length + 1} className="sticky left-0 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    {grupo}
+                  </td>
+                </tr>
+                {itens.map((f) => (
+                  <tr key={f.chave} className="border-t border-border/60 hover:bg-muted/30" data-funcionalidade={f.chave}>
+                    <td className="sticky left-0 z-10 bg-card px-4 py-2">
+                      <p className="font-medium text-titulo">{f.nome}</p>
+                      {f.o_que_gerenciar && <p className="text-xs text-muted-foreground">Gerenciar: {f.o_que_gerenciar}</p>}
+                    </td>
+                    {lista.map((p) => {
+                      const nivel = tabelaDe(p)[f.chave] ?? "";
+                      if (!editar || !p.editavel) {
+                        return (
+                          <td key={p.id} className="px-3 py-2">
+                            <span className={cn("inline-block rounded-md px-2 py-0.5", TOM[nivel])}>{p.editavel ? ROTULO[nivel] : "Tudo"}</span>
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={p.id} className="px-3 py-2">
+                          <select value={nivel} disabled={ocupado} aria-label={`${p.nome}: ${f.nome}`}
+                            onChange={(e) => void mudar(p, f, e.target.value)}
+                            className={cn("h-9 w-full rounded-md border border-input px-2 text-sm", nivel ? TOM[nivel] : "bg-background")}>
+                            <option value="">—</option>
+                            {f.niveis.map((n) => <option key={n} value={n}>{ROTULO[n]}</option>)}
+                          </select>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      <Modal open={form !== null} onClose={() => setForm(null)} className="max-w-2xl"
-        title={form?.id ? `Editar ${form.nome || "papel"}` : "Novo papel"}
+      <Modal open={form !== null} onClose={() => setForm(null)} title={form?.id ? `Editar ${form.nome || "papel"}` : "Novo papel"}
         footer={<>
           <Button variant="ghost" onClick={() => setForm(null)}>Voltar</Button>
           <Button disabled={ocupado || !form?.nome.trim()} onClick={() => void salvar()}>{form?.id ? "Salvar" : "Criar papel"}</Button>
@@ -157,53 +208,14 @@ export function RolesManager() {
             {!form.id && (
               <label className="block space-y-1.5">
                 <span className="text-sm font-medium">Baseado em</span>
-                <select value={form.baseado_em} aria-label="Baseado em"
-                  onChange={(e) => {
-                    const base = lista.find((p) => String(p.id) === e.target.value);
-                    setForm({ ...form, baseado_em: e.target.value, abas: base ? base.abas : form.abas });
-                  }}
+                <select value={form.baseado_em} onChange={(e) => setForm({ ...form, baseado_em: e.target.value })} aria-label="Baseado em"
                   className="h-11 w-full rounded-lg border border-input bg-background px-3">
                   <option value="">Nenhum (começa só com o Painel)</option>
                   {lista.filter((p) => p.slug !== "admin").map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
                 </select>
-                <span className="block text-xs text-muted-foreground">Copia o que o papel pode fazer (executar, editar...) e as abas dele.</span>
+                <span className="block text-xs text-muted-foreground">Copia a coluna do papel escolhido. Depois é só ajustar na tabela.</span>
               </label>
             )}
-            <fieldset className="space-y-3">
-              <legend className="flex w-full items-center justify-between text-sm font-medium">
-                Abas que aparecem
-                {form.pode_mudar_abas && (
-                  <span className="flex gap-3 text-xs font-normal">
-                    <button type="button" className="text-primary hover:underline"
-                      onClick={() => setForm({ ...form, abas: (abas.data?.abas ?? []).map((a) => a.chave) })}>Todas</button>
-                    <button type="button" className="text-primary hover:underline" onClick={() => setForm({ ...form, abas: [] })}>Nenhuma</button>
-                  </span>
-                )}
-              </legend>
-              {!form.pode_mudar_abas ? (
-                <p className="text-sm text-muted-foreground">O papel Admin vê todas as abas.</p>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {grupos.map(([grupo, itens]) => (
-                    <div key={grupo} className="space-y-1.5">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{grupo}</p>
-                      {itens.map((a) => {
-                        const ligada = form.abas.includes(a.chave);
-                        return (
-                          <label key={a.chave} className={cn("flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-muted",
-                            ligada && "font-medium text-titulo")}>
-                            <input type="checkbox" checked={ligada} aria-label={a.rotulo}
-                              onChange={() => setForm({ ...form, abas: ligada ? form.abas.filter((x) => x !== a.chave) : [...form.abas, a.chave] })} />
-                            {a.rotulo}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground">O Painel e as Configurações aparecem sempre.</p>
-            </fieldset>
           </div>
         )}
       </Modal>
@@ -225,7 +237,7 @@ export function RolesManager() {
             </select>
           </label>
         ) : (
-          <p className="text-sm">Ninguém tem este papel. Ele sai da lista e não pode ser recuperado.</p>
+          <p className="text-sm">Ninguém tem este papel. Ele sai da tabela e não pode ser recuperado.</p>
         ))}
       </Modal>
     </div>

@@ -250,12 +250,13 @@ números e a seção "Máquinas" do pé saíram: o que elas mostravam está nas 
 
 ## Papéis globais (regra de tela, 12/11/2026)
 
-- Um cartão por papel, com o número de pessoas e as abas que o papel vê.
-- O Admin mostra "Todas as abas".
-- Só o admin vê os botões **Novo papel**, editar e apagar. Apagar só aparece nos papéis que não são do sistema.
-- A janela de editar tem as abas agrupadas como no menu, com "Todas" e "Nenhuma".
-- **Baseado em** só existe ao criar um papel.
-- Apagar um papel com pessoas pede o substituto antes de liberar o botão.
+- **Uma tabela:** funcionalidades nas linhas, agrupadas e na ordem do menu (com "Gerenciar: o que dá" embaixo do nome), e papéis nas colunas (nome, pessoas, "sistema", editar e apagar).
+- **Cada célula** é uma seleção: "—", "Ver" (azul) ou "Gerenciar" (cor primária). Funcionalidade que só se vê não oferece "Gerenciar".
+- **A célula salva na hora** e avisa ("Operator: Agendamentos em Gerenciar").
+- **A coluna Admin** mostra "Tudo" e não muda.
+- **Quem não é admin** vê a mesma tabela só para leitura.
+- **Novo papel:** nome, descrição e "baseado em", que copia a coluna. Apagar um papel com pessoas pede o substituto.
+- **O texto do topo** lembra a divisão: o papel diz quais telas, o time diz quais automações.
 
 ## Parar, continuar e "por que não anda" (regra de tela, 12/11/2026)
 

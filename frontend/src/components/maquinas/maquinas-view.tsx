@@ -10,7 +10,7 @@ import { useAvisos } from "@/hooks/use-avisos";
 import { apiRequest } from "@/lib/api";
 import { horario } from "@/lib/fila";
 import type { BlocoNaLinha, LinhaDoTempo } from "@/lib/painel";
-import { isAdminOrManager } from "@/lib/permissions";
+import { podeGerenciar } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { ErrorState } from "@/components/shared/error-state";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ const CORES: Record<BlocoNaLinha["tipo"], string> = {
 
 export function MaquinasView() {
   const { user } = useAuth();
-  const gestor = isAdminOrManager(user);
+  const gestor = podeGerenciar(user, "maquinas");
   const [janela, setJanela] = useState(JANELAS[1]);
   const [opcoes, setOpcoes] = useState(false);
   const caminho = `/painel/linha-do-tempo?horas_antes=${janela.antes}&horas_depois=${janela.depois}`;
