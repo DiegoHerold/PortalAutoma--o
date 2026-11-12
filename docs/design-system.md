@@ -233,6 +233,30 @@ Canal esperado do backend: `/ws/executions` (deriva de `NEXT_PUBLIC_API_URL`). E
   telas e logs são restritos; a tela não chega a pedir log nem imagem.
 - Indicador de conexão: "Ao vivo" (verde) ou "Reconectando" (âmbar, relendo a cada 30 s).
 
+## Painel: o foco é o andamento (regra de tela, 12/11/2026)
+
+De cima para baixo:
+
+1. **Abas de máquina** ("Todas", depois cada máquina com bolinha e estado: livre, rodando, sem
+   sinal, job perdido, sessão bloqueada). A escolha fica guardada no navegador e filtra tudo abaixo.
+2. **Rodando agora:** os cartões sem nenhuma situação.
+3. **Pausadas ou esperando:** os cartões com a linha de situação (pausa, espera, comunicação, parada).
+4. **Esperando para começar:** a fila e os perdidos, uma linha cada. O perdido aparece primeiro, em
+   âmbar, com "Decidir".
+5. **Últimas automações.**
+
+Seção vazia não aparece. Sem nada em andamento, fica só o aviso "Nada rodando agora". A faixa de
+números e a seção "Máquinas" do pé saíram: o que elas mostravam está nas abas e nas seções.
+
+## Papéis globais (regra de tela, 12/11/2026)
+
+- Um cartão por papel, com o número de pessoas e as abas que o papel vê.
+- O Admin mostra "Todas as abas".
+- Só o admin vê os botões **Novo papel**, editar e apagar. Apagar só aparece nos papéis que não são do sistema.
+- A janela de editar tem as abas agrupadas como no menu, com "Todas" e "Nenhuma".
+- **Baseado em** só existe ao criar um papel.
+- Apagar um papel com pessoas pede o substituto antes de liberar o botão.
+
 ## Parar, continuar e "por que não anda" (regra de tela, 12/11/2026)
 
 - **Linha da situação no cartão:** cada execução tem no máximo **uma** linha

@@ -48,11 +48,27 @@ export type MaquinaNoPainel = {
   proximo: { automacao: string | null; inicio_previsto: string | null } | null;
 };
 
+/** Esperando para andar: na fila (esperando máquina) ou perdido (esperando uma decisão). */
+export type JobEsperando = {
+  job_id: string;
+  execucao_id: string;
+  automation_id: number | null;
+  automacao: string | null;
+  itens: string[];
+  maquina_id: string | null;
+  maquina: string | null;
+  inicio_previsto?: string | null;
+  enfileirado_em?: string;
+  motivos?: string[];
+  perdido_em?: string | null;
+};
+
 export type Painel = {
   gerado_em: string;
   central: boolean;
   execucoes: ExecucaoAoVivo[];
   maquinas: MaquinaNoPainel[];
+  aguardando?: { fila: JobEsperando[]; perdidos: JobEsperando[] };
   fila: { esperando: number; perdidos: number; termina_em: string | null; sem_previsao: number };
 };
 

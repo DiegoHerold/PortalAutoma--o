@@ -67,6 +67,9 @@ def _onde(f: Filtros) -> list[Any]:
         padrao = f"%{f.busca.strip()}%"
         condicoes.append(or_(E.action.ilike(padrao), E.resource_type.ilike(padrao), E.resource_id.ilike(padrao),
                              E.actor_id.ilike(padrao)))
+    if not f.tecnicos and not f.acao:
+        # Telas abertas (registradas até 12/11/2026) não aparecem na linha do tempo normal.
+        condicoes.append(E.action != "tela.aberta")
     if not f.tecnicos and not f.correlacao:
         # O registro técnico (api.*) some quando a mesma requisição gravou o evento de negócio.
         outro = aliased(E)

@@ -10,7 +10,7 @@ import { CONFIGURACOES, NAV_GROUPS, type NavItem } from "@/lib/navigation";
 import { completar, itensEmOrdem, mover, salvarOrdem, useMenuOrdem, useMenuVisivel, type OrdemDoMenu } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { hasAnyPermission, hasPermission, isAdminOrManager } from "@/lib/permissions";
+import { hasPermission, itemVisivel } from "@/lib/permissions";
 
 const COLLAPSE_STORAGE_KEY = "portal.sidebar.collapsed";
 
@@ -19,10 +19,7 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 function isItemVisible(item: NavItem, user: Parameters<typeof hasPermission>[0]): boolean {
-  if (item.adminOnly && !isAdminOrManager(user)) return false;
-  if (item.permission && !hasPermission(user, item.permission)) return false;
-  if (item.anyPermission && !hasAnyPermission(user, item.anyPermission)) return false;
-  return true;
+  return itemVisivel(item, user);
 }
 
 function useCollapsed() {

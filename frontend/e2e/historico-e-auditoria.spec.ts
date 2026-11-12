@@ -25,13 +25,14 @@ function eventos(agora: number) {
       depois: { nome: "MAQ200", sistema: "windows" }, correlacao: "c1" },
     { ...base, ...ti, id: "ev_1b", quando: em(-60), acao: "api.post", tipo: "alteracao", recurso_tipo: "maquinas", recurso_id: "-",
       detalhes: { metodo: "POST", caminho: "/api/v1/maquinas", rota: "/maquinas", status: 201, duracao_ms: 42 }, correlacao: "c1", tecnico: true },
-    { ...base, ...ti, id: "ev_2", quando: em(-120), acao: "tela.aberta", tipo: "acesso", recurso_tipo: "tela", recurso_id: "/maquinas", correlacao: "c0" },
+    { ...base, ...ti, id: "ev_2", quando: em(-120), acao: "automation.updated", tipo: "alteracao", recurso_tipo: "automation", recurso_id: "7",
+      antes: { name: "Folha" }, depois: { name: "Integração Contábil · Folha" }, correlacao: "c0" },
     { ...base, ...ana, id: "ev_3", quando: em(-180), acao: "login_succeeded", tipo: "acesso", recurso_tipo: "user", recurso_id: "6", correlacao: "c2" },
     { ...base, ...ti, id: "ev_4", quando: em(-86_400), acao: "user_permissions_updated", tipo: "alteracao", recurso_tipo: "user", recurso_id: "6",
       antes: { permissions: ["ver_execucoes"] }, depois: { permissions: ["ver_execucoes", "executar"] }, correlacao: "c3" },
     { ...base, tipo_de_ator: "system", ator_id: null, ator_nome: null, id: "ev_5", quando: em(-86_500), acao: "retencao.aplicada", tipo: "sistema",
       recurso_tipo: "retencao", recurso_id: "-", detalhes: { apagados: 12 }, correlacao: null },
-    { ...base, ...ana, id: "ev_6", quando: em(-86_600), acao: "tela.aberta", tipo: "acesso", recurso_tipo: "tela", recurso_id: "/historico", correlacao: "c4" },
+    { ...base, ...ana, id: "ev_6", quando: em(-86_600), acao: "login_succeeded", tipo: "acesso", recurso_tipo: "user", recurso_id: "6", correlacao: "c4" },
   ];
 }
 
@@ -57,7 +58,6 @@ async function preparar(page: Page) {
     const json = (b: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(b) });
     if (caminho === "/auth/me") return json({ id: 1, email: "gestor@teste.invalid", name: "Gestor de Teste", role: "admin", permissions: [], rbac_permissions: ["audit.read"] });
     if (caminho.endsWith("/avisos")) return route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: pronto\ndata: {}\n\n" });
-    if (caminho === "/governance/auditoria/tela") return route.fulfill({ status: 204 });
     if (caminho === "/governance/auditoria/pessoas") return json({ pessoas: [
       { id: "6", nome: "Ana Souza", email: "ana@teste.invalid" }, { id: "5", nome: "Equipe de TI", email: "ti@teste.invalid" }] });
     // Filtra como o servidor: o registro técnico (api.*) só aparece quando se pede a mesma ação ou "técnicos".
@@ -166,11 +166,9 @@ test("auditoria: linha do tempo por dia, clique no evento mostra o que mudou e o
   await page.setViewportSize({ width: 1920, height: 1080 });
   const { pedidos, erros } = await preparar(page);
   await abrir(page, "/audit");
-  // A tela aberta fica registrada (só o caminho).
-  await expect.poll(() => pedidos.find((p) => p.metodo === "POST" && p.caminho === "/governance/auditoria/tela")?.corpo)
-    .toMatchObject({ caminho: "/audit" });
+  // Abrir uma tela não é registrado (detalhe demais para a auditoria).
   await page.waitForTimeout(500);
-  expect(pedidos.filter((p) => p.caminho === "/governance/auditoria/tela")).toHaveLength(1); // uma vez por tela aberta
+  expect(pedidos.filter((p) => p.metodo === "POST")).toEqual([]);
 
   const feed = page.getByTestId("auditoria");
   await expect(feed.locator("[data-evento]")).toHaveCount(6); // o técnico (api.post) fica escondido
@@ -179,7 +177,7 @@ test("auditoria: linha do tempo por dia, clique no evento mostra o que mudou e o
   await expect(feed).toContainText("Equipe de TI cadastrou a máquina mch_7");
   await expect(feed).toContainText("alterou as permissões do usuário Ana Souza");
   await expect(feed.locator("[data-evento]").first()).toContainText("ET");
-  await expect(feed).toContainText("abriu a tela Máquinas");
+  await expect(feed).toContainText("alterou a automação 7");
   await expect(feed).toContainText("Portal apagou o que passou do prazo de retenção");
 
   await feed.getByText("cadastrou a máquina").click();
@@ -195,7 +193,7 @@ test("auditoria: linha do tempo por dia, clique no evento mostra o que mudou e o
   await expect(rel).toContainText("fez uma alteração em Máquinas");
 
   await detalhe.getByRole("tab", { name: "Da pessoa" }).click();
-  await expect(rel.getByRole("listitem")).toHaveCount(3); // TI: máquina, tela e permissões
+  await expect(rel.getByRole("listitem")).toHaveCount(3); // TI: máquina, automação e permissões
   await expect(rel).toContainText("alterou as permissões do usuário");
 
   await detalhe.getByRole("tab", { name: "Do item" }).click();
@@ -231,13 +229,13 @@ test("auditoria: clique na pessoa mostra só ela; agrupar por pessoa e por açã
   await page.screenshot({ path: `${TELAS}/auditoria-por-pessoa-1920.png`, fullPage: true, animations: "disabled" });
 
   await page.getByRole("group", { name: "Agrupar por" }).getByRole("button", { name: "Ação" }).click();
-  await expect(feed.locator("[data-grupo-auditoria='tela.aberta'] h2")).toContainText("Abriu a tela");
-  await feed.locator("[data-grupo-auditoria='tela.aberta']").getByRole("button", { name: "ver só esta ação" }).click();
-  await expect(page).toHaveURL(/acao=tela\.aberta/);
+  await expect(feed.locator("[data-grupo-auditoria='login_succeeded'] h2")).toContainText("Entrou no Portal");
+  await feed.locator("[data-grupo-auditoria='login_succeeded']").getByRole("button", { name: "ver só esta ação" }).click();
+  await expect(page).toHaveURL(/acao=login_succeeded/);
   await expect(feed.locator("[data-evento]")).toHaveCount(2);
   await page.getByRole("button", { name: "Tirar o filtro de ação" }).click();
 
   await page.getByRole("group", { name: "Tipo" }).getByRole("button", { name: "Alterações" }).click();
-  await expect(feed.locator("[data-evento]")).toHaveCount(2);
+  await expect(feed.locator("[data-evento]")).toHaveCount(3);
   expect(erros).toEqual([]);
 });

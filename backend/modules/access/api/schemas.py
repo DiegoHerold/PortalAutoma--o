@@ -82,6 +82,7 @@ class AuthenticatedUserResponse(BaseModel):
     organization_id: int | None = None
     permissions: list[CategoryPermissionResponse] = Field(default_factory=list)
     rbac_permissions: list[str] = Field(default_factory=list)
+    abas: list[str] | None = None
 
 
 class OrganizationCreateRequest(BaseModel):

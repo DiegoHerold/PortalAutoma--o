@@ -34,10 +34,12 @@ def test_toda_alteracao_fica_registrada_e_ligada_a_mesma_acao(cliente, sessao) -
         maquina = r.json()["id"]
         # alteração recusada também fica registrada (com o status)
         assert cliente.post("/api/v1/maquinas", json={"nome": nome}, headers=cab).status_code == 409
-        # telas abertas: a mesma tela em seguida não repete
-        for caminho in ("/historico", "/historico", "/maquinas"):
-            assert cliente.post(f"{API}/tela", json={"caminho": caminho}, headers=cab).status_code == 204
-        assert cliente.post(f"{API}/tela", json={"caminho": "historico"}, headers=cab).status_code == 422
+        # Abrir telas não é mais registrado; o registro antigo fica só nos técnicos.
+        assert cliente.post(f"{API}/tela", json={"caminho": "/historico"}, headers=cab).status_code in (404, 405)
+        sessao.execute(text("INSERT INTO audit_events (id, actor_type, actor_id, action, resource_type, resource_id,"
+                            " occurred_at) VALUES (:i, 'user', :u, 'tela.aberta', 'tela', '/historico', now())"),
+                       {"i": f"aud_{uuid.uuid4().hex}", "u": str(uid)})
+        sessao.commit()
 
         mesma = cliente.get(f"{API}/eventos", params={"correlacao": "req_teste_maquina"}, headers=cab).json()["eventos"]
         assert sorted(e["acao"] for e in mesma) == ["api.post", "maquina.cadastrada"]  # o negócio e o técnico, ligados
@@ -51,13 +53,14 @@ def test_toda_alteracao_fica_registrada_e_ligada_a_mesma_acao(cliente, sessao) -
         assert acoes.count("maquina.cadastrada") == 1 and acoes.count("api.post") == 1
         recusa = next(e for e in minhas if e["acao"] == "api.post")
         assert recusa["detalhes"]["status"] == 409 and recusa["detalhes"]["rota"] == "/api/v1/maquinas"
-        assert [e["recurso_id"] for e in minhas if e["acao"] == "tela.aberta"] == ["/maquinas", "/historico"]
+        assert "tela.aberta" not in acoes
         assert "login_succeeded" in acoes
         com_tecnicos = cliente.get(f"{API}/eventos", params={"usuario": str(uid), "tecnicos": "true"}, headers=cab).json()["eventos"]
         assert [e["acao"] for e in com_tecnicos].count("api.post") == 2
+        assert [e["acao"] for e in com_tecnicos].count("tela.aberta") == 1
 
         acessos = cliente.get(f"{API}/eventos", params={"usuario": str(uid), "tipo": "acesso"}, headers=cab).json()["eventos"]
-        assert {e["acao"] for e in acessos} == {"tela.aberta", "login_succeeded"}
+        assert {e["acao"] for e in acessos} == {"login_succeeded"}
         hoje = date.today().isoformat()
         assert cliente.get(f"{API}/eventos", params={"usuario": str(uid), "de": "2000-01-01", "ate": "2000-01-02"},
                            headers=cab).json()["eventos"] == []
@@ -69,18 +72,17 @@ def test_toda_alteracao_fica_registrada_e_ligada_a_mesma_acao(cliente, sessao) -
 
         por_pessoa = cliente.get(f"{API}/grupos", params={"por": "usuario"}, headers=cab).json()["grupos"]
         eu = next(g for g in por_pessoa if g["chave"] == str(uid))
-        assert eu["email"] == email and eu["total"] >= 5
+        assert eu["email"] == email and eu["total"] >= 3  # entrou, cadastrou a máquina e a recusa (telas não contam)
         por_dia = cliente.get(f"{API}/grupos", params={"por": "dia", "usuario": str(uid)}, headers=cab).json()["grupos"]
         assert por_dia[0]["chave"] == hoje
         por_acao = {g["chave"]: g["total"] for g in cliente.get(f"{API}/grupos", params={"por": "acao", "usuario": str(uid)}, headers=cab).json()["grupos"]}
-        assert por_acao["tela.aberta"] == 2 and por_acao["maquina.cadastrada"] == 1
+        assert "tela.aberta" not in por_acao and por_acao["maquina.cadastrada"] == 1
         assert cliente.get(f"{API}/grupos", params={"por": "mes"}, headers=cab).status_code == 422
         assert any(p["id"] == str(uid) for p in cliente.get(f"{API}/pessoas", headers=cab).json()["pessoas"])
 
-    # quem não tem audit.read não lê (mas registra as telas que abre)
+    # quem não tem audit.read não lê
     _, outro = _pessoa(sessao)
     with com_login(cliente, outro) as cab:
         assert cliente.get(f"{API}/eventos", headers=cab).status_code == 403
-        assert cliente.post(f"{API}/tela", json={"caminho": "/dashboard"}, headers=cab).status_code == 204
-    print("\nauditoria: criação ligada ao registro técnico pela mesma ação; recusa (409) registrada; telas sem repetição;"
+    print("\nauditoria: criação ligada ao registro técnico pela mesma ação; recusa (409) registrada; telas abertas não entram;"
           " filtros por pessoa, tipo, período e item; grupos por pessoa, dia e ação")

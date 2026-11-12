@@ -63,7 +63,6 @@ async function preparar(page: Page, estado: { acompanhar?: () => unknown; painel
     const json = (b: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(b) });
     if (caminho === "/auth/me") return json({ id: 1, email: "operador@teste.invalid", name: "Operador de Teste", role: "operator", permissions: [], rbac_permissions: [] });
     if (caminho.endsWith("/avisos")) return route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: pronto\ndata: {}\n\n" });
-    if (caminho === "/governance/auditoria/tela") return route.fulfill({ status: 204 });
     if (caminho === "/painel" && estado.painel) return json(estado.painel(em));
     if (caminho === "/painel") return json({ gerado_em: em(0), central: false, fila: { esperando: 0, perdidos: 0, termina_em: null, sem_previsao: 0 },
       maquinas: [], execucoes: [

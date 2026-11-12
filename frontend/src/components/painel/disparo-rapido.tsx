@@ -26,7 +26,6 @@ type Recente = {
 type Recentes = { automacoes: Recente[]; maquinas: Array<{ id: string; nome: string }> };
 type Disparo = { id: number; nome: string; itens?: string[] };
 
-const CHAVE_MAQUINA = "portal.painel.maquina";
 
 /** Abre a janela Executar de qualquer automação; quem chama decide o que mostrar para disparar. */
 export function useDisparo(pedido?: () => void) {
@@ -124,20 +123,13 @@ function BuscaParaExecutar({ fechar, escolher }: { fechar: () => void; escolher:
   );
 }
 
-/** As últimas automações que a pessoa vê, uma por automação, com o filtro por máquina. */
-export function UltimasAutomacoes({ disparar, atualizar }: { disparar: (d: Disparo) => void; atualizar: number }) {
-  const [maquina, setMaquina] = useState("");
-  useEffect(() => {
-    try { setMaquina(window.localStorage.getItem(CHAVE_MAQUINA) ?? ""); } catch { /* sem armazenamento */ }
-  }, []);
+/** As últimas automações que a pessoa vê, uma por automação (filtradas pela máquina escolhida nas abas do Painel). */
+export function UltimasAutomacoes({ disparar, atualizar, maquina = "" }: {
+  disparar: (d: Disparo) => void; atualizar: number; maquina?: string;
+}) {
   const caminho = `/painel/recentes?limite=3${maquina ? `&maquina=${encodeURIComponent(maquina)}` : ""}`;
   const recentes = useApi<Recentes>(caminho, { pollMs: 60000 });
   useEffect(() => { if (atualizar) void recentes.refetch(); }, [atualizar]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function escolherMaquina(valor: string) {
-    setMaquina(valor);
-    try { window.localStorage.setItem(CHAVE_MAQUINA, valor); } catch { /* sem armazenamento */ }
-  }
 
   // Resposta fora do formato não derruba o Painel: o bloco fica como "carregando".
   const dados = recentes.data && Array.isArray(recentes.data.automacoes) ? recentes.data : null;
@@ -145,16 +137,9 @@ export function UltimasAutomacoes({ disparar, atualizar }: { disparar: (d: Dispa
     <section className="space-y-3" data-testid="ultimas-automacoes">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="titulo-condensado text-2xl">Últimas automações</h2>
-        <div className="flex items-center gap-3">
-          <select value={maquina} onChange={(e) => escolherMaquina(e.target.value)} aria-label="Filtrar por máquina"
-            className="h-10 rounded-md border border-input bg-card px-3 text-sm">
-            <option value="">Todas as máquinas</option>
-            {(Array.isArray(dados?.maquinas) ? dados.maquinas : []).map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
-          </select>
-          <Link href="/historico" className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
-            <History className="h-4 w-4" /> Histórico
-          </Link>
-        </div>
+        <Link href="/historico" className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+          <History className="h-4 w-4" /> Histórico
+        </Link>
       </div>
       {!dados ? (
         <div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-40 rounded-xl" />)}</div>

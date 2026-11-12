@@ -4,6 +4,16 @@ type RequestOptions = RequestInit & {
   token?: string | null;
 };
 
+/** O login venceu (o token vale 60 min): avisa o AuthProvider, que leva para a tela de login. */
+export const SESSAO_EXPIRADA = "portal:sessao-expirada";
+const TEXTO_SESSAO_EXPIRADA = "Sua sessão expirou. Entre de novo.";
+
+function sessaoExpirada(response: Response, token: string | null | undefined): boolean {
+  if (response.status !== 401 || !token) return false;
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(SESSAO_EXPIRADA));
+  return true;
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
@@ -19,6 +29,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   });
 
   if (!response.ok) {
+    if (sessaoExpirada(response, options.token)) throw new Error(TEXTO_SESSAO_EXPIRADA);
     throw new Error(await errorMessage(response));
   }
 
@@ -50,6 +61,7 @@ export async function apiUpload<T>(path: string, formData: FormData, token: stri
   });
 
   if (!response.ok) {
+    if (sessaoExpirada(response, token)) throw new Error(TEXTO_SESSAO_EXPIRADA);
     throw new Error(await errorMessage(response));
   }
 
@@ -67,6 +79,7 @@ export async function apiDownload(path: string, token: string | null, filename?:
 
   const response = await fetch(`${API_BASE_URL}${path}`, { headers, cache: "no-store" });
   if (!response.ok) {
+    if (sessaoExpirada(response, token)) throw new Error(TEXTO_SESSAO_EXPIRADA);
     throw new Error(await errorMessage(response));
   }
   const blob = await response.blob();

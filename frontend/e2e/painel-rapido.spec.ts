@@ -138,12 +138,14 @@ test("repetir: abre com os mesmos itens marcados; o filtro por máquina fica gua
   const { pedidos, erros } = await preparar(page);
   await abrir(page, "/dashboard");
   const ultimas = page.getByTestId("ultimas-automacoes");
-  await ultimas.getByLabel("Filtrar por máquina").selectOption("mch_f1");
+  const abas = page.getByRole("tablist", { name: "Máquina" });
+  // A máquina escolhida nas abas do Painel filtra também as últimas automações.
+  await abas.getByRole("tab", { name: /FISCAL-01/ }).click();
   await expect(ultimas.locator("[data-automacao]")).toHaveCount(1);
   expect(pedidos.some((p) => p.caminho === "/painel/recentes?limite=3&maquina=mch_f1")).toBe(true);
   await page.reload();
-  await expect(page.getByTestId("ultimas-automacoes").getByLabel("Filtrar por máquina")).toHaveValue("mch_f1");
-  await ultimas.getByLabel("Filtrar por máquina").selectOption("");
+  await expect(abas.getByRole("tab", { name: /FISCAL-01/ })).toHaveAttribute("aria-selected", "true");
+  await abas.getByRole("tab", { name: /^Todas/ }).click();
   await ultimas.locator("[data-automacao='7']").getByRole("button", { name: "Repetir" }).click();
   const janela = page.getByTestId("executar");
   await expect(janela.getByLabel("Escolher Matriz de teste")).toBeChecked();

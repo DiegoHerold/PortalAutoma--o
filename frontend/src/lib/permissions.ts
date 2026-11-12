@@ -36,6 +36,28 @@ export function hasAnyPermission(user: CurrentUser | null, permissions: string[]
   return permissions.some((permission) => granted.has(permission));
 }
 
+/** As abas que o administrador liga e desliga por papel (espelha backend/modules/access/domain/abas.py). */
+export const ABAS_CONFIGURAVEIS = new Set([
+  "/fila", "/maquinas", "/historico", "/executions", "/flows", "/webhooks", "/schedules", "/automations", "/categories",
+  "/runtimes", "/workers", "/storage", "/audit", "/secrets", "/users", "/roles",
+]);
+
+/** A aba está ligada no papel da pessoa? Admin vê todas; aba fora da lista (Painel, Configurações...) sempre. */
+export function podeVerAba(user: CurrentUser | null, href: string): boolean {
+  if (!user) return false;
+  if (user.role === "admin" || !Array.isArray(user.abas) || !ABAS_CONFIGURAVEIS.has(href)) return true;
+  return user.abas.includes(href);
+}
+
+/** A regra do menu: permissão, área só de admin/gestor e a aba ligada no papel. */
+export function itemVisivel(item: { href: string; permission?: string; anyPermission?: string[]; adminOnly?: boolean },
+  user: CurrentUser | null): boolean {
+  if (item.adminOnly && !isAdminOrManager(user)) return false;
+  if (item.permission && !hasPermission(user, item.permission)) return false;
+  if (item.anyPermission && !hasAnyPermission(user, item.anyPermission)) return false;
+  return podeVerAba(user, item.href);
+}
+
 export function isAdminOrManager(user: CurrentUser | null): boolean {
   if (!user) return false;
   return user.role === "admin" || user.role === "manager";

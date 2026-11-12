@@ -108,6 +108,24 @@ Campos novos nas leituras:
 - `GET /painel/recentes`: `pode_controlar` e `ultima.continuada_em`.
 - `GET /execucoes/{id}/acompanhar`: `situacao`, `execucao.continua_de` e `execucao.continuada_em`.
 
+## Papéis globais e Painel (12/11/2026)
+
+| Rota | Uso | Permissao |
+|---|---|---|
+| `GET /papeis` | `{papeis: [{id, nome, slug, descricao, sistema, pessoas, abas, pode_mudar_abas, pode_apagar}], pode_editar}` | admin ou `admin.roles` |
+| `GET /papeis/abas` | as abas que dá para ligar e desligar (`backend/modules/access/domain/abas.py`) | admin ou `admin.roles` |
+| `POST /papeis {nome, descricao?, abas?, baseado_em?}` | cria o papel; `baseado_em` copia as permissões e as abas | só admin |
+| `PUT /papeis/{id} {nome?, descricao?, abas?}` | ligar uma aba dá a leitura dela; o Admin não muda de abas | só admin |
+| `DELETE /papeis/{id}?substituto=` | os papéis do sistema não podem ser apagados; um papel com pessoas exige o substituto | só admin |
+
+- `GET /auth/me` traz `abas` (null = todas). O menu, a busca (Ctrl+K) e a tela usam `podeVerAba`
+  (`lib/permissions.ts`), e uma aba desligada mostra "Sem acesso" mesmo aberta pelo link.
+- Na API, as permissões só de uma aba desligada deixam de valer (Agendamentos, Runtimes,
+  Auditoria, Segredos, Usuários, Papéis). As abas que dividem `execution.read` são bloqueadas na
+  tela.
+- `GET /painel` traz `aguardando: {fila, perdidos}`: jobs esperando máquina e jobs perdidos, só das
+  automações que a pessoa vê.
+
 ## Rotas da Auditoria (12/11/2026)
 
 | Rota | Uso | Permissao |
@@ -115,7 +133,9 @@ Campos novos nas leituras:
 | `GET /governance/auditoria/eventos?de=&ate=&usuario=&tipo=&acao=&recurso_tipo=&recurso_id=&correlacao=&busca=&tecnicos=&antes=&limite=` | linha do tempo; `cursor` para "Carregar mais" | `audit.read` |
 | `GET /governance/auditoria/grupos?por=dia\|usuario\|acao&...` | total de cada grupo (mesmos filtros) | `audit.read` |
 | `GET /governance/auditoria/pessoas` | quem aparece no filtro de pessoa | `audit.read` |
-| `POST /governance/auditoria/tela {caminho, titulo}` | anota a tela aberta (`components/layout/registro-de-telas.tsx`); só o caminho, sem `?`; a mesma tela em 2 min conta uma vez | qualquer pessoa logada |
+
+Abrir uma tela **não** é registrado (removido em 12/11/2026, a pedido: detalhe demais). Os registros
+`tela.aberta` antigos só aparecem com `tecnicos=true`.
 
 O que fica registrado:
 

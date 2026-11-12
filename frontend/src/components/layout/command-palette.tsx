@@ -7,7 +7,7 @@ import { Search, CornerDownLeft } from "lucide-react";
 import { ALL_NAV_ITEMS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { hasAnyPermission, hasPermission, isAdminOrManager } from "@/lib/permissions";
+import { itemVisivel } from "@/lib/permissions";
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -17,12 +17,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   const visibleItems = useMemo(
     () =>
-      ALL_NAV_ITEMS.filter((item) => {
-        if (item.adminOnly && !isAdminOrManager(user)) return false;
-        if (item.permission && !hasPermission(user, item.permission)) return false;
-        if (item.anyPermission && !hasAnyPermission(user, item.anyPermission)) return false;
-        return true;
-      }),
+      ALL_NAV_ITEMS.filter((item) => itemVisivel(item, user)),
     [user],
   );
 

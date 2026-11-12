@@ -52,6 +52,8 @@ class AccessRoleRecord(Base):
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="active")
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Abas do menu que o papel vê (12/11/2026). Nulo = todas.
+    abas: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

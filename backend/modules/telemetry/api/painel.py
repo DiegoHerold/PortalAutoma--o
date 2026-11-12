@@ -76,6 +76,31 @@ def _paradas_pedidas(db: Session, tentativas: list[str]) -> dict[str, dict[str, 
     return SqlAlchemyDirectCommandStore(db).paradas_pedidas(tentativas)
 
 
+def _aguardando(jobs: list[dict[str, Any]], perdidos: list[dict[str, Any]], permissoes: _Permissoes) -> dict[str, Any]:
+    """O que espera para andar (Painel, 12/11/2026): jobs na fila esperando máquina e jobs perdidos
+    esperando uma decisão. Só das automações que a pessoa vê; o motivo que cita automação alheia
+    sai sem o nome dela (como na Fila)."""
+    from modules.dispatch.application.use_cases.queue import TEXTOS
+
+    def motivo(m: dict[str, Any]) -> str:
+        outra = m.get("automation_id")
+        if outra is not None and not permissoes.central and not permissoes.pode(outra, VER_EXECUCOES):
+            return TEXTOS.get(m["codigo"], m["codigo"])
+        return m.get("texto") or TEXTOS.get(m["codigo"], m["codigo"])
+
+    return {
+        "fila": [{"job_id": j["job_id"], "execucao_id": j["execution_id"], "automation_id": j["automation_id"],
+                  "automacao": j["automacao"], "itens": j["itens"], "maquina_id": j["maquina_prevista"],
+                  "maquina": j["maquina_prevista_nome"], "inicio_previsto": j["inicio_previsto"],
+                  "enfileirado_em": j["enfileirado_em"], "motivos": [motivo(m) for m in j["motivos"]]} for j in jobs],
+        "perdidos": [{"job_id": p["job_id"], "execucao_id": p["execution_id"], "automation_id": p["automation_id"],
+                      "automacao": p["automacao"], "itens": [i if isinstance(i, str) else str(i.get("chave") or i)
+                                                             for i in p["itens"]],
+                      "maquina_id": p["maquina_id"], "maquina": p["maquina_nome"], "perdido_em": p["perdido_em"]}
+                     for p in perdidos if permissoes.pode(p["automation_id"], VER_EXECUCOES)],
+    }
+
+
 def _fila(db: Session, agora: datetime) -> dict[str, Any]:
     from modules.dispatch.infrastructure.adapters.fila import build_fila
 
@@ -142,6 +167,7 @@ def painel(db: Session = Depends(get_db), user: Any = Depends(get_current_user))
     return {
         "gerado_em": agora.isoformat(), "central": permissoes.central,
         "execucoes": execucoes, "maquinas": maquinas,
+        "aguardando": _aguardando(visiveis, visao["perdidos"], permissoes),
         "fila": {"esperando": len(visiveis), "perdidos": len(visao["perdidos"]),
                  "termina_em": max(terminos) if terminos and all(terminos) else None,
                  "sem_previsao": sum(1 for x in terminos if not x)},

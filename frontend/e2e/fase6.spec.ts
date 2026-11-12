@@ -66,6 +66,15 @@ async function preparar(page: Page, { papel = "admin", tema = "light" }: { papel
       { id: 1, name: "Administrador", slug: "admin", description: "Acesso total ao portal." },
       { id: 2, name: "Operador", slug: "operator", description: "Executa e acompanha as automações liberadas." },
     ]);
+    if (caminho === "/papeis/abas") return json({ abas: [
+      { chave: "/fila", rotulo: "Fila", grupo: "Monitorar" }, { chave: "/historico", rotulo: "Histórico", grupo: "Monitorar" },
+      { chave: "/audit", rotulo: "Auditoria", grupo: "Segurança" }] });
+    if (caminho === "/papeis") return json({ pode_editar: true, papeis: [
+      { id: 1, nome: "Administrador", slug: "admin", descricao: "Acesso total ao portal.", sistema: true, pessoas: 2,
+        abas: ["/fila", "/historico", "/audit"], pode_mudar_abas: false, pode_apagar: false },
+      { id: 2, nome: "Operador", slug: "operator", descricao: "Executa e acompanha as automações liberadas.", sistema: true, pessoas: 1,
+        abas: ["/fila", "/historico"], pode_mudar_abas: true, pode_apagar: false },
+    ] });
     if (caminho === "/painel") return json({ gerado_em: em(0), central: true, execucoes: [], maquinas: [], fila: { esperando: 0, perdidos: 0, termina_em: null, sem_previsao: 0 } });
     return json([]);
   });

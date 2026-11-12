@@ -134,6 +134,7 @@ class GetAuthenticatedUser:
             organization_id=user.organization_id,
             permissions=efetivas(user.category_permissions, self.access.categorias_pelos_times(user.id)),
             rbac_permissions=user.permissions,
+            abas=self.access.abas_do_papel(user.role.id) if hasattr(self.access, "abas_do_papel") else None,
         )
 
 

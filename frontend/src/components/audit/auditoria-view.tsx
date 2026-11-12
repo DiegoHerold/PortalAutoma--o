@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, X } from "lucide-react";
 
@@ -59,12 +59,16 @@ export function AuditoriaView() {
   const [mais, setMais] = useState<EventoDeAuditoria[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
 
+  // Os filtros pedidos por último, já antes de o endereço mudar: dois cliques seguidos não se desfazem.
+  const pedidos = useRef(url.toString());
+  useEffect(() => { pedidos.current = url.toString(); }, [url]);
   function mudar(campos: Record<string, string | number | null>) {
-    const p = new URLSearchParams(url.toString());
+    const p = new URLSearchParams(pedidos.current);
     for (const [k, v] of Object.entries(campos)) {
       if (v === null || v === "") p.delete(k);
       else p.set(k, String(v));
     }
+    pedidos.current = p.toString();
     router.replace(p.size ? `${pathname}?${p}` : pathname);
   }
   useEffect(() => {

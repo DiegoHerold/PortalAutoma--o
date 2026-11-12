@@ -163,16 +163,25 @@ class SqlAlchemyAccessRepository:
         return [_role_to_dto(row, self.list_permissions_for_role(row.id)) for row in rows]
 
     def list_permissions_for_role(self, role_id: int) -> list[str]:
+        from modules.access.domain.abas import permissoes_com_abas
+
         role = self.db.get(AccessRoleRecord, role_id)
         if role and role.slug == RoleSlug.ADMIN:
             return [ADMIN_PERMISSION]
-        return list(
-            self.db.scalars(
-                select(RolePermissionRecord.permission_key)
-                .where(RolePermissionRecord.role_id == role_id)
-                .order_by(RolePermissionRecord.permission_key)
-            ).all()
-        )
+        gravadas = self.db.scalars(
+            select(RolePermissionRecord.permission_key)
+            .where(RolePermissionRecord.role_id == role_id)
+            .order_by(RolePermissionRecord.permission_key)
+        ).all()
+        # Aba desligada no papel: as permissões só dela deixam de valer (ligar de novo devolve).
+        return permissoes_com_abas(gravadas, role.abas if role else None)
+
+    def abas_do_papel(self, role_id: int) -> list[str] | None:
+        """As abas que o papel vê; ``None`` = todas (admin e papéis sem escolha)."""
+        role = self.db.get(AccessRoleRecord, role_id)
+        if role is None or role.slug == RoleSlug.ADMIN or role.abas is None:
+            return None
+        return list(role.abas)
 
     def ensure_default_rbac(self) -> None:
         for permission in INITIAL_PERMISSIONS:

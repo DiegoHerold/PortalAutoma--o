@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, LayoutGrid, MonitorPlay, Radio } from "lucide-react";
+import { AlertTriangle, Clock3, LayoutGrid, MonitorPlay, Radio } from "lucide-react";
 
 import { useApi } from "@/hooks/use-api";
 import { useAvisos, useSegundosDesde } from "@/hooks/use-avisos";
 import { MOTIVOS_SEM_PREVISAO, nestaTela, relogio, semImagem } from "@/lib/acompanhar";
 import { duracao, horario, relativo } from "@/lib/fila";
-import type { ExecucaoAoVivo, MaquinaNoPainel, Painel } from "@/lib/painel";
+import type { ExecucaoAoVivo, JobEsperando, MaquinaNoPainel, Painel } from "@/lib/painel";
 import { cn } from "@/lib/utils";
 import { ErrorState } from "@/components/shared/error-state";
 import { ImagemDoPasso } from "@/components/acompanhar/imagem-do-passo";
@@ -19,6 +20,7 @@ const GRADES = [1, 2, 4, 6, 9] as const;
 const COLUNAS: Record<number, string> = { 1: "grid-cols-1", 2: "lg:grid-cols-2", 4: "lg:grid-cols-2", 6: "lg:grid-cols-3", 9: "lg:grid-cols-3" };
 const CHAVE_MODO = "portal.painel.modo";
 const CHAVE_GRADE = "portal.painel.grade";
+const CHAVE_MAQUINA = "portal.painel.maquina";
 
 function lembrar(chave: string, valor: string) {
   try {
@@ -35,10 +37,12 @@ export function PainelAoVivo() {
   const [modo, setModo] = useState<"monitores" | "central">("monitores");
   const [grade, setGrade] = useState<number>(4);
   const [pedidos, setPedidos] = useState(0);
+  const [maquina, setMaquina] = useState("");
   const { disparar, janela } = useDisparo(() => { setPedidos((n) => n + 1); void refetch(); });
 
   useEffect(() => {
     try {
+      setMaquina(window.localStorage.getItem(CHAVE_MAQUINA) ?? "");
       if (window.localStorage.getItem(CHAVE_MODO) === "central") setModo("central");
       const g = Number(window.localStorage.getItem(CHAVE_GRADE));
       if (GRADES.includes(g as (typeof GRADES)[number])) setGrade(g);
@@ -51,7 +55,19 @@ export function PainelAoVivo() {
   if (!data) return <div className="skeleton h-[60vh] w-full rounded-xl" aria-busy="true" aria-label="Carregando o painel" />;
 
   const central = data.central && modo === "central";
-  const livres = data.maquinas.filter((m) => m.online && !m.ocupada && !m.sessao_bloqueada && !m.job_perdido).length;
+  // A máquina escolhida some da lista (removida ou sem permissão): volta para "Todas".
+  const filtro = data.maquinas.some((m) => m.id === maquina) ? maquina : "";
+  const daMaquina = (id: string | null | undefined) => !filtro || id === filtro;
+  const execucoes = data.execucoes.filter((e) => daMaquina(e.maquina_id));
+  const rodando = execucoes.filter((e) => !e.situacao);
+  const paradas = execucoes.filter((e) => e.situacao);
+  const fila = (data.aguardando?.fila ?? []).filter((j) => daMaquina(j.maquina_id));
+  const perdidos = (data.aguardando?.perdidos ?? []).filter((j) => daMaquina(j.maquina_id));
+  const nada = rodando.length + paradas.length + fila.length + perdidos.length === 0;
+  function escolher(id: string) {
+    setMaquina(id);
+    lembrar(CHAVE_MAQUINA, id);
+  }
 
   return (
     <div className="space-y-6">
@@ -109,45 +125,132 @@ export function PainelAoVivo() {
         </div>
       </div>
 
-      <Resumo rodando={data.execucoes.length} livres={livres} maquinas={data.maquinas.length} fila={data.fila} />
-
-      {!central && <UltimasAutomacoes disparar={disparar} atualizar={pedidos} />}
+      {!central && data.maquinas.length > 0 && (
+        <AbasDeMaquina maquinas={data.maquinas} execucoes={data.execucoes} escolhida={filtro} escolher={escolher} />
+      )}
 
       {central ? (
         <Central data={data} grade={grade} passou={passou} />
-      ) : data.execucoes.length === 0 ? (
-        <NadaRodando maquinas={data.maquinas} />
       ) : (
-        <div className="grid gap-6 xl:grid-cols-2 min-[1800px]:grid-cols-3">
-          {data.execucoes.map((e) => (
-            <Monitor key={e.execucao_id} e={e} passou={passou} aoMudar={() => void refetch()} />
-          ))}
-        </div>
+        <>
+          {nada && <NadaRodando maquinas={data.maquinas.filter((m) => daMaquina(m.id))} filtrada={Boolean(filtro)} />}
+          {rodando.length > 0 && (
+            <Secao titulo="Rodando agora" total={rodando.length} id="rodando">
+              <div className="grid gap-6 xl:grid-cols-2 min-[1800px]:grid-cols-3">
+                {rodando.map((e) => <Monitor key={e.execucao_id} e={e} passou={passou} aoMudar={() => void refetch()} />)}
+              </div>
+            </Secao>
+          )}
+          {paradas.length > 0 && (
+            <Secao titulo="Pausadas ou esperando" total={paradas.length} id="paradas"
+              explica="Rodando, mas paradas em alguma coisa: uma pausa, uma espera, a comunicação ou um pedido de parada.">
+              <div className="grid gap-6 xl:grid-cols-2 min-[1800px]:grid-cols-3">
+                {paradas.map((e) => <Monitor key={e.execucao_id} e={e} passou={passou} aoMudar={() => void refetch()} />)}
+              </div>
+            </Secao>
+          )}
+          {fila.length + perdidos.length > 0 && (
+            <Secao titulo="Esperando para começar" total={fila.length + perdidos.length} id="esperando"
+              acao={<Link href="/fila" className="text-sm font-medium text-primary hover:underline">Abrir a Fila</Link>}>
+              <Esperando fila={fila} perdidos={perdidos} />
+            </Secao>
+          )}
+          <UltimasAutomacoes disparar={disparar} atualizar={pedidos} maquina={filtro} />
+        </>
       )}
 
-      {!central && data.maquinas.length > 0 && <Maquinas maquinas={data.maquinas} />}
       {janela}
     </div>
   );
 }
 
-function Resumo({ rodando, livres, maquinas, fila }: { rodando: number; livres: number; maquinas: number; fila: Painel["fila"] }) {
-  const itens = [
-    { rotulo: "Rodando", valor: String(rodando) },
-    { rotulo: "Telas livres", valor: `${livres} de ${maquinas}` },
-    { rotulo: "Na fila", valor: String(fila.esperando), detalhe: fila.esperando ? (fila.termina_em ? `termina ${horario(fila.termina_em)}` : "sem previsão") : undefined },
-    { rotulo: "Perdidos", valor: String(fila.perdidos), alerta: fila.perdidos > 0 },
-  ];
+function Secao({ titulo, total, id, explica, acao, children }: {
+  titulo: string; total: number; id: string; explica?: string; acao?: ReactNode; children: ReactNode;
+}) {
   return (
-    <dl className="faixa-noite grid grid-cols-2 gap-px overflow-hidden rounded-xl md:grid-cols-4">
-      {itens.map((i) => (
-        <div key={i.rotulo} className="px-6 py-4">
-          <dt className="text-xs font-bold uppercase tracking-[0.16em] faixa-rotulo">{i.rotulo}</dt>
-          <dd className={cn("titulo-condensado mt-1 text-4xl leading-none", i.alerta ? "faixa-alerta" : "faixa-valor")}>{i.valor}</dd>
-          {i.detalhe && <dd className="mt-1 text-sm faixa-apoio">{i.detalhe}</dd>}
-        </div>
+    <section className="space-y-3" data-testid={`secao-${id}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="flex items-baseline gap-3 titulo-condensado text-2xl">
+          {titulo} <span className="font-sans text-base font-normal text-muted-foreground">{total}</span>
+        </h2>
+        {acao}
+      </div>
+      {explica && <p className="-mt-1 text-sm text-muted-foreground">{explica}</p>}
+      {children}
+    </section>
+  );
+}
+
+function estadoDaMaquina(m: MaquinaNoPainel): { texto: string; cor: string } {
+  if (!m.online) return { texto: "sem sinal", cor: "bg-destructive" };
+  if (m.job_perdido) return { texto: "job perdido", cor: "bg-warning" };
+  if (m.sessao_bloqueada) return { texto: "sessão bloqueada", cor: "bg-warning" };
+  if (m.ocupada) return { texto: "rodando", cor: "bg-info" };
+  return { texto: "livre", cor: "bg-success" };
+}
+
+/** As máquinas viram o filtro do Painel: tudo abaixo mostra só o que é da máquina escolhida. */
+function AbasDeMaquina({ maquinas, execucoes, escolhida, escolher }: {
+  maquinas: MaquinaNoPainel[]; execucoes: ExecucaoAoVivo[]; escolhida: string; escolher: (id: string) => void;
+}) {
+  const aba = (ativa: boolean) => cn("flex shrink-0 items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors",
+    ativa ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground");
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border bg-card p-1" role="tablist" aria-label="Máquina">
+        <button role="tab" aria-selected={!escolhida} onClick={() => escolher("")} className={aba(!escolhida)}>
+          Todas
+        </button>
+        {maquinas.map((m) => {
+          const { texto, cor } = estadoDaMaquina(m);
+          const ativa = escolhida === m.id;
+          return (
+            <button key={m.id} role="tab" aria-selected={ativa} onClick={() => escolher(m.id)} className={aba(ativa)}
+              data-maquina={m.id} title={`${m.nome ?? m.id}: ${texto}`}>
+              <span className={cn("h-2.5 w-2.5 rounded-full", cor)} />
+              {m.nome ?? m.id}
+              <span className={cn("font-normal", ativa ? "opacity-80" : "text-muted-foreground")}>{texto}</span>
+            </button>
+          );
+        })}
+      </div>
+      <Link href="/maquinas" className="text-sm font-medium text-primary hover:underline">Linha do tempo das máquinas</Link>
+    </div>
+  );
+}
+
+/** Na fila esperando máquina e perdidos esperando decisão, uma linha cada. */
+function Esperando({ fila, perdidos }: { fila: JobEsperando[]; perdidos: JobEsperando[] }) {
+  const itens = (j: JobEsperando) => (j.itens.length === 0 ? "" : j.itens.length <= 3 ? j.itens.join(", ") : `${j.itens.length} itens`);
+  return (
+    <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm" data-testid="esperando">
+      {perdidos.map((j) => (
+        <li key={j.job_id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5" data-job={j.job_id}>
+          <AlertTriangle className="h-5 w-5 shrink-0 text-warning" />
+          <Link href={`/execucoes/${j.execucao_id}`} className="min-w-0 flex-1 hover:underline">
+            <span className="font-semibold text-titulo">{j.automacao ?? "Automação"}</span>
+            {itens(j) && <span className="text-muted-foreground"> · {itens(j)}</span>}
+          </Link>
+          <span className="text-sm text-warning">
+            Perdida{j.maquina ? ` em ${j.maquina}` : ""}{j.perdido_em ? ` ${relativo(j.perdido_em)}` : ""}: esperando uma decisão
+          </span>
+          <Link href="/fila" className="text-sm font-medium text-primary hover:underline">Decidir</Link>
+        </li>
       ))}
-    </dl>
+      {fila.map((j) => (
+        <li key={j.job_id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5" data-job={j.job_id}>
+          <Clock3 className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <Link href={`/execucoes/${j.execucao_id}`} className="min-w-0 flex-1 hover:underline">
+            <span className="font-semibold text-titulo">{j.automacao ?? "Automação"}</span>
+            {itens(j) && <span className="text-muted-foreground"> · {itens(j)}</span>}
+          </Link>
+          <span className="text-sm text-muted-foreground" title={(j.motivos ?? []).join("; ")}>
+            {j.inicio_previsto ? `Começa às ${horario(j.inicio_previsto)}${j.maquina ? ` em ${j.maquina}` : ""}`
+              : (j.motivos ?? [])[0] ?? "Na fila, sem previsão"}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -335,42 +438,18 @@ function QuadroLivre({ m }: { m: MaquinaNoPainel }) {
   );
 }
 
-function NadaRodando({ maquinas }: { maquinas: MaquinaNoPainel[] }) {
+function NadaRodando({ maquinas, filtrada }: { maquinas: MaquinaNoPainel[]; filtrada: boolean }) {
   const proximo = maquinas.map((m) => m.proximo).find((p) => p?.inicio_previsto);
   return (
     <div className="flex items-center gap-4 rounded-xl border border-dashed border-border bg-card/60 px-6 py-5" data-testid="nada-rodando">
       <MonitorPlay className="h-8 w-8 shrink-0 text-muted-foreground" />
       <div>
-        <p className="titulo-condensado text-xl">Nada rodando agora</p>
+        <p className="titulo-condensado text-xl">{filtrada ? "Nada rodando nesta máquina" : "Nada rodando agora"}</p>
         <p className="text-muted-foreground">
-          {proximo ? `O próximo job começa ${relativo(proximo.inicio_previsto)}, às ${horario(proximo.inicio_previsto)}.` : "A fila está vazia."}
+          {proximo ? `O próximo job começa ${relativo(proximo.inicio_previsto)}, às ${horario(proximo.inicio_previsto)}.`
+            : filtrada ? "Nada na fila para esta máquina." : "A fila está vazia."}
         </p>
       </div>
     </div>
-  );
-}
-
-function Maquinas({ maquinas }: { maquinas: MaquinaNoPainel[] }) {
-  return (
-    <section>
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="titulo-condensado text-2xl">Máquinas</h2>
-        <Link href="/maquinas" className="text-sm font-medium text-primary hover:underline">Ver linha do tempo</Link>
-      </div>
-      <div className="flex flex-wrap gap-3">
-        {maquinas.map((m) => {
-          const cor = !m.online ? "bg-destructive" : m.job_perdido || m.sessao_bloqueada ? "bg-warning" : m.ocupada ? "bg-info" : "bg-success";
-          return (
-            <span key={m.id} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
-              <span className={cn("h-2.5 w-2.5 rounded-full", cor)} />
-              <span className="font-medium text-titulo">{m.nome ?? m.id}</span>
-              <span className="text-muted-foreground">
-                {!m.online ? "sem sinal" : m.ocupada ? m.rodando ?? "ocupada" : "livre"}
-              </span>
-            </span>
-          );
-        })}
-      </div>
-    </section>
   );
 }

@@ -59,16 +59,19 @@ def sessao(engine) -> Session:
 
 
 @pytest.fixture
-def cliente(engine):
+def cliente(engine, monkeypatch):
     """API real com o banco de teste. O usuário é um administrador (permissões em teste próprio)."""
     from fastapi.testclient import TestClient
 
+    import bootstrap.api as bootstrap_api
     from bootstrap.api import create_api_application
     from infrastructure.database import get_db, get_session_factory
     from modules.access.api.dependencies import get_current_user
 
     app = create_api_application()
     fabrica = sessionmaker(bind=engine, expire_on_commit=False)
+    # A inicialização (papéis, categorias e admin padrão) roda no banco de teste, nunca no real.
+    monkeypatch.setattr(bootstrap_api, "SessionLocal", fabrica)
 
     def _db():
         db = fabrica()
