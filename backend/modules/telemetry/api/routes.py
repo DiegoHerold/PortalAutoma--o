@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from infrastructure.database import get_db, get_session_factory
@@ -123,7 +123,7 @@ async def stream_execution(
     request: Request,
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
     fabrica: Any = Depends(get_session_factory),
-) -> StreamingResponse:
+) -> Response:
     """Eventos ao vivo de uma execução (SSE).
 
     O token vai no cabeçalho ``Authorization`` (nunca na URL). Avisos chegam por
@@ -172,8 +172,9 @@ async def stream_execution(
                 yield _sse("execution.progress", {"type": "execution.progress", "progress": to_payload(progresso)})
                 primeira = False
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+    from modules.telemetry.api.conexoes_ao_vivo import responder_ao_vivo
+
+    return responder_ao_vivo(event_stream())
 
 
 def _evento_de_tela_ou_log(evento: Any) -> bool:

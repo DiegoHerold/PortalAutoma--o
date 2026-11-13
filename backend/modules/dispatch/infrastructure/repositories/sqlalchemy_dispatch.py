@@ -20,6 +20,7 @@ from modules.storage.infrastructure.orm.models import StoredObjectRecord
 from modules.dispatch.domain.errors import AgentSelectionError
 from modules.dispatch.domain.policies import required_pool_for_execution_mode
 from modules.dispatch.infrastructure.orm.models import ExecutionOfferRecord, ResourceReservationRecord
+from modules.governance.infrastructure.limites import ler_limite
 from modules.fleet.infrastructure.repositories import (
     SqlAlchemyAgentCapabilityRepository,
     SqlAlchemyAgentInstanceRepository,
@@ -204,6 +205,14 @@ class SqlAlchemyAutomationVersionReader:
         capabilities = manifest.get("capabilities") if isinstance(manifest.get("capabilities"), dict) else {}
         mode = str(execution.get("mode") or "background")
         required_pool = required_pool_for_execution_mode(mode)
+        # Limites do sistema (Governança): a automação não passa do teto configurado.
+        teto_tempo = ler_limite(self.db, "execution.max_timeout_seconds")
+        teto_repeticoes = ler_limite(self.db, "execution.max_retries")
+        timeout_seconds = min(_positive_int(execution.get("timeout_seconds"), 300), teto_tempo)
+        timeout_policy = _timeout_policy(manifest, timeout_seconds)
+        timeout_policy["execution_timeout_seconds"] = min(timeout_policy["execution_timeout_seconds"], teto_tempo)
+        retry_policy = _retry_policy(manifest)
+        retry_policy["max_attempts"] = min(retry_policy["max_attempts"], teto_repeticoes + 1)
         return AutomationVersionSnapshotDTO(
             automation_id=automation.id,
             automation_key=automation.key,
@@ -221,7 +230,7 @@ class SqlAlchemyAutomationVersionReader:
             externa=externa,
             manifest=manifest,
             execution_mode=mode,
-            timeout_seconds=_positive_int(execution.get("timeout_seconds"), 300),
+            timeout_seconds=timeout_seconds,
             resources={
                 "cpu_units": _positive_int(resources.get("cpu_units"), 1),
                 "memory_mb": _positive_int(resources.get("memory_mb"), 512),
@@ -230,8 +239,8 @@ class SqlAlchemyAutomationVersionReader:
             required_capabilities=list(capabilities.get("required") or []),
             required_pools=[required_pool],
             exclusive_resources=list(manifest.get("exclusive_resources") or []),
-            retry_policy=_retry_policy(manifest),
-            timeout_policy=_timeout_policy(manifest, _positive_int(execution.get("timeout_seconds"), 300)),
+            retry_policy=retry_policy,
+            timeout_policy=timeout_policy,
         )
 
     def _package(self, version: AutomationVersion) -> AutomationPackageRecord | None:

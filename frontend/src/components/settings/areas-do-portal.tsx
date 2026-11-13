@@ -34,6 +34,7 @@ const DESCRICOES: Record<string, string> = {
   "/organizations": "Contextos administrativos.",
   "/governance/limits": "Limites de uso do sistema.",
   "/governance/retention": "Por quanto tempo guardar imagens e logs.",
+  "/emails": "O que o Portal enviou por e-mail e para quais domínios as automações podem mandar.",
 };
 
 export function podeVer(item: NavItem, user: Parameters<typeof itemVisivel>[1]): boolean {

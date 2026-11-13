@@ -67,17 +67,17 @@ def _autenticar(db: Session, request: Request, job_id: str) -> JobTokenGrant | J
         return _erro(401, "token do job inválido para este job")
 
 
-async def _corpo_json(request: Request) -> dict[str, Any] | JSONResponse:
+async def _corpo_json(request: Request, limite: int = LIMITE_CORPO) -> dict[str, Any] | JSONResponse:
     if not (request.headers.get("content-type") or "").startswith("application/json"):
         return _erro(415, "envie Content-Type: application/json")
     tamanho = int(request.headers.get("content-length") or 0)
-    if tamanho > LIMITE_CORPO:
-        return _erro(413, f"corpo acima de {LIMITE_CORPO} bytes")
+    if tamanho > limite:
+        return _erro(413, f"corpo acima de {limite} bytes")
     corpo = b""
     async for parte in request.stream():
         corpo += parte
-        if len(corpo) > LIMITE_CORPO:  # Content-Length mentiroso não passa
-            return _erro(413, f"corpo acima de {LIMITE_CORPO} bytes")
+        if len(corpo) > limite:  # Content-Length mentiroso não passa
+            return _erro(413, f"corpo acima de {limite} bytes")
     try:
         dados = json.loads(corpo or b"{}")
     except ValueError:
@@ -261,3 +261,86 @@ async def entregar_segredos(job_id: str, request: Request, db: Session = Depends
         db.rollback()
         return _erro(409 if "não está ativa" in str(exc) else 400, str(exc))
     return JSONResponse(content=resposta, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+# -- e-mail centralizado (13/11/2026) ------------------------------------------------------------------
+LIMITE_CORPO_DO_EMAIL = 4_000_000  # 2,5 MB de anexos em base64 e o corpo
+
+
+def _contexto_do_email(db: Session, grant: JobTokenGrant) -> Any:
+    from modules.governance.application.segredos import ATIVAS
+    from modules.telemetry.correio.correio import Contexto
+
+    contexto = SqlAlchemySegredos(db).contexto_do_job(grant.task_execution_id, grant.execution_attempt_id)
+    if contexto is None or contexto[2] not in ATIVAS:
+        return None
+    return Contexto(origem="automacao", automation_id=contexto[0], execution_id=contexto[1], job_id=grant.task_execution_id,
+                    instancia_id=grant.direct_instance_id)
+
+
+@router.post("/{job_id}/emails")
+async def pedir_email(job_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    """A automação pede um e-mail; o Portal manda pelo Graph. Corpo: ``para``, ``cc``, ``cco``,
+    ``assunto``, ``html`` ou ``texto``, ``anexos`` (``[{"nome", "tipo", "conteudo_base64"}]``),
+    ``responder_para``, ``tipo``, ``chave_idempotencia``. Domínio fora da lista: 422 (registrado)."""
+    import base64
+    import binascii
+    from dataclasses import replace
+
+    from modules.telemetry.correio.api import build_correio
+    from modules.telemetry.correio.correio import EmailInvalido, validar
+
+    grant = _autenticar(db, request, job_id)
+    if isinstance(grant, JSONResponse):
+        return grant
+    contexto = _contexto_do_email(db, grant)
+    if contexto is None:
+        return _erro(409, "esta execução não está ativa: e-mails só são pedidos durante a execução")
+    corpo = await _corpo_json(request, LIMITE_CORPO_DO_EMAIL)
+    if isinstance(corpo, JSONResponse):
+        return corpo
+    try:
+        brutos = corpo.get("anexos") or []
+        if not isinstance(brutos, list):
+            raise EmailInvalido("anexos: lista de {nome, tipo, conteudo_base64}.")
+        anexos = []
+        for a in brutos:
+            try:
+                anexos.append((str(a.get("nome") or ""), str(a.get("tipo") or ""), base64.b64decode(str(a.get("conteudo_base64") or ""), validate=True)))
+            except (AttributeError, binascii.Error) as exc:
+                raise EmailInvalido("anexo com conteudo_base64 inválido.") from exc
+        mensagem = validar(corpo, anexos)
+        tipo = str(corpo.get("tipo") or "mensagem").strip().lower()[:40] or "mensagem"
+        registro = build_correio(db).pedir(replace(contexto, tipo=tipo), mensagem, corpo.get("chave_idempotencia"))
+        db.commit()
+    except EmailInvalido as exc:
+        db.rollback()
+        return _erro(422, str(exc))
+    resposta = {"email_id": registro.id, "situacao": registro.situacao, "motivo": registro.motivo,
+                **({"erro": registro.motivo} if registro.situacao == "recusado" else {})}
+    return JSONResponse(status_code=422 if registro.situacao == "recusado" else 201, content=resposta)
+
+
+@router.post("/{job_id}/emails/registro")
+async def registrar_email_da_maquina(job_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    """A automação mandou pela máquina (Outlook, SMTP) e avisa. Corpo: ``para``, ``cc``, ``cco``,
+    ``assunto``, ``meio`` (outlook, smtp, outro), ``enviado_em``, ``anexos`` (só os nomes), ``resumo``."""
+    from modules.telemetry.correio.api import build_correio
+    from modules.telemetry.correio.correio import EmailInvalido
+
+    grant = _autenticar(db, request, job_id)
+    if isinstance(grant, JSONResponse):
+        return grant
+    contexto = _contexto_do_email(db, grant)
+    if contexto is None:
+        return _erro(409, "esta execução não está ativa")
+    corpo = await _corpo_json(request)
+    if isinstance(corpo, JSONResponse):
+        return corpo
+    try:
+        registro = build_correio(db).registrar_da_maquina(contexto, corpo)
+        db.commit()
+    except EmailInvalido as exc:
+        db.rollback()
+        return _erro(422, str(exc))
+    return JSONResponse(status_code=201, content={"email_id": registro.id, "situacao": registro.situacao})

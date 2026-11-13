@@ -58,6 +58,13 @@ class TransporteAgente:
             raise Recusado(f"Agent recusou a conexão: {resposta.get('motivo')}")
         return int(resposta.get("ultima_sequencia") or 0)
 
+    def email(self, dados: dict[str, Any]) -> dict[str, Any]:
+        from .emails import EmailIndisponivel
+
+        raise EmailIndisponivel("no modo agente o Agent ainda não leva e-mails ao Portal; use o modo direto")
+
+    registrar_email = email
+
     def segredos(self, chaves: list[str]) -> dict[str, Any]:
         from .segredos import SegredoIndisponivel
 

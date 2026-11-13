@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 
+import { Portal } from "@/components/ui/portal";
 import { cn } from "@/lib/utils";
 
 export function Modal({
@@ -37,6 +38,7 @@ export function Modal({
   if (!open) return null;
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onClose} />
       <div
@@ -60,5 +62,6 @@ export function Modal({
         {footer && <div className="flex items-center justify-end gap-2 border-t border-border p-4">{footer}</div>}
       </div>
     </div>
+    </Portal>
   );
 }

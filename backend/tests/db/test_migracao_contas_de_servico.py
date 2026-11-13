@@ -19,8 +19,8 @@ from tests.db.conftest import BACKEND
 NOME = "portal_testes_migracao_contas"
 
 
-def _alembic(*args: str) -> None:
-    r = subprocess.run([sys.executable, "-m", "alembic", *args], cwd=BACKEND, env={**os.environ, "POSTGRES_DB": NOME},
+def _alembic(*args: str, banco: str = NOME) -> None:
+    r = subprocess.run([sys.executable, "-m", "alembic", *args], cwd=BACKEND, env={**os.environ, "POSTGRES_DB": banco},
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-3000:]
 

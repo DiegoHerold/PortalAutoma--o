@@ -15,6 +15,7 @@ import {
   KeyRound,
   Gauge,
   Archive,
+  Mail,
   Users,
   Building2,
   UsersRound,
@@ -103,6 +104,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/governance/limits", funcionalidade: "limites", label: "Limites", icon: Gauge, padrao: false },
       { href: "/governance/retention", funcionalidade: "retencao", label: "Retenção", icon: Archive, padrao: false },
+      { href: "/emails", funcionalidade: "emails", label: "E-mails", icon: Mail, padrao: false },
     ],
   },
 ];

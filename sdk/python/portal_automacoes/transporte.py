@@ -66,6 +66,12 @@ class TransporteDesligado:
     def fechar(self) -> None:
         return None
 
+    def email(self, dados: dict[str, Any]) -> dict[str, Any]:
+        return {"email_id": None, "situacao": "simulado"}  # desenvolvimento: não manda nada
+
+    def registrar_email(self, dados: dict[str, Any]) -> dict[str, Any]:
+        return {"email_id": None, "situacao": "simulado"}
+
     def segredos(self, chaves: list[str]) -> dict[str, Any]:
         from .segredos import do_ambiente
 

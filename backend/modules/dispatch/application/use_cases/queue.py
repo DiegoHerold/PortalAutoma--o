@@ -206,12 +206,14 @@ class DespacharFila:
     """
 
     def __init__(self, montar: MontarFila, reader: Any, tasks: Any, iniciar_direta: Callable[..., Any],
-                 transaction: Any) -> None:
+                 transaction: Any, limite_simultaneas: Callable[[], int] | None = None) -> None:
         self.montar = montar
         self.reader = reader
         self.tasks = tasks
         self.iniciar_direta = iniciar_direta
         self.transaction = transaction
+        # Limite do sistema "execuções ao mesmo tempo": acima dele, os jobs esperam na fila.
+        self.limite_simultaneas = limite_simultaneas
 
     def execute(self, agora: datetime) -> list[dict[str, Any]]:
         # Oferta recusada não é falha: o job volta para a fila e é planejado de novo.
@@ -226,9 +228,10 @@ class DespacharFila:
         lidas_por_id = {m.id: m for m in lidas}
         restantes = list(jobs)
         entregues: list[dict[str, Any]] = []
+        vagas = None if self.limite_simultaneas is None else self.limite_simultaneas() - self.reader.em_andamento()
         for maquina in sorted(maquinas, key=lambda m: m.id):
             for pool in sorted(maquina.capacidade):
-                while restantes:
+                while restantes and (vagas is None or len(entregues) < vagas):
                     job = proximo_job(maquina, pool, restantes)
                     if job is None:
                         break

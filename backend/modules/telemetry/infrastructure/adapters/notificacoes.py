@@ -46,7 +46,13 @@ def build_detectar(db: Session) -> DetectarOcorrencias:
 
 def build_enviar(db: Session, carteiro: Any | None = None) -> EnviarAvisos:
     settings = get_settings()
-    return EnviarAvisos(SqlAlchemyNotificacoes(db), carteiro if carteiro is not None else montar_carteiro(settings),
+    from modules.telemetry.correio.correio import CarteiroQueRegistra
+    from modules.telemetry.correio.repositorio import SqlAlchemyCorreio
+
+    escolhido = carteiro if carteiro is not None else montar_carteiro(settings)
+    # E-mail centralizado (13/11/2026): cada aviso enviado também aparece em E-mails.
+    escolhido = CarteiroQueRegistra(escolhido, SqlAlchemyCorreio(db)) if escolhido is not None else None
+    return EnviarAvisos(SqlAlchemyNotificacoes(db), escolhido,
                         _Transacao(db), settings.frontend_url)
 
 

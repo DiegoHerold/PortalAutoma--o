@@ -24,6 +24,7 @@ from workers.tasks import flow_tasks  # noqa: E402,F401
 from workers.tasks import housekeeping_tasks  # noqa: E402,F401
 from workers.tasks import dispatch_tasks  # noqa: E402,F401
 from workers.tasks import notificacoes_tasks  # noqa: E402,F401
+from workers.tasks import correio_tasks  # noqa: E402,F401
 
 celery_app.conf.beat_schedule = {
     "sync-schedules-every-minute": {
@@ -75,6 +76,17 @@ celery_app.conf.beat_schedule = {
     "aplicar-retencao-every-hour": {
         "task": "workers.tasks.notificacoes_tasks.aplicar_retencao",
         "schedule": 3600.0,
+    },
+    # Limpeza do sistema (notificações, medições, sessões vencidas...): regras em
+    # modules/governance/domain/configuracoes.py, prazos em Governança > Retenção
+    # E-mail centralizado (13/11/2026): reenvio do que ficou na fila por falha temporária
+    "reenviar-emails-every-15-seconds": {
+        "task": "workers.tasks.correio_tasks.enviar_pendentes",
+        "schedule": 15.0,
+    },
+    "aplicar-limpeza-do-sistema-every-30-minutes": {
+        "task": "workers.tasks.housekeeping_tasks.aplicar_limpeza_do_sistema",
+        "schedule": 1800.0,
     },
 }
 celery_app.conf.timezone = "UTC"

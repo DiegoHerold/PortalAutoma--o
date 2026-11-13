@@ -16,6 +16,11 @@ import tempfile
 _PASTA = tempfile.mkdtemp(prefix="portal_testes_storage_")
 os.environ["LOCAL_STORAGE_PATH"] = _PASTA
 os.environ["STORAGE_BACKEND"] = "local"
+# Nenhum teste manda e-mail de verdade (13/11/2026): o .env tem as credenciais do Graph e o envio
+# liga sozinho com elas. Os testes de e-mail usam um carteiro falso injetado.
+os.environ["NOTIFICACOES_EMAIL_LIGADO"] = "false"
+for _nome in ("GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET", "ENTRA_TENANT_ID", "ENTRA_CLIENT_ID", "ENTRA_CLIENT_SECRET"):
+    os.environ[_nome] = ""
 
 
 def pytest_configure(config) -> None:  # noqa: ARG001

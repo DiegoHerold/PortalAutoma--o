@@ -28,10 +28,13 @@ async function preparar(page: Page) {
   const agora = Date.now();
   const em = (s: number) => new Date(agora + s * 1000).toISOString();
   const segredos = [
-    { id: "sec_1", chave: "dominio.senha_banco", nome: "Senha do banco da Domínio", descricao: "Leitura da folha", situacao: "active",
+    { id: "sec_1", chave: "dominio", nome: "Acesso à Domínio", descricao: "Leitura da folha", situacao: "active",
+      campos: [{ nome: "usuario", oculto: false, valor: "folha" }, { nome: "senha", oculto: true, valor: null },
+        { nome: "banco", oculto: false, valor: "contabil" }],
       versao: 2, versao_criada_em: em(-86400), expira_em: null, vencido: false, atualizado_em: em(-86400), ultimo_uso: em(-3600),
       automacoes: [{ id: 7, nome: "Integração Contábil · Folha", ligado_em: em(-90000), ultimo_uso: em(-3600) }] },
-    { id: "sec_2", chave: "smtp.senha", nome: "Senha do e-mail", descricao: null, situacao: "disabled", versao: 1,
+    { id: "sec_2", chave: "smtp", nome: "Acesso ao e-mail", descricao: null, situacao: "disabled", versao: 1,
+      campos: [{ nome: "senha", oculto: true, valor: null }],
       versao_criada_em: em(-900000), expira_em: null, vencido: false, atualizado_em: em(-900000), ultimo_uso: null, automacoes: [] },
   ];
   const conta = { id: "sa_1", nome: "ERP Protheus", descricao: "Lê o histórico", situacao: "active", vencida: false,
@@ -50,10 +53,11 @@ async function preparar(page: Page) {
     if (caminho === "/segredos/sec_1/versoes") return json({ versoes: [
       { versao: 2, criada_em: em(-86400), criada_por: "1", expira_em: null, revogada_em: null, atual: true },
       { versao: 1, criada_em: em(-900000), criada_por: "1", expira_em: null, revogada_em: null, atual: false }] });
-    if (caminho.startsWith("/segredos/") && r.method() !== "GET") return route.fulfill({ status: 204, body: "" });
+    if (caminho.startsWith("/segredos/") && r.method() !== "GET" && caminho !== "/segredos") return route.fulfill({ status: 204, body: "" });
     if (caminho === "/segredos/da-automacao/7") return json({ segredos: [
-      { id: "sec_1", chave: "dominio.senha_banco", nome: "Senha do banco da Domínio", situacao: "active", vencido: false, ultimo_uso: em(-3600) }] });
-    if (caminho === "/secrets" && r.method() === "POST") return json({ secret: { id: "sec_3", key: "erp.token" }, version: { id: "v", version: 1 } }, 201);
+      { id: "sec_1", chave: "dominio", nome: "Acesso à Domínio", situacao: "active", vencido: false, ultimo_uso: em(-3600),
+        campos: ["usuario", "senha", "banco"] }] });
+    if (caminho === "/segredos" && r.method() === "POST") return json({ id: "sec_3", chave: "erp" }, 201);
     if (caminho === "/automations") return json([{ id: 7, name: "Integração Contábil · Folha", status: "active" },
       { id: 9, name: "Conferência de guias", status: "active" }]);
     if (caminho === "/automations/7") return json({ id: 7, name: "Integração Contábil · Folha", slug: "ic", key: "dominio.ic", category_id: 1,
@@ -81,36 +85,61 @@ async function abrir(page: Page, rota: string) {
   await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
 }
 
-test("segredos: lista com quem usa e último uso; ligar automações; novo segredo com a chave", async ({ page }) => {
+test("segredos: lista com campos, quem usa e último uso; ligar automações; editar campos; novo com modelo", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   const { erros, pedidos } = await preparar(page);
   await abrir(page, "/secrets");
-  const banco = page.locator("[data-segredo='dominio.senha_banco']");
-  await expect(banco).toContainText("Integração Contábil · Folha");
-  await expect(banco).toContainText("há 1 h");
-  await expect(banco).toContainText("Ativo");
-  await expect(page.locator("[data-segredo='smtp.senha']")).toContainText("nenhuma automação");
-  await expect(page.locator("[data-segredo='smtp.senha']")).toContainText("Desativado");
+  const dominio = page.locator("[data-segredo='dominio']");
+  await expect(dominio).toContainText("usuario, senha, banco");
+  await expect(dominio).toContainText("Integração Contábil · Folha");
+  await expect(dominio).toContainText("há 1 h");
+  await expect(dominio).toContainText("Ativo");
+  await expect(page.locator("[data-segredo='smtp']")).toContainText("nenhuma automação");
+  await expect(page.locator("[data-segredo='smtp']")).toContainText("Desativado");
   await page.screenshot({ path: `${TELAS}/segredos-1920.png`, fullPage: true, animations: "disabled" });
 
-  await banco.getByRole("button", { name: "Senha do banco da Domínio" }).click();
+  await dominio.getByRole("button", { name: "Acesso à Domínio" }).click();
   const detalhes = page.getByTestId("detalhes-do-segredo");
-  await expect(detalhes).toContainText('senha = a.segredo("dominio.senha_banco")');
+  const campos = detalhes.getByTestId("campos-do-segredo");
+  await expect(campos.locator("[data-campo='usuario']")).toContainText("folha");
+  await expect(campos.locator("[data-campo='usuario']")).toContainText("visível");
+  await expect(campos.locator("[data-campo='senha']")).toContainText("••••••••");
+  await expect(campos.locator("[data-campo='senha']")).toContainText("oculto");
+  await expect(detalhes).toContainText('acesso = a.segredo("dominio")');
+  await expect(detalhes).toContainText('acesso["senha"]');
   await expect(detalhes).toContainText("Versão 2");
   await detalhes.getByLabel("Conferência de guias").check();
   await detalhes.getByRole("button", { name: "Salvar automações" }).click();
   await expect.poll(() => pedidos.find((p) => p.caminho === "/segredos/sec_1/automacoes")?.corpo).toEqual({ automacoes: [7, 9] });
   await page.screenshot({ path: `${TELAS}/segredo-detalhes-1920.png`, animations: "disabled" });
+
+  // Editar: senha em branco mantém; troca o banco.
+  await detalhes.getByRole("button", { name: "Editar campos" }).click();
+  await expect(page.getByLabel("Valor de senha")).toHaveValue("");
+  await expect(page.getByLabel("Valor de banco")).toHaveValue("contabil");
+  await page.getByLabel("Valor de banco").fill("folha2026");
+  await page.screenshot({ path: `${TELAS}/editar-campos.png`, animations: "disabled" });
+  await page.getByRole("button", { name: "Salvar campos" }).click();
+  await expect.poll(() => pedidos.find((p) => p.caminho === "/segredos/sec_1/campos")?.corpo).toEqual({ campos: [
+    { nome: "usuario", oculto: false, valor: "folha" }, { nome: "senha", oculto: true, valor: "" },
+    { nome: "banco", oculto: false, valor: "folha2026" }] });
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: /Novo segredo/ }).first().click();
-  await page.getByLabel("Nome").fill("Token do ERP");
-  await expect(page.getByLabel("Chave")).toHaveValue("token_do_erp");  // a chave vem do nome
-  await page.getByLabel("Chave").fill("erp.token");
-  await page.getByLabel("Valor", { exact: true }).fill("abc-123-xyz");
-  await page.getByLabel("Confirmar valor").fill("abc-123-xyz");
+  await page.getByLabel("Nome", { exact: true }).fill("Acesso ao ERP");
+  await expect(page.getByLabel("Chave")).toHaveValue("acesso_ao_erp");  // a chave vem do nome
+  await page.getByLabel("Chave").fill("erp");
+  await page.getByRole("button", { name: "Usuário e senha" }).click();
+  await page.getByLabel("Valor de usuario").fill("integracao");
+  await page.getByLabel("Valor de senha").fill("abc-123-xyz");
+  await page.getByRole("button", { name: "Adicionar campo" }).click();
+  await page.getByLabel("Nome do campo 3").fill("Servidor");
+  await page.getByLabel("servidor oculto").click();  // vira visível
+  await page.getByLabel("Valor de servidor").fill("erp.intranet");
   await page.getByRole("button", { name: "Criar segredo" }).click();
-  await expect.poll(() => pedidos.find((p) => p.caminho === "/secrets")?.corpo).toMatchObject({ key: "erp.token", name: "Token do ERP", value: "abc-123-xyz" });
+  await expect.poll(() => pedidos.find((p) => p.caminho === "/segredos" && p.metodo === "POST")?.corpo).toMatchObject({
+    chave: "erp", nome: "Acesso ao ERP", campos: [{ nome: "usuario", oculto: false, valor: "integracao" },
+      { nome: "senha", oculto: true, valor: "abc-123-xyz" }, { nome: "servidor", oculto: false, valor: "erp.intranet" }] });
   expect(erros).toEqual([]);
 });
 
@@ -120,12 +149,13 @@ test("técnico: segredos que a automação usa, ligar e desligar", async ({ page
   await abrir(page, "/automations/7");
   await page.getByRole("button", { name: "Técnico" }).click();
   const bloco = page.getByTestId("tecnico-segredos");
-  await expect(bloco).toContainText("dominio.senha_banco");
+  await expect(bloco).toContainText("dominio");
+  await expect(bloco).toContainText("usuario, senha, banco");
   await expect(bloco).toContainText("usado há 1 h");
   await bloco.getByLabel("Segredo para ligar").selectOption("sec_2");
   await bloco.getByRole("button", { name: "Ligar", exact: true }).click();
   await expect.poll(() => pedidos.some((p) => p.metodo === "POST" && p.caminho === "/segredos/da-automacao/7/sec_2")).toBe(true);
-  await bloco.getByRole("button", { name: "Desligar dominio.senha_banco" }).click();
+  await bloco.getByRole("button", { name: "Desligar dominio" }).click();
   await expect.poll(() => pedidos.some((p) => p.metodo === "DELETE" && p.caminho === "/segredos/da-automacao/7/sec_1")).toBe(true);
   await bloco.screenshot({ path: `${TELAS}/tecnico-segredos.png`, animations: "disabled" });
   expect(erros).toEqual([]);

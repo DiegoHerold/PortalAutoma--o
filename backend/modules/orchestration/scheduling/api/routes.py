@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from infrastructure.database import get_db
 from modules.access.api.dependencies import get_current_user
 from modules.access.api.authorization import ensure_automation_action, ensure_permission
+from modules.governance.infrastructure.limites import ler_limite
 from modules.orchestration.application.dto import ActorDTO
 from modules.orchestration.scheduling.api.schemas import (
     ScheduleCalendarResponse,
@@ -212,6 +213,7 @@ def create_schedule(
     user: Any = Depends(get_current_user),
 ) -> ScheduleResponse:
     _ensure_schedule_write(db, user, payload.automation_id)
+    _ensure_min_interval(db, payload.schedule_type, payload.interval_seconds)
     adapters = build_schedule_adapters(db)
     try:
         schedule = CreateSchedule(adapters.schedules, adapters.outbox, adapters.audit, adapters.transaction).execute(
@@ -234,6 +236,8 @@ def update_schedule(
 ) -> ScheduleResponse:
     current = _get_schedule_or_404(db, schedule_id)
     _ensure_schedule_write(db, user, payload.automation_id or current.automation_id)
+    _ensure_min_interval(db, payload.schedule_type or current.schedule_type,
+                         payload.interval_seconds if "interval_seconds" in payload.model_fields_set else None)
     adapters = build_schedule_adapters(db)
     try:
         schedule = UpdateSchedule(adapters.schedules, adapters.outbox, adapters.audit, adapters.transaction).execute(
@@ -346,6 +350,15 @@ def _mutate_schedule_status(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ScheduleResponse.model_validate(to_payload(result))
+
+
+def _ensure_min_interval(db: Session, schedule_type: str | None, interval_seconds: int | None) -> None:
+    """Limite do sistema "intervalo mínimo entre repetições" (Governança > Limites)."""
+    if schedule_type != "interval" or interval_seconds is None:
+        return
+    minimo = ler_limite(db, "schedule.min_interval_seconds")
+    if interval_seconds < minimo:
+        raise HTTPException(status_code=422, detail=f"O intervalo mínimo entre repetições é de {minimo} segundos.")
 
 
 def _get_schedule_or_404(db: Session, schedule_id: int):

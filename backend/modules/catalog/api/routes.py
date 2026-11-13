@@ -83,8 +83,6 @@ from modules.catalog.infrastructure.adapters import build_catalog_adapters
 from modules.fleet.application.use_cases import GetAutomationWorkerPreferences, ReplaceAutomationWorkerPreferences
 from modules.fleet.infrastructure.repositories import SqlAlchemyAutomationWorkerPreferenceRepository
 from modules.governance.domain.audit import AuditEvent
-from modules.governance.application.use_cases import ListSystemLimits
-from modules.governance.infrastructure.adapters import build_governance_adapters
 from modules.shared.application.idempotency import IdempotencyRecord, IdempotencyReplayStatus
 from modules.shared.infrastructure.repositories import SqlAlchemyIdempotencyStore
 from modules.storage.domain.stored_object import StoredObject, StoredObjectStatus
@@ -805,9 +803,10 @@ def block_runtime_version(
 
 
 def _system_limit_bytes(db: Session, key: str, fallback_megabytes: int) -> int:
-    limits = ListSystemLimits(build_governance_adapters(db).governance).execute()
-    configured = next((item.value for item in limits if item.key == key and item.organization_id is None), fallback_megabytes)
-    return max(0, int(configured)) * 1024 * 1024
+    """Limite do catálogo de configurações (sem linha gravada, vale o padrão do catálogo)."""
+    from modules.governance.infrastructure.limites import ler_limite_em_bytes
+
+    return ler_limite_em_bytes(db, key)
 
 
 def _actor(user: Any) -> ActorDTO:

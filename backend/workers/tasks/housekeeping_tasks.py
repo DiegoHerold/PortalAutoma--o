@@ -73,3 +73,12 @@ def force_cancel_execution_attempts() -> dict[str, int]:
             adapters.outbox,
             adapters.transaction,
         ).execute_due()
+
+
+@celery_app.task(name="workers.tasks.housekeeping_tasks.aplicar_limpeza_do_sistema")
+def aplicar_limpeza_do_sistema() -> dict[str, int]:
+    """Regras de limpeza do sistema (Governança > Retenção). Cada passada apaga um lote por regra."""
+    from modules.governance.infrastructure.adapters.limpeza import build_aplicar_limpeza
+
+    with SessionLocal() as db:
+        return build_aplicar_limpeza(db).execute()

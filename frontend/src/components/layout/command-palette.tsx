@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, CornerDownLeft } from "lucide-react";
 
+import { Portal } from "@/components/ui/portal";
 import { ALL_NAV_ITEMS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -58,6 +59,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   if (!open) return null;
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[95] flex items-start justify-center px-4 pt-[12vh]">
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-xl animate-fade-in overflow-hidden rounded-xl border border-border bg-popover shadow-2xl">
@@ -103,5 +105,6 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

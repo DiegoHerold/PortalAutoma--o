@@ -170,11 +170,22 @@ Histórico para uma execução.
   exceções); "Para quem desenvolve" (ID, chave, slug e JSON), recolhido. Não mostra mais
   preferência de workers nem a lista de workers, que o despacho pela Fila não usa.
 
-- **Segredos** (`secrets-manager.tsx`, 13/11/2026): tabela com o segredo (nome e chave em
-  mono, versão), **Usado por** (automações), **Último uso** e situação (Ativo, Desativado,
-  Vencido). O painel lateral tem Trocar valor, Desativar/Reativar, a lista de automações com
-  caixas de marcar (Salvar automações), o trecho `a.segredo("chave")` e as versões. O valor
-  nunca aparece. Na aba Técnico da automação, o bloco **Segredos que usa** lista, liga e desliga.
+- **Segredos** (`secrets-manager.tsx`, 13/11/2026): um segredo junta os campos de um acesso.
+  Tabela com o segredo (nome; chave em mono e os nomes dos campos), **Usado por** (automações),
+  **Último uso** e situação (Ativo, Desativado, Vencido). Cadastro com atalhos (Senha; Usuário e
+  senha; Usuário, senha e banco; Token de API) e um editor de campos: nome, valor e o botão de
+  olho (oculto: nunca aparece e vira *** no log; visível: aparece). O painel lateral mostra os
+  campos (visíveis com valor, ocultos como ••••), Editar campos (oculto em branco mantém),
+  Desativar/Reativar, as automações com caixas de marcar, o trecho `a.segredo("chave")` com os
+  campos e as versões. Na aba Técnico, o bloco **Segredos que usa** lista (com os campos), liga e
+  desliga.
+- **Webhooks** (`webhooks-page.tsx`, 13/11/2026): tabela com o webhook (nome, "aciona
+  <automação>"), **Últimas 24 h** (aceitas; recusadas em vermelho), **Último uso**,
+  **Proteção** (IPs e limite por minuto) e situação (Ligado, Desligado, Sem token). O painel
+  lateral ensina a chamar (URL com copiar, cabeçalhos, o que pode mandar tirado do formulário da
+  automação, exemplo `curl`, códigos de resposta), edita a proteção e lista as chamadas recentes
+  (aceita, repetida, recusada com o motivo, link para a execução). Token novo numa janela que só
+  fecha depois de marcar "Guardei o token". Webhook migrado mostra o aviso para gerar token.
 - **Contas de serviço** (`service-accounts-manager.tsx`): explicação curta no topo (papel =
   áreas, times = automações; para disparar de fora, webhook), tabela com papel, times,
   credencial (`psa_…abcd`), último uso e situação. A credencial nova aparece numa janela que só

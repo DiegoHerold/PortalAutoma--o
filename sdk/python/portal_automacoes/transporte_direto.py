@@ -73,6 +73,12 @@ class TransporteDireto:
     def fechar(self) -> None:
         return None
 
+    def email(self, dados: dict[str, Any]) -> dict[str, Any]:
+        return self._pedir("POST", "/emails", dados, tempo_limite_s=60.0)
+
+    def registrar_email(self, dados: dict[str, Any]) -> dict[str, Any]:
+        return self._pedir("POST", "/emails/registro", dados)
+
     def segredos(self, chaves: list[str]) -> dict[str, Any]:
         """Só durante a execução e com o token deste job; a resposta não é guardada em disco."""
         resposta = self._pedir("POST", "/segredos", {"chaves": chaves})

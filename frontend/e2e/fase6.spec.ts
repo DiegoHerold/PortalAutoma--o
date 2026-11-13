@@ -26,6 +26,8 @@ async function preparar(page: Page, { papel = "admin", tema = "light" }: { papel
   let lidas = false;
   let prazos: Record<number, { imagens_dias: number | null; logs_dias: number | null }> = { 9: { imagens_dias: 30, logs_dias: 90 } };
   let pref = { tipos: ["erro"], fila_minutos: 30 };
+  let limpeza: Record<string, number | null> = { notificacoes: 7 };
+  let limites: Record<string, number> = { "execution.max_concurrent": 20 };
   const gestor = papel === "admin";
   await page.route(`${API_DE_TESTE}/**`, async (route) => {
     const req = route.request();
@@ -58,10 +60,32 @@ async function preparar(page: Page, { papel = "admin", tema = "light" }: { papel
     ] });
     const prazo = caminho.match(/^\/governance\/retencao-por-automacao\/(\d+)$/);
     if (prazo) { prazos = { ...prazos, [Number(prazo[1])]: corpo }; return json({ automation_id: Number(prazo[1]), ...corpo }); }
-    if (caminho === "/governance/retention-policies") return json([
-      { organization_id: null, resource_type: "ExecutionLog", retention_days: 30, archive_after_days: 15, delete_after_days: 90, legal_hold: false, enabled: true, updated_at: em(-86400) },
-      { organization_id: null, resource_type: "AuditEvent", retention_days: 365, archive_after_days: null, delete_after_days: null, legal_hold: true, enabled: true, updated_at: em(-86400) },
-    ]);
+    if (caminho === "/governance/limpeza") return json({ grupos: ["Avisos", "Máquinas", "Guardado sempre"], itens: [
+      { chave: "notificacoes", grupo: "Avisos", nome: "Notificações", descricao: "Avisos do sino.", o_que_sai: "Notificações mais antigas que o prazo.",
+        padrao_dias: 7, minimo_dias: 2, maximo_dias: 365, editavel: true, dias: limpeza.notificacoes, personalizado: limpeza.notificacoes !== 7,
+        atualizado_por: null, atualizado_em: null, ultima_limpeza_em: em(-600), ultima_limpeza_apagados: 3, total_apagados: 42 },
+      { chave: "maquinas.recursos", grupo: "Máquinas", nome: "Medições de CPU, memória e disco", descricao: "Medições dos Agents.",
+        o_que_sai: "Medições antigas. A última de cada Agent fica.", padrao_dias: 7, minimo_dias: 1, maximo_dias: 365, editavel: true,
+        dias: 7, personalizado: false, atualizado_por: null, atualizado_em: null, ultima_limpeza_em: null, ultima_limpeza_apagados: null, total_apagados: 0 },
+      { chave: "sempre.auditoria", grupo: "Guardado sempre", nome: "Auditoria", descricao: "Quem fez o quê e quando.", o_que_sai: "Nada.",
+        padrao_dias: null, minimo_dias: 0, maximo_dias: 3650, editavel: false, dias: null, personalizado: false,
+        atualizado_por: null, atualizado_em: null, ultima_limpeza_em: null, ultima_limpeza_apagados: null, total_apagados: 0 },
+    ] });
+    const regra = caminho.match(/^\/governance\/limpeza\/(.+)$/);
+    if (regra) { limpeza = { ...limpeza, [regra[1]]: corpo.voltar_ao_padrao ? 7 : corpo.dias }; return json({}); }
+    if (caminho === "/governance/limites") return json({ grupos: ["Execuções", "Máquinas"], itens: [
+      { chave: "execution.max_concurrent", grupo: "Execuções", nome: "Execuções ao mesmo tempo", descricao: "Quantos jobs rodam juntos.",
+        unidade: "quantidade", padrao: 20, minimo: 1, maximo: 500, onde_vale: "Entrega da fila às máquinas.", origem: "portal",
+        variavel_de_ambiente: null, valor: limites["execution.max_concurrent"], personalizado: limites["execution.max_concurrent"] !== 20, atualizado_em: null },
+      { chave: "execution.max_timeout_seconds", grupo: "Execuções", nome: "Tempo máximo de uma execução", descricao: "Teto do tempo limite.",
+        unidade: "segundos", padrao: 14400, minimo: 60, maximo: 604800, onde_vale: "Montagem do job.", origem: "portal",
+        variavel_de_ambiente: null, valor: 14400, personalizado: false, atualizado_em: null },
+      { chave: "gateway.max_message_bytes", grupo: "Máquinas", nome: "Tamanho máximo de mensagem do Agent", descricao: "Maior mensagem do Agent.",
+        unidade: "bytes", padrao: 65536, minimo: 1024, maximo: 10485760, onde_vale: "Canal com os Agents.", origem: "arquivo",
+        variavel_de_ambiente: "AGENT_GATEWAY_MAX_MESSAGE_BYTES", valor: 65536, personalizado: false, atualizado_em: null },
+    ] });
+    const limite = caminho.match(/^\/governance\/limites\/(.+)$/);
+    if (limite) { limites = { ...limites, [limite[1]]: corpo.valor }; return json({}); }
     if (caminho === "/roles") return json([
       { id: 1, name: "Administrador", slug: "admin", description: "Acesso total ao portal." },
       { id: 2, name: "Operador", slug: "operator", description: "Executa e acompanha as automações liberadas." },
@@ -140,7 +164,7 @@ for (const tema of ["light", "dark"] as const) {
     const lista = page.getByTestId("retencao-por-automacao");
     await expect(lista.getByText("Imagens: Sem prazo")).toBeVisible();
     await expect(lista.getByText("Imagens: 30 dias")).toBeVisible();
-    await expect(page.getByText("Hoje estas políticas não apagam nada sozinhas", { exact: false })).toBeVisible();
+    await expect(page.getByTestId("limpeza-notificacoes").getByText("7 dias")).toBeVisible();
     await page.screenshot({ path: `${TELAS}/retencao-${tema === "light" ? "claro" : "escuro"}.png`, fullPage: true, animations: "disabled" });
     if (tema === "dark") return expect(erros).toEqual([]);
 
@@ -218,5 +242,57 @@ test("configurações: tudo alcançável, o que sai do menu continua nas Configu
     if (aba === "conta") await expect(page.getByText("Administrador", { exact: true })).toBeVisible();  // papel em português
     await page.screenshot({ path: `${TELAS}/configuracoes-${aba}.png`, fullPage: true, animations: "disabled" });
   }
+  expect(erros).toEqual([]);
+});
+
+test("limpeza do sistema: padrão à mostra, fora da faixa recusa, encurtar avisa e salva", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  const { pedidos, erros } = await preparar(page);
+  await abrir(page, "/governance/retention");
+  const secao = page.getByTestId("limpeza-do-sistema");
+  const notificacoes = secao.getByTestId("limpeza-notificacoes");
+  await expect(notificacoes.getByText("7 dias")).toBeVisible();
+  await expect(notificacoes.getByText("42 apagados no total", { exact: false })).toBeVisible();
+  await expect(secao.getByTestId("limpeza-sempre.auditoria").getByText("Guardado sempre")).toBeVisible();
+  await expect(secao.getByRole("button", { name: "Mudar prazo de Auditoria" })).toHaveCount(0);
+  await page.screenshot({ path: `${TELAS}/limpeza-do-sistema.png`, fullPage: true, animations: "disabled" });
+
+  await secao.getByLabel("Buscar regra de limpeza").fill("medições");
+  await expect(notificacoes).toHaveCount(0);
+  await secao.getByLabel("Buscar regra de limpeza").fill("");
+
+  await notificacoes.getByRole("button", { name: "Mudar prazo de Notificações" }).click();
+  await page.getByLabel("Guardar por").fill("1");
+  await expect(page.getByText("Use um número inteiro de 2 a 365.")).toBeVisible();
+  await page.getByLabel("Guardar por").fill("3");
+  await expect(page.getByRole("alert").getByText("apagado de vez", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Salvar e apagar o que passar do prazo" }).click();
+  await expect(notificacoes.getByText("3 dias")).toBeVisible();
+  await expect(notificacoes.getByText("Padrão: 7 dias")).toBeVisible();
+  expect(pedidos.filter((p) => p.metodo === "PUT").map((p) => [p.caminho, p.corpo])).toEqual([
+    ["/governance/limpeza/notificacoes", { dias: 3 }]]);
+  expect(erros).toEqual([]);
+});
+
+test("limites: por grupo, o do .env só para consulta, mudar valida a faixa", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const { pedidos, erros } = await preparar(page);
+  await abrir(page, "/governance/limits");
+  const tela = page.getByTestId("limites-do-sistema");
+  await expect(tela.getByRole("heading", { name: "Execuções" })).toBeVisible();
+  await expect(tela.getByTestId("limite-execution.max_timeout_seconds").getByText("4 horas")).toBeVisible();
+  const gateway = tela.getByTestId("limite-gateway.max_message_bytes");
+  await expect(gateway.getByText("64 KB")).toBeVisible();
+  await expect(gateway.getByText("Arquivo .env")).toBeVisible();
+  await expect(gateway.getByRole("button")).toHaveCount(0);
+
+  await tela.getByRole("button", { name: "Mudar Execuções ao mesmo tempo" }).click();
+  await page.getByRole("spinbutton").fill("0");
+  await expect(page.getByText("Use um número inteiro dentro da faixa.")).toBeVisible();
+  await page.getByRole("spinbutton").fill("8");
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(tela.getByTestId("limite-execution.max_concurrent").getByText("Padrão: 20")).toBeVisible();
+  expect(pedidos.filter((p) => p.metodo === "PUT").map((p) => [p.caminho, p.corpo])).toEqual([
+    ["/governance/limites/execution.max_concurrent", { valor: 8 }]]);
   expect(erros).toEqual([]);
 });

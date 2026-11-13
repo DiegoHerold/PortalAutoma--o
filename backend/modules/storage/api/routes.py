@@ -12,8 +12,6 @@ from infrastructure.config import get_settings
 from infrastructure.database import get_db
 from modules.access.api.dependencies import get_current_user
 from modules.access.api.authorization import ensure_automation_action, ensure_permission
-from modules.governance.application.use_cases import ListSystemLimits
-from modules.governance.infrastructure.adapters import build_governance_adapters
 from modules.orchestration.application.use_cases import GetExecutionDetails
 from modules.orchestration.domain.errors import OrchestrationError
 from modules.orchestration.infrastructure.adapters import build_orchestration_adapters
@@ -283,6 +281,7 @@ def _ensure_execution_view(db: Session, user: Any, execution_id: str):
 
 
 def _system_limit_bytes(db: Session, key: str, fallback_megabytes: int) -> int:
-    limits = ListSystemLimits(build_governance_adapters(db).governance).execute()
-    configured = next((item.value for item in limits if item.key == key and item.organization_id is None), fallback_megabytes)
-    return max(0, int(configured)) * 1024 * 1024
+    """Limite do catálogo de configurações (sem linha gravada, vale o padrão do catálogo)."""
+    from modules.governance.infrastructure.limites import ler_limite_em_bytes
+
+    return ler_limite_em_bytes(db, key)

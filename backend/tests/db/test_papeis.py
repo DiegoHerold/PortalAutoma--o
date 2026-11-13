@@ -27,7 +27,7 @@ def test_tabela_de_funcionalidades_libera_e_tira_o_acesso(cliente, sessao) -> No
     nome = f"Analista Fiscal {uuid.uuid4().hex[:4]}"
     with com_login(cliente, admin) as cab:
         catalogo = cliente.get("/api/v1/papeis/funcionalidades", headers=cab).json()["funcionalidades"]
-        assert len(catalogo) == 22
+        assert len(catalogo) == 23  # 13/11/2026: + E-mails
         assert next(f for f in catalogo if f["chave"] == "usuarios")["niveis"] == ["ver", "gerenciar"]
         criado = cliente.post("/api/v1/papeis", json={"nome": nome, "descricao": "Confere a folha",
                                                       "funcionalidades": {"auditoria": "ver", "historico": "ver"}}, headers=cab)
@@ -68,7 +68,7 @@ def test_tabela_de_funcionalidades_libera_e_tira_o_acesso(cliente, sessao) -> No
     with com_login(cliente, admin) as cab:
         papeis = _papeis(cliente, cab)
         assert papeis["admin"]["editavel"] is False and papeis["admin"]["pode_apagar"] is False
-        assert len(papeis["admin"]["funcionalidades"]) == 22
+        assert len(papeis["admin"]["funcionalidades"]) == 23
         assert papeis[papel["slug"]]["pessoas"] == 1
         assert cliente.put(f"/api/v1/papeis/{papeis['admin']['id']}", json={"funcionalidades": {}}, headers=cab).status_code == 422
         assert cliente.delete(f"/api/v1/papeis/{viewer_id}", headers=cab).status_code == 422  # do sistema

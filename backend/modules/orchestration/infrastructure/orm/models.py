@@ -176,3 +176,43 @@ class StepPlanRecord(Base):
     planned_tasks: Mapped[int | None] = mapped_column(Integer)
     completed_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class WebhookRecord(Base):
+    """Webhook (13/11/2026): uma URL que só aciona UMA automação, com token no cabeçalho."""
+
+    __tablename__ = "webhooks"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    automation_id: Mapped[int] = mapped_column(ForeignKey("automations.id", ondelete="CASCADE"), nullable=False, index=True)
+    nome: Mapped[str] = mapped_column(String(180), nullable=False)
+    descricao: Mapped[str | None] = mapped_column(Text)
+    ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    token_hash: Mapped[str] = mapped_column(String(120), nullable=False, index=True)  # "sha256:<hex>"
+    token_final: Mapped[str | None] = mapped_column(String(8))
+    token_criado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ips_permitidos: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    limite_por_minuto: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    criado_por: Mapped[str | None] = mapped_column(String(120))
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ultimo_uso_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legado_trigger_id: Mapped[int | None] = mapped_column(Integer)
+
+
+class WebhookChamadaRecord(Base):
+    """Cada chamada recebida, aceita ou recusada: o histórico do webhook (e o limite por minuto)."""
+
+    __tablename__ = "webhook_chamadas"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    webhook_id: Mapped[str] = mapped_column(ForeignKey("webhooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    recebida_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    situacao: Mapped[str] = mapped_column(String(20), nullable=False)  # aceita | repetida | recusada
+    motivo: Mapped[str | None] = mapped_column(String(300))
+    codigo_http: Mapped[int] = mapped_column(Integer, nullable=False)
+    ip: Mapped[str | None] = mapped_column(String(80))
+    user_agent: Mapped[str | None] = mapped_column(String(300))
+    chave_idempotencia: Mapped[str | None] = mapped_column(String(120), index=True)
+    execution_id: Mapped[str | None] = mapped_column(String(80))
+    itens: Mapped[int | None] = mapped_column(Integer)

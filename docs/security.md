@@ -27,7 +27,9 @@ diretamente do GitHub.
   esta ativo, ligado aquela automacao e dentro da validade. Resposta sem cache.
 - Cada entrega e cada recusa ficam na auditoria (`segredo.entregue`, `segredo.negado`),
   com automacao, execucao e versao, sem o valor.
-- O SDK troca o valor por `***` em todo evento antes da fila local; o Portal faz o
+- Um segredo tem campos (usuario, senha, banco...), cifrados juntos numa versao. Campo
+  oculto nunca volta por rota de gestao; campo visivel aparece no Portal.
+- O SDK troca os campos ocultos por `***` em todo evento antes da fila local; o Portal faz o
   mesmo ao receber. Valores com menos de 4 caracteres nao sao mascarados.
 - Modo agente: ainda nao entrega segredos (ver `known-gaps.md`).
 
@@ -42,6 +44,26 @@ diretamente do GitHub.
 - O usuario tecnico nao entra pela tela de login, nao aparece em Usuarios e nao e
   alterado por la. As requisicoes de alteracao ficam na auditoria no nome dele, com o
   id da conta.
+
+## E-mail centralizado (13/11/2026)
+
+- Todo e-mail sai pelo Portal (Microsoft Graph, credencial de aplicativo do `.env`; aceita os
+  nomes `ENTRA_*` do Biason Comunica). Liga sozinho com os quatro dados; `NOTIFICACOES_EMAIL_LIGADO`
+  força. Os testes forçam desligado (`backend/conftest.py`).
+- A automação pede com o token do job e só para domínios permitidos (o do remetente sempre);
+  fora disso o pedido é recusado e registrado. Sem executáveis, até 2,5 MB de anexos.
+- Conteúdo dos anexos apagado depois do envio (ficam nome e tamanho). O HTML guardado aparece na
+  tela num iframe isolado (sem scripts, sem acesso ao Portal).
+
+## Webhooks (13/11/2026)
+
+- So acionam uma automacao (pedido pela Fila, campos e itens conferidos pelo formulario).
+- Token `wht_...` so no cabecalho `Authorization: Bearer`; na URL ou no corpo e recusado.
+  O Portal guarda o SHA-256; o token aparece uma vez.
+- Webhook inexistente e token errado dao a mesma resposta (401).
+- IPs/redes permitidos opcionais (IP da conexao; `X-Forwarded-For` ignorado), limite por
+  minuto contado no banco, `Idempotency-Key` de 24 h, corpo JSON ate 64 KB.
+- Toda chamada fica em `webhook_chamadas`, sem o token. Detalhes em `webhooks.md`.
 
 ## Agent
 

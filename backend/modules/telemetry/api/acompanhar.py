@@ -21,7 +21,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from infrastructure.database import get_db, get_session_factory
@@ -39,6 +39,7 @@ from modules.orchestration.infrastructure.adapters import build_orchestration_ad
 from modules.storage.application.use_cases.objetos import LerObjeto
 from modules.storage.domain.errors import ArtifactNotFound
 from modules.storage.infrastructure.adapters import build_storage_adapters
+from modules.telemetry.api.conexoes_ao_vivo import responder_ao_vivo
 from modules.telemetry.application.use_cases.estimates import GetExecutionEstimate, QueueEstimates
 from modules.telemetry.domain.acompanhamento import estado, situacao_do_agora
 from modules.telemetry.domain.imagens import TAMANHOS
@@ -248,7 +249,7 @@ def usuario_do_cabecalho(db: Session, request: Request) -> Any:
         raise HTTPException(status_code=401, detail="Token inválido.") from exc
 
 
-def fluxo_de_avisos(request: Request, canal: str, chave: str) -> StreamingResponse:
+def fluxo_de_avisos(request: Request, canal: str, chave: str) -> Response:
     """SSE de avisos: "mudou" quando há novidade; sem conexão de escuta, avisa a cada 15 s."""
 
     async def gerar():
@@ -261,12 +262,11 @@ def fluxo_de_avisos(request: Request, canal: str, chave: str) -> StreamingRespon
                 else:
                     yield ": ainda aqui\n\n"
 
-    return StreamingResponse(gerar(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+    return responder_ao_vivo(gerar())
 
 
 @router.get("/{execution_id}/avisos")
-def avisos(execution_id: str, request: Request, fabrica: Any = Depends(get_session_factory)) -> StreamingResponse:
+def avisos(execution_id: str, request: Request, fabrica: Any = Depends(get_session_factory)) -> Response:
     # Sessão curta só para autenticar e checar a permissão: o stream não segura conexão do banco.
     with fabrica() as db:
         user = usuario_do_cabecalho(db, request)

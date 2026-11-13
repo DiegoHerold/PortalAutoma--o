@@ -151,7 +151,9 @@ cabeçalho `Authorization: Bearer <token>`, nunca na URL. O token vale só para 
 | POST | `/api/v1/direto/jobs/{job_id}/eventos` com `{"eventos": [...]}` | `{"ultima_sequencia": N, "recusados": [{"sequence", "motivo"}]}` |
 | GET | `/api/v1/direto/jobs/{job_id}/comandos?espera=0..30` | `{"comandos": [...]}` |
 | PUT | `/api/v1/direto/jobs/{job_id}/imagens/{imagem_id}` (`image/jpeg`) | `201 {"imagem_id": "..."}` |
-| POST | `/api/v1/direto/jobs/{job_id}/segredos` com `{"chaves": ["dominio.senha_banco"]}` (1 a 50) | `{"segredos": {chave: valor}, "negados": {chave: motivo}}`, `Cache-Control: no-store` |
+| POST | `/api/v1/direto/jobs/{job_id}/emails` com `{para, cc, cco, assunto, html | texto, anexos: [{nome, tipo, conteudo_base64}], responder_para, tipo, chave_idempotencia}` (até 4 MB) | `201 {"email_id", "situacao"}` (`enviado` ou `na_fila`); `422 {"erro", "situacao": "recusado"}` |
+| POST | `/api/v1/direto/jobs/{job_id}/emails/registro` com `{para, cc, cco, assunto, meio: outlook|smtp|outro, enviado_em, anexos: [nomes], resumo}` | `201 {"email_id", "situacao": "enviado_pela_maquina"}` |
+| POST | `/api/v1/direto/jobs/{job_id}/segredos` com `{"chaves": ["dominio"]}` (1 a 50) | `{"segredos": {chave: {"campos": {campo: valor}, "ocultos": [campos]}}, "negados": {chave: motivo}}`, `Cache-Control: no-store` |
 
 - Evento recusado é consumido e informado em `recusados`; os válidos do mesmo lote
   são gravados.
@@ -162,9 +164,10 @@ cabeçalho `Authorization: Bearer <token>`, nunca na URL. O token vale só para 
 - Segredos (13/11/2026): só saem enquanto a tentativa está ativa (`409` depois) e só os
   ligados à automação do job, ativos e com a versão atual dentro da validade. Não ligado e
   inexistente têm o mesmo motivo (não revela quais chaves existem). Cada entrega e recusa vai
-  para a auditoria (`segredo.entregue`, `segredo.negado`), sem o valor. O Portal troca por
-  `***` o valor dos segredos da automação em qualquer texto dos eventos que recebe. SDK:
-  `Automacao.segredo()` (0.5.0). No modo agente ainda não há entrega de segredos.
+  para a auditoria (`segredo.entregue`, `segredo.negado`), sem o valor. Um segredo tem campos
+  (usuário, senha, banco...); os **ocultos** viram `***` em qualquer texto dos eventos que o
+  Portal recebe (os visíveis não). SDK: `Automacao.segredo(chave, campo=)` (0.5.0). No modo
+  agente ainda não há entrega de segredos.
 
 ### Instância: inscrição, sessão e próximo job
 
@@ -204,3 +207,12 @@ cabeçalho `Authorization: Bearer <token>`, nunca na URL. O token vale só para 
   `contracts/events/execution-event.schema.json`. Agent com esta versão exige Portal com
   esta versão; um Portal antigo recusaria o evento.
 - Mudança incompatível neste contrato exige `automation-events/2`.
+
+### E-mail pelo Portal (13/11/2026)
+
+O padrão é a automação pedir e o Portal mandar (Microsoft Graph). Só durante a execução (`409`
+depois), só para domínios permitidos no Portal (fora disso: `422`, registrado como `recusado`),
+até 100 destinatários, 2,5 MB de anexos, sem executáveis. Falha temporária do Graph: `na_fila`,
+o Portal tenta de novo sozinho. Mesma `chave_idempotencia` na mesma execução: o mesmo e-mail.
+Mandou pela máquina: `emails/registro` só registra. SDK: `Automacao.email()` e
+`Automacao.email_enviado_pela_maquina()` (0.5.0). No modo agente ainda não há.

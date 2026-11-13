@@ -64,7 +64,8 @@ def test_segredo_so_sai_para_a_automacao_ligada_durante_a_execucao(cliente, sess
     assert cliente.post(f"/api/v1/segredos/da-automacao/999999/{sid}").status_code == 404
 
     r = _pedir(cliente, job_id, cab_job, chave, "nao.existe")
-    assert r.json()["segredos"] == {chave: VALOR} and list(r.json()["negados"]) == ["nao.existe"]
+    assert r.json()["segredos"] == {chave: {"campos": {"valor": VALOR}, "ocultos": ["valor"]}}  # segredo de um campo
+    assert list(r.json()["negados"]) == ["nao.existe"]
     assert r.headers["cache-control"] == "no-store"
 
     # A automação escreveu a senha no log: o Portal grava ***.
@@ -76,7 +77,7 @@ def test_segredo_so_sai_para_a_automacao_ligada_durante_a_execucao(cliente, sess
 
     # Trocar o valor: a próxima entrega já é a nova.
     assert cliente.post(f"/api/v1/secrets/{sid}/rotate", json={"value": "Nova-Senha-2027"}).status_code == 200
-    assert _pedir(cliente, job_id, cab_job, chave).json()["segredos"] == {chave: "Nova-Senha-2027"}
+    assert _pedir(cliente, job_id, cab_job, chave).json()["segredos"][chave]["campos"] == {"valor": "Nova-Senha-2027"}
     versoes = cliente.get(f"/api/v1/segredos/{sid}/versoes").json()["versoes"]
     assert [(v["versao"], v["atual"]) for v in versoes] == [(2, True), (1, False)]
 
@@ -114,6 +115,72 @@ def test_segredo_so_sai_para_a_automacao_ligada_durante_a_execucao(cliente, sess
     assert VALOR not in tudo and "Nova-Senha-2027" not in tudo
     print("\nsegredos: só com o token do job e ligado; log com ***; troca de valor vale na hora; desativado, desligado e "
           "execução encerrada recusam; tudo na auditoria sem o valor")
+
+
+def test_segredo_com_campos_visiveis_e_ocultos(cliente, sessao, admin) -> None:
+    chave = f"dominio.{uuid.uuid4().hex[:6]}"
+    senha = "Senha-Da-Dominio-2026"
+    campos = [{"nome": "usuario", "oculto": False, "valor": "folha"},
+              {"nome": "senha", "oculto": True, "valor": senha},
+              {"nome": "banco", "oculto": False, "valor": "contabil"}]
+    assert cliente.post("/api/v1/segredos", json={"chave": chave, "nome": "D", "campos": []}).status_code == 422
+    assert cliente.post("/api/v1/segredos", json={"chave": chave, "nome": "D", "campos": [
+        {"nome": "Senha Nova", "valor": "x"}]}).status_code == 422  # nome de campo inválido
+    assert cliente.post("/api/v1/segredos", json={"chave": chave, "nome": "D", "campos": [
+        {"nome": "a", "valor": "x"}, {"nome": "a", "valor": "y"}]}).status_code == 422  # repetido
+    criado = cliente.post("/api/v1/segredos", json={"chave": chave, "nome": "Acesso à Domínio", "campos": campos})
+    assert criado.status_code == 201, criado.text
+    sid = criado.json()["id"]
+    assert cliente.post("/api/v1/segredos", json={"chave": chave, "nome": "outro", "campos": campos}).status_code == 422
+
+    def na_lista() -> dict:
+        return next(s for s in cliente.get("/api/v1/segredos").json()["segredos"] if s["id"] == sid)
+
+    # Visíveis aparecem com o valor; oculto, nunca.
+    assert na_lista()["campos"] == [{"nome": "usuario", "oculto": False, "valor": "folha"},
+                                    {"nome": "senha", "oculto": True, "valor": None},
+                                    {"nome": "banco", "oculto": False, "valor": "contabil"}]
+    assert senha not in json.dumps(cliente.get("/api/v1/segredos").json())
+
+    _, _, execution_id, job_id, _, cab_job = _rodando(cliente, sessao, admin, "8201")
+    assert cliente.post(f"/api/v1/segredos/da-automacao/{admin.automation_id}/{sid}").status_code == 204
+    assert cliente.get(f"/api/v1/segredos/da-automacao/{admin.automation_id}").json()["segredos"][0]["campos"] == ["usuario", "senha", "banco"]
+    entregue = _pedir(cliente, job_id, cab_job, chave).json()["segredos"][chave]
+    assert entregue == {"campos": {"usuario": "folha", "senha": senha, "banco": "contabil"}, "ocultos": ["senha"]}
+
+    # No log, só o oculto vira ***.
+    roteiro = Roteiro(datetime.now(UTC)).emitir("execucao.iniciada").emitir("item.iniciado", item="8201")
+    roteiro.emitir("log", nivel="info", texto=f"login folha / {senha} no banco contabil")
+    assert cliente.post(f"/api/v1/direto/jobs/{job_id}/eventos", json={"eventos": roteiro.eventos[2:]}, headers=cab_job).status_code == 200
+    textos = [l["texto"] for l in cliente.get(f"/api/v1/execucoes/{execution_id}/logs").json()["logs"]]
+    assert "login folha / *** no banco contabil" in textos
+
+    # Mudar só o banco: senha em branco mantém a atual; versão nova.
+    novos = [{**campos[0]}, {"nome": "senha", "oculto": True, "valor": ""}, {"nome": "banco", "oculto": False, "valor": "folha2026"}]
+    assert cliente.put(f"/api/v1/segredos/{sid}/campos", json={"campos": novos}).status_code == 204
+    entregue = _pedir(cliente, job_id, cab_job, chave).json()["segredos"][chave]["campos"]
+    assert entregue == {"usuario": "folha", "senha": senha, "banco": "folha2026"}
+    assert na_lista()["versao"] == 2
+
+    # Só ocultar o usuário: sem versão nova; tirar um campo: versão nova sem ele.
+    novos[0] = {"nome": "usuario", "oculto": True, "valor": ""}
+    assert cliente.put(f"/api/v1/segredos/{sid}/campos", json={"campos": novos}).status_code == 204
+    assert na_lista()["versao"] == 2 and na_lista()["campos"][0] == {"nome": "usuario", "oculto": True, "valor": None}
+    assert cliente.put(f"/api/v1/segredos/{sid}/campos", json={"campos": novos[:2]}).status_code == 204
+    assert _pedir(cliente, job_id, cab_job, chave).json()["segredos"][chave]["campos"] == {"usuario": "folha", "senha": senha}
+    assert na_lista()["versao"] == 3
+    novo_sem_valor = [*novos[:2], {"nome": "porta", "oculto": False, "valor": ""}]
+    assert cliente.put(f"/api/v1/segredos/{sid}/campos", json={"campos": novo_sem_valor}).status_code == 422
+    # A rota antiga de um valor só não serve para segredo de vários campos.
+    assert cliente.post(f"/api/v1/secrets/{sid}/rotate", json={"value": "x"}).status_code == 422
+
+    alteracoes = _auditoria(sessao, "segredo.campos_alterados", sid)
+    assert len(alteracoes) == 3
+    tudo = sessao.execute(text("SELECT string_agg(coalesce(metadata::text,'') || coalesce(after::text,'') || "
+                               "coalesce(before::text,''), ' ') FROM audit_events")).scalar()
+    assert senha not in tudo
+    print("\nsegredo com campos: visíveis aparecem, oculto nunca; entrega o objeto; só o oculto vira *** no log; "
+          "valor em branco mantém; ocultar não cria versão; tirar campo cria")
 
 
 # -- contas de serviço -------------------------------------------------------------------------

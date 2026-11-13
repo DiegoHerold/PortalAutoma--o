@@ -112,12 +112,14 @@ a.arquivo(pasta / "resultado.csv", item=None)                        # do lote
 
 A automação não precisa guardar senha no `.env` da máquina:
 
-1. Cadastre em **Segurança > Segredos** (ex.: chave `erp.senha`).
+1. Cadastre em **Segurança > Segredos** (ex.: chave `erp`, campos `usuario` visível e `senha`
+   oculto).
 2. Ligue à automação: aba **Técnico** da automação, bloco **Segredos que usa**.
-3. No código: `senha = a.segredo("erp.senha")` (SDK 0.5.0, modo direto).
+3. No código: `erp = a.segredo("erp")` e `erp["senha"]`, ou `a.segredo("erp", "senha")`
+   (SDK 0.5.0, modo direto).
 
 Só sai durante a execução, só para as automações ligadas, e cada entrega fica na auditoria. O
-valor vira `***` se aparecer num log. Detalhes no README do SDK (seção "Segredos").
+campo oculto vira `***` se aparecer num log. Detalhes no README do SDK (seção "Segredos").
 
 ## HTTP provisório
 

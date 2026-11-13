@@ -38,7 +38,6 @@ from modules.governance.application.use_cases import (
     ListSecrets,
     ListSystemLimits,
     RevokeSecretGrant,
-    RotateSecret,
     UpsertRetentionPolicy,
     UpsertSystemLimit,
 )
@@ -136,13 +135,32 @@ def create_secret(payload: SecretCreateRequest, db: Session = Depends(get_db), u
 
 @router.post("/secrets/{secret_id}/rotate", response_model=SecretWithVersionResponse)
 def rotate_secret(secret_id: str, payload: SecretRotateRequest, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> SecretWithVersionResponse:
+    """Rota antiga: só para segredo de um campo (13/11/2026). Vários campos: PUT /segredos/{id}/campos."""
     _ensure(db, user, "secret.manage")
-    adapters = build_governance_adapters(db)
+    from modules.governance.api.segredos import segredos
+    from modules.governance.application.segredos import SegredoNaoEncontrado
+
     try:
-        secret, version = RotateSecret(adapters.governance, adapters.cipher, adapters.audit, adapters.transaction).execute(user, secret_id, payload.model_dump())
-    except GovernanceResourceNotFound as exc:
+        segredos(db).trocar_valor_unico(user, secret_id, payload.value, payload.expires_at)
+        db.commit()
+    except SegredoNaoEncontrado as exc:
+        db.rollback()
         raise http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc)) from exc
-    return SecretWithVersionResponse(secret=SecretResponse(**to_payload(secret)), version=SecretVersionResponse(**to_payload(version)))
+    except SegredoInvalido as exc:
+        db.rollback()
+        raise http_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", str(exc)) from exc
+    registro = SqlAlchemySegredos(db).segredo(secret_id)
+    versao = SqlAlchemySegredos(db).versao_atual(registro)
+    return SecretWithVersionResponse(
+        secret=SecretResponse(id=registro.id, organization_id=registro.organization_id, key=registro.key, name=registro.name,
+                              description=registro.description, status=registro.status,
+                              current_version_id=registro.current_version_id, created_by=registro.created_by,
+                              created_at=registro.created_at, updated_at=registro.updated_at),
+        version=SecretVersionResponse(id=versao.id, secret_id=versao.secret_id, version=versao.version,
+                                      encryption_key_id=versao.encryption_key_id, created_by=versao.created_by,
+                                      created_at=versao.created_at, expires_at=versao.expires_at,
+                                      revoked_at=versao.revoked_at),
+    )
 
 
 @router.get("/secrets/{secret_id}/grants", response_model=list[SecretGrantResponse])
@@ -199,6 +217,13 @@ def upsert_system_limit(
     user: Any = Depends(get_current_user),
 ) -> SystemLimitResponse:
     _ensure(db, user, "limites.gerenciar")
+    from modules.governance.domain.configuracoes import LIMITES_POR_CHAVE, ConfiguracaoInvalida, validar_limite
+
+    if key in LIMITES_POR_CHAVE:  # chave do catálogo: mesma validação da tela de Limites
+        try:
+            validar_limite(key, payload.value)
+        except ConfiguracaoInvalida as exc:
+            raise http_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", str(exc)) from exc
     adapters = build_governance_adapters(db)
     data = payload.model_dump()
     data["key"] = key

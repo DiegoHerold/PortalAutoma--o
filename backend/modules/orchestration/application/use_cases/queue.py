@@ -88,7 +88,8 @@ class EnfileirarExecucao:
         self.store = store
 
     def execute(self, *, automation_version_id: int, itens: list[dict[str, Any]], parametros: dict[str, Any],
-                prioridade: int, solicitante: str | None, now: datetime, continua_de: str | None = None) -> dict[str, Any]:
+                prioridade: int, solicitante: str | None, now: datetime, continua_de: str | None = None,
+                origem: str = "manual") -> dict[str, Any]:
         versao = self.versions.get_published_snapshot(automation_version_id)
         if versao is None:
             raise FilaError("A versão não está publicada com pacote e runtime: não pode entrar na fila.")
@@ -107,7 +108,7 @@ class EnfileirarExecucao:
             dedup = chave_de_duplicata(versao.automation_id, chaves_grupo, parametros)
             if not execucao_criada:
                 self.executions.add(ExecutionDTO(
-                    id=execution_id, type="automation", origin="manual", status="queued", requested_by=solicitante,
+                    id=execution_id, type="automation", origin=origem, status="queued", requested_by=solicitante,
                     organization_id=None, input={"parametros": parametros, "itens": chaves,
                                                  **({"continua_de": continua_de} if continua_de else {})}, result=None,
                     correlation_id=None, idempotency_key=None, created_at=now))

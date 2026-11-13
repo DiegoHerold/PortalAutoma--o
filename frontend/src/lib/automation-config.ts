@@ -45,12 +45,9 @@ export async function syncExecutionConfig(
   existingTrigger: Trigger | undefined,
   existingSchedule: Schedule | undefined,
 ) {
-  if (form.execution_mode === "webhook") {
-    // Webhook creation is handled by /webhooks, where the one-time secret can
-    // be shown safely to the operator.
-  } else if (existingTrigger) {
-    await apiRequest(`/triggers/${existingTrigger.id}`, { method: "DELETE", token });
-  }
+  // Webhooks (13/11/2026) ficam em Operação > Webhooks, onde o token aparece uma vez; o cadastro
+  // da automação não cria nem apaga webhook. ``existingTrigger`` fica só por compatibilidade.
+  void existingTrigger;
 
   if (form.execution_mode === "scheduled") {
     const body = JSON.stringify({
@@ -110,16 +107,13 @@ export async function applyImportedAutomationConfig(
     }),
   });
 
-  const [triggers, schedules] = await Promise.all([
-    apiRequest<Trigger[]>("/triggers", { token }),
-    apiRequest<Schedule[]>("/schedules", { token }),
-  ]);
+  const schedules = await apiRequest<Schedule[]>("/schedules", { token });
   await syncExecutionConfig(
     token,
     version.automation_id,
     form.slug,
     form,
-    triggers.find((trigger) => trigger.automation_id === version.automation_id),
+    undefined,
     schedules.find((schedule) => schedule.automation_id === version.automation_id),
   );
 

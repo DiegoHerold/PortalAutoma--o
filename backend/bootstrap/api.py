@@ -39,7 +39,8 @@ from modules.orchestration.scheduling.api.routes import (
     router as schedule_module_router,
     schedule_executions_router as schedule_executions_module_router,
 )
-from modules.orchestration.triggers.api.routes import router as trigger_module_router
+from modules.orchestration.webhooks.antigos import router as gatilhos_antigos_router
+from modules.orchestration.webhooks.api import router as webhooks_router
 from modules.orchestration.triggers.api.webhooks import router as webhook_module_router
 from modules.storage.api.routes import router as storage_module_router
 from modules.storage.api.arquivos_da_automacao import router as arquivos_da_automacao_router
@@ -48,8 +49,10 @@ from modules.telemetry.api.painel import router as painel_router
 from modules.catalog.api.itens import router as itens_router
 from modules.catalog.api.formulario import router as formulario_router
 from modules.telemetry.api.notificacoes import router as notificacoes_router
+from modules.governance.api.configuracoes import router as configuracoes_router
 from modules.governance.api.retencao import router as retencao_router
 from modules.governance.api.auditoria import router as auditoria_router
+from modules.telemetry.correio.api import router as emails_router
 from modules.governance.api.segredos import router as segredos_router
 from modules.governance.api import registro_de_requisicoes
 from modules.telemetry.api.realtime import router as realtime_router
@@ -143,8 +146,9 @@ def register_fleet_routes(router: APIRouter) -> None:
 def register_execution_routes(router: APIRouter) -> None:
     router.include_router(orchestration_module_router, tags=["orchestration"])
     router.include_router(job_compat_router, tags=["jobs"])
-    router.include_router(trigger_module_router, tags=["triggers"])
-    router.include_router(webhook_module_router, tags=["webhooks"])
+    router.include_router(gatilhos_antigos_router)  # 410 antes das rotas que ainda existem em /webhooks
+    router.include_router(webhook_module_router, tags=["webhooks"])  # só o /webhooks/github vale
+    router.include_router(webhooks_router)
     router.include_router(dispatch_module_router, tags=["dispatch"])
     router.include_router(fila_router)
     router.include_router(concessoes_router)
@@ -177,7 +181,9 @@ def register_schedule_routes(router: APIRouter) -> None:
 def register_governance_routes(router: APIRouter) -> None:
     router.include_router(governance_module_router, tags=["governance"])
     router.include_router(retencao_router)
+    router.include_router(configuracoes_router)
     router.include_router(auditoria_router)
+    router.include_router(emails_router)
     router.include_router(segredos_router)
 
 

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from infrastructure.database import get_db
 from modules.access.api.authorization import ensure_permission
 from modules.access.api.dependencies import get_current_user
+from modules.governance.infrastructure.limites import ler_limite
 from modules.orchestration.application.dto import ActorDTO
 from modules.orchestration.flows.api.schemas import (
     FlowCancelRequest,
@@ -191,6 +192,9 @@ def block_flow_version(flow_version_id: str, db: Session = Depends(get_db), _use
 def add_flow_node(flow_version_id: str, payload: FlowNodeRequest, db: Session = Depends(get_db), _user: Any = Depends(get_current_user)):
     ensure_permission(db, _user, "flow.create")
     adapters = build_flow_adapters(db)
+    maximo = ler_limite(db, "flow.max_nodes")  # Governança > Limites
+    if len(adapters.nodes.list_for_version(flow_version_id)) >= maximo:
+        raise HTTPException(status_code=400, detail=f"Um fluxo pode ter no máximo {maximo} etapas.")
     try:
         return to_payload(AddFlowNode(adapters.versions, adapters.nodes, adapters.transaction).execute(flow_version_id, payload.model_dump()))
     except ValueError as exc:

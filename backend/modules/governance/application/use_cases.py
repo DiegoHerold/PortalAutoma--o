@@ -10,33 +10,6 @@ from modules.governance.domain.audit import AuditEvent
 from modules.governance.infrastructure.repositories import SqlAlchemyAuditEventRepository
 
 
-DEFAULT_SYSTEM_LIMITS = (
-    {"key": "package.max_size_mb", "value": 200, "unit": "mb", "description": "Maximum automation package upload size."},
-    {"key": "artifact.max_size_mb", "value": 200, "unit": "mb", "description": "Maximum individual artifact size."},
-    {"key": "agent.max_registered", "value": 100, "unit": "count", "description": "Maximum registered agents."},
-    {"key": "execution.max_concurrent", "value": 20, "unit": "count", "description": "Maximum concurrent executions."},
-    {"key": "schedule.min_interval_seconds", "value": 60, "unit": "seconds", "description": "Minimum recurring schedule interval."},
-    {"key": "flow.max_nodes", "value": 100, "unit": "count", "description": "Maximum nodes in a flow."},
-    {"key": "execution.max_timeout_seconds", "value": 14400, "unit": "seconds", "description": "Maximum execution timeout."},
-    {"key": "execution.max_retries", "value": 3, "unit": "count", "description": "Maximum retry attempts."},
-    {"key": "realtime.max_sse_connections", "value": 250, "unit": "count", "description": "Maximum SSE connections."},
-    {"key": "gateway.max_message_bytes", "value": 65536, "unit": "bytes", "description": "Maximum gateway message size."},
-)
-
-DEFAULT_RETENTION_POLICIES = (
-    {"resource_type": "ExecutionEvent", "retention_days": 90, "archive_after_days": 30, "delete_after_days": 180, "legal_hold": False, "enabled": True},
-    {"resource_type": "ExecutionLog", "retention_days": 30, "archive_after_days": 15, "delete_after_days": 90, "legal_hold": False, "enabled": True},
-    {"resource_type": "ExecutionMetric", "retention_days": 90, "archive_after_days": 30, "delete_after_days": 180, "legal_hold": False, "enabled": True},
-    {"resource_type": "Artifact", "retention_days": 90, "archive_after_days": 30, "delete_after_days": 365, "legal_hold": False, "enabled": True},
-    {"resource_type": "AgentResourceSnapshot", "retention_days": 30, "archive_after_days": 15, "delete_after_days": 90, "legal_hold": False, "enabled": True},
-    {"resource_type": "AuditEvent", "retention_days": 365, "archive_after_days": None, "delete_after_days": None, "legal_hold": True, "enabled": True},
-    {"resource_type": "InboxMessage", "retention_days": 30, "archive_after_days": 15, "delete_after_days": 90, "legal_hold": False, "enabled": True},
-    {"resource_type": "OutboxMessage", "retention_days": 30, "archive_after_days": 15, "delete_after_days": 90, "legal_hold": False, "enabled": True},
-    {"resource_type": "AgentCommand", "retention_days": 90, "archive_after_days": 30, "delete_after_days": 180, "legal_hold": False, "enabled": True},
-    {"resource_type": "Diagnostic", "retention_days": 30, "archive_after_days": 15, "delete_after_days": 90, "legal_hold": False, "enabled": True},
-)
-
-
 class ListAuditEvents:
     def __init__(self, audit: SqlAlchemyAuditEventRepository) -> None:
         self.audit = audit
@@ -224,15 +197,27 @@ class UpsertRetentionPolicy:
 
 
 class BootstrapGovernanceDefaults:
+    """Cria a linha dos limites que ainda não existem (escopo global), com o padrão do catálogo.
+
+    Nunca regrava um valor existente: antes, cada início do Portal voltava os limites e as
+    políticas ao padrão e apagava o que alguém tinha mudado. A limpeza do sistema não precisa
+    de linha: sem ela, vale o padrão do catálogo (``domain/configuracoes.py``).
+    """
+
     def __init__(self, governance: GovernanceRepository, transaction: TransactionManager) -> None:
         self.governance = governance
         self.transaction = transaction
 
     def execute(self) -> None:
-        for payload in DEFAULT_SYSTEM_LIMITS:
-            self.governance.upsert_system_limit(payload)
-        for payload in DEFAULT_RETENTION_POLICIES:
-            self.governance.upsert_retention_policy(payload)
+        from modules.governance.domain.configuracoes import LIMITES
+        from modules.governance.infrastructure.repositories.sqlalchemy_configuracoes import UNIDADE_NA_TABELA
+
+        existentes = {item.key for item in self.governance.list_system_limits() if item.organization_id is None}
+        for item in LIMITES:
+            if item.origem != "portal" or item.chave in existentes:
+                continue
+            self.governance.upsert_system_limit({"key": item.chave, "value": item.padrao, "description": item.descricao,
+                                                 "unit": UNIDADE_NA_TABELA.get(item.unidade, item.unidade)})
         self.transaction.commit()
 
 

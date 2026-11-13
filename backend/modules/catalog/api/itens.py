@@ -225,15 +225,25 @@ def descartar_proposta(automation_id: int, db: Session = Depends(get_db), user: 
 def pedir_execucao(automation_id: int, corpo: dict[str, Any] = Body(...), db: Session = Depends(get_db),
                    user: Any = Depends(get_current_user)) -> dict[str, Any]:
     """Itens escolhidos do cadastro (com as filiais, se pedido) -> fila, com a versão publicada mais recente."""
+    ensure_automation_grant(db, user, automation_id, EXECUTAR)
+    return pedir_execucao_da_automacao(db, automation_id, corpo, solicitante=_quem(user))
+
+
+def pedir_execucao_da_automacao(db: Session, automation_id: int, corpo: dict[str, Any], *, solicitante: str,
+                                origem: str = "manual") -> dict[str, Any]:
+    """O pedido do Executar, sem a checagem de quem pede (a rota confere a pessoa; o webhook, o token).
+
+    ``corpo``: ``{"chaves": [...], "com_filiais": bool, "parametros": {...}, "prioridade": int}``. Recusa
+    com HTTPException 422 (``detail`` em texto ou ``{"campos": {...}}``)."""
+    from modules.catalog.infrastructure.orm.models import CatalogAutomationRecord
     from modules.dispatch.api.fila import _mudou
     from modules.dispatch.infrastructure.adapters.fila import build_fila
     from modules.orchestration.application.use_cases.queue import FilaError
 
-    ensure_automation_grant(db, user, automation_id, EXECUTAR)
-    from modules.catalog.infrastructure.orm.models import CatalogAutomationRecord
-
     automacao = db.get(CatalogAutomationRecord, automation_id)
-    if automacao is not None and (automacao.status == "archived" or not automacao.is_active):
+    if automacao is None:
+        raise HTTPException(status_code=404, detail="Automação não encontrada.")
+    if automacao.status == "archived" or not automacao.is_active:
         raise HTTPException(status_code=422, detail="A automação está arquivada: restaure no Catálogo para executar.")
     registro = SqlAlchemyItemRegistry(db)
     spec = registro.spec(automation_id)
@@ -268,7 +278,8 @@ def pedir_execucao(automation_id: int, corpo: dict[str, Any] = Body(...), db: Se
     try:
         resultado = fila.enfileirar.execute(automation_version_id=versao, itens=itens,
                                             parametros=parametros,
-                                            prioridade=int(corpo.get("prioridade") or 0), solicitante=_quem(user), now=_agora())
+                                            prioridade=int(corpo.get("prioridade") or 0), solicitante=solicitante, now=_agora(),
+                                            origem=origem)
     except FilaError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc

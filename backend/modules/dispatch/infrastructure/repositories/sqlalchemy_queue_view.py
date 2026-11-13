@@ -170,6 +170,14 @@ class SqlAlchemyQueueReader:
             ResourceLockRecord.scope == ESCOPO_TELA, ResourceLockRecord.normalized_key == chave,
             ResourceLockRecord.status == "active")) > 0
 
+    def em_andamento(self) -> int:
+        """Jobs ocupando vaga: com tentativa ativa, ou liberados a um Agent e ainda sem tentativa."""
+        ativa = (select(ExecutionAttemptRecord.id)
+                 .where(ExecutionAttemptRecord.task_execution_id == TaskExecutionRecord.id,
+                        ExecutionAttemptRecord.status.in_(ATIVAS)).exists())
+        return int(self.db.scalar(select(func.count()).select_from(TaskExecutionRecord).where(
+            or_(TaskExecutionRecord.status == "ready", ativa))) or 0)
+
     def ready_sem_tentativa(self) -> list[Any]:
         """Jobs da fila liberados para um Agent que não chegou a aceitar (recusou ou saiu)."""
         ativa = (select(ExecutionAttemptRecord.id)

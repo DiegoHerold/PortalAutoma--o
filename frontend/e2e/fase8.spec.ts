@@ -98,7 +98,7 @@ async function preparar(page: Page, tema: "light" | "dark" = "light") {
       retencao = { ...retencao, ...(corpo as object) };
       return json(retencao);
     }
-    if (caminho === "/governance/retention-policies") return json([]);
+    if (caminho === "/governance/limpeza") return json({ grupos: [], itens: [] });
     if (caminho === "/notificacoes") return json({ avisos: [], nao_lidas: 0 });
     return json([]);
   });

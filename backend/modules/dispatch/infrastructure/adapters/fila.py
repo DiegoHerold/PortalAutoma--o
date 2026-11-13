@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from modules.dispatch.application.use_cases.queue import DespacharFila, MontarFila, VerFila
 from modules.dispatch.infrastructure.repositories import SqlAlchemyResourceLockRepository
 from modules.dispatch.infrastructure.repositories.sqlalchemy_queue_view import SqlAlchemyQueueReader
+from modules.governance.infrastructure.limites import ler_limite
 from modules.orchestration.application.use_cases.direct import StartDirectAttempt
 from modules.orchestration.application.use_cases.queue import (
     ContinuarExecucao,
@@ -58,7 +59,8 @@ def build_fila(db: Session) -> Fila:
 
     return Fila(
         ver=VerFila(montar),
-        despachar=DespacharFila(montar, reader, orch.tasks, iniciar_direta, orch.transaction),
+        despachar=DespacharFila(montar, reader, orch.tasks, iniciar_direta, orch.transaction,
+                                limite_simultaneas=lambda: ler_limite(db, "execution.max_concurrent")),
         enfileirar=EnfileirarExecucao(orch.executions, orch.automation_versions, store),
         decidir_perdido=DecidirJobPerdido(orch.tasks, store, locks),
         marcar_perdidos=MarcarTentativasDiretasPerdidas(reader.tentativas_diretas_sem_sinal, build_encerrar(db)),

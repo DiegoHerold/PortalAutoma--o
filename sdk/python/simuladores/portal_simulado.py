@@ -22,7 +22,7 @@ from typing import Any, Callable
 LIMITE_CORPO = 1_000_000
 LIMITE_IMAGEM = 5_000_000
 LIMITE_ARQUIVO = 100 * 1024 * 1024
-ROTA = re.compile(r"^/api/v1/direto/jobs/(?P<job>[A-Za-z0-9_-]{1,80})/(?P<recurso>eventos/estado|eventos|comandos|arquivos|segredos|imagens/(?P<imagem>[A-Za-z0-9_-]{1,80}))$")
+ROTA = re.compile(r"^/api/v1/direto/jobs/(?P<job>[A-Za-z0-9_-]{1,80})/(?P<recurso>eventos/estado|eventos|comandos|arquivos|segredos|emails/registro|emails|imagens/(?P<imagem>[A-Za-z0-9_-]{1,80}))$")
 
 
 @dataclass
@@ -33,8 +33,13 @@ class JobSimulado:
     imagens: dict[str, bytes] = field(default_factory=dict)
     arquivos: list[dict[str, Any]] = field(default_factory=list)  # nome, item, tipo, conteudo
     comandos: list[dict[str, Any]] = field(default_factory=list)
-    segredos: dict[str, str] = field(default_factory=dict)  # os ligados à automação no Portal
+    # Os ligados à automação no Portal: {chave: {campo: valor}}; ``ocultos``: {chave: [campos]} (padrão: todos).
+    segredos: dict[str, dict[str, str]] = field(default_factory=dict)
+    ocultos: dict[str, list[str]] = field(default_factory=dict)
     pedidos_de_segredo: list[list[str]] = field(default_factory=list)
+    emails: list[dict[str, Any]] = field(default_factory=list)  # pedidos ao Portal (com "situacao")
+    emails_da_maquina: list[dict[str, Any]] = field(default_factory=list)
+    dominios_permitidos: set[str] | None = None  # None: todos
     ultima_sequencia: int = 0
 
 
@@ -126,11 +131,26 @@ class PortalSimulado:
                 if achado is None:
                     return
                 job, rota = achado
+                if rota["recurso"] in ("emails", "emails/registro"):
+                    dados = json.loads(self._corpo(8_000_000) or b"{}")
+                    if rota["recurso"] == "emails/registro":
+                        job.emails_da_maquina.append(dados)
+                        return self._responder(201, {"email_id": f"eml_m{len(job.emails_da_maquina)}", "situacao": "enviado_pela_maquina"})
+                    todos = [*dados.get("para", []), *dados.get("cc", []), *dados.get("cco", [])]
+                    fora = sorted({e.rsplit("@", 1)[-1] for e in todos if job.dominios_permitidos is not None
+                                   and e.rsplit("@", 1)[-1] not in job.dominios_permitidos})
+                    situacao = "recusado" if fora else "enviado"
+                    job.emails.append({**dados, "situacao": situacao})
+                    if fora:
+                        motivo = f"domínio não permitido: {', '.join(fora)}"
+                        return self._responder(422, {"email_id": f"eml_{len(job.emails)}", "situacao": situacao, "motivo": motivo, "erro": motivo})
+                    return self._responder(201, {"email_id": f"eml_{len(job.emails)}", "situacao": situacao})
                 if rota["recurso"] == "segredos":
                     chaves = json.loads(self._corpo(LIMITE_CORPO) or b"{}").get("chaves") or []
                     job.pedidos_de_segredo.append(chaves)
                     return self._responder(200, {
-                        "segredos": {c: job.segredos[c] for c in chaves if c in job.segredos},
+                        "segredos": {c: {"campos": job.segredos[c], "ocultos": job.ocultos.get(c, list(job.segredos[c]))}
+                                     for c in chaves if c in job.segredos},
                         "negados": {c: "não existe ou não está liberado para esta automação" for c in chaves if c not in job.segredos}})
                 if rota["recurso"] != "eventos":
                     return self._responder(405, {"erro": "método não permitido"})

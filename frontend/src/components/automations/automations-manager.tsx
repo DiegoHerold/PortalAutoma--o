@@ -84,7 +84,6 @@ export function AutomationsManager() {
   const { disparar, janela } = useDisparo(() => { void fila.refetch(); void painel.refetch(); });
   const categories = useApi<Category[]>("/categories");
   const workers = useApi<Worker[]>("/workers");
-  const triggers = useApi<Trigger[]>("/triggers");
   const schedules = useApi<Schedule[]>("/schedules");
 
   const [query, setQuery] = useState("");
@@ -105,9 +104,10 @@ export function AutomationsManager() {
     return map;
   }, [categories.data]);
 
-  const editingTrigger = useMemo(
-    () => (editing ? triggers.data?.find((t) => t.automation_id === editing.id) : undefined),
-    [triggers.data, editing],
+  // Webhooks saíram do cadastro da automação (13/11/2026): ficam em Operação > Webhooks e na aba Técnico.
+  const editingTrigger = useMemo<Trigger | undefined>(
+    () => undefined,
+    [],
   );
   const editingSchedule = useMemo(
     () => (editing ? schedules.data?.find((s) => s.automation_id === editing.id) : undefined),
@@ -170,7 +170,7 @@ export function AutomationsManager() {
       toast({ title: "Automacao atualizada", kind: "success" });
       setEditing(null);
       setEditModalOpen(false);
-      await Promise.all([automations.refetch(), triggers.refetch(), schedules.refetch()]);
+      await Promise.all([automations.refetch(), schedules.refetch()]);
     } catch (err) {
       toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
@@ -287,7 +287,7 @@ export function AutomationsManager() {
         onClose={() => setNewDialogOpen(false)}
         categories={categories.data ?? []}
         workers={workers.data ?? []}
-        onImported={() => void Promise.all([automations.refetch(), triggers.refetch(), schedules.refetch()])}
+        onImported={() => void Promise.all([automations.refetch(), schedules.refetch()])}
       />
 
       <Modal

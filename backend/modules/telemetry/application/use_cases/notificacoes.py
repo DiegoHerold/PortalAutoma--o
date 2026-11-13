@@ -33,7 +33,11 @@ TENTATIVAS_DE_ENVIO = 5
 
 
 class ErroDeEnvio(RuntimeError):
-    pass
+    """Falha ao enviar. ``temporario``: rede, 429 ou 5xx (vale tentar de novo)."""
+
+    def __init__(self, mensagem: str = "", temporario: bool = False) -> None:
+        super().__init__(mensagem)
+        self.temporario = temporario
 
 
 def _agora() -> datetime:

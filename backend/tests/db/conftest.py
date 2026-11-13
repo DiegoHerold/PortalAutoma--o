@@ -39,6 +39,11 @@ def engine():
     if migracao.returncode != 0:
         pytest.fail(f"migrations falharam:\n{migracao.stderr[-3000:]}")
     motor = create_engine(f"{s.database_url.rsplit('/', 1)[0]}/{NOME}")
+    # O banco de teste é um só para a suíte e acumula tentativas "rodando" de testes anteriores:
+    # o limite de execuções ao mesmo tempo (padrão 20) travaria a fila. Teste do limite: test_limites_e_limpeza.
+    with motor.begin() as conexao:
+        conexao.exec_driver_sql("UPDATE system_limits SET value = 500 "
+                                "WHERE key = 'execution.max_concurrent' AND organization_id IS NULL")
     from modules.telemetry.infrastructure.realtime.postgres import usar_motor
 
     usar_motor(motor)  # avisos e escuta (LISTEN/NOTIFY) no banco de teste, nunca no real

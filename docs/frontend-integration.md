@@ -201,6 +201,19 @@ O que fica registrado:
 | Retenção por automação | `GET /governance/retencao-por-automacao`, `PUT /governance/retencao-por-automacao/{automation_id}` (`{imagens_dias, logs_dias, arquivos_dias}`, `null` = sem prazo) | `/governance/retention` | `admin.system` |
 | Imagem apagada | `GET /execucoes/{id}/imagens/{imagem_id}` responde **410** depois da retenção; a situação da imagem vem `apagada` | Acompanhar e Painel ("Imagem apagada pela retenção em ...") | `ver_telas_e_logs` |
 
+## Rotas das configurações do sistema (13/11/2026)
+
+Catálogo, padrões e onde cada item vale: [configuracoes.md](configuracoes.md). A tela não repete
+nomes nem padrões: tudo vem da API (`lib/configuracoes.ts`).
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Limites | `GET /governance/limites` (`{grupos, itens}`), `PUT /governance/limites/{chave}` (`{valor}`; 422 fora da faixa ou se vier do `.env`) | `/governance/limits` (`limites-do-sistema.tsx`) | `limites.ver` / `limites.gerenciar` |
+| Limpeza do sistema | `GET /governance/limpeza` (`{grupos, itens}`), `PUT /governance/limpeza/{chave}` (`{dias}`, `null` = sem prazo, ou `{voltar_ao_padrao: true}`) | `/governance/retention`, seção "Limpeza automática do sistema" (`limpeza-do-sistema.tsx`) | `retencao.ver` / `retencao.gerenciar` |
+| Conexões ao vivo | Os streams (`/avisos`, `/stream`) respondem **503** com `Retry-After` quando o limite de conexões enche; `lib/stream.ts` tenta de novo sozinho | Painel, Fila, Acompanhar | — |
+
+`GET /governance/retention-policies` continua, mas as políticas antigas saíram (nunca apagavam nada).
+
 ## Rotas da automação no Catálogo (Fase 7)
 
 | Area | Rota | Tela | Permissao |
@@ -212,8 +225,8 @@ O que fica registrado:
 | Ao vivo | `GET /painel` e `GET /fila`, filtrados por `automation_id` no navegador | aba Visão geral, selo "Rodando" no Catálogo | como no Painel |
 | Histórico | `GET /historico?automacao={id}` | abas Visão geral e Histórico | `ver_execucoes` |
 | Cartões do Catálogo (12/11/2026) | `GET /painel/recentes?limite=200` (última execução de cada cartão; o limite vai de 1 a 200, padrão 3), `GET /fila` ("N na fila") e `GET /painel/executaveis` (quem vê Executar) | `/automations` | como no Painel; Editar/Arquivar/Nova só com `automacoes.gerenciar` |
-| Segredos da automação (13/11/2026) | `GET /segredos/da-automacao/{id}`; `POST`/`DELETE /segredos/da-automacao/{id}/{segredo_id}` | aba Técnico, bloco "Segredos que usa" | `segredos.ver`; ligar e desligar com `segredos.gerenciar` |
-| Técnico (12/11/2026) | `GET /automations/{id}`, `/automations/{id}/sources`, `/schedules`, `/triggers`, `/instancias-diretas` (filtrados por `automation_id` no navegador; sem `maquinas.gerenciar` a lista de máquinas diz que não pode ver) | aba Técnico | `automacoes.ver` |
+| Segredos da automação (13/11/2026) | `GET /segredos/da-automacao/{id}` (com `campos`: os nomes); `POST`/`DELETE /segredos/da-automacao/{id}/{segredo_id}` | aba Técnico, bloco "Segredos que usa" | `segredos.ver`; ligar e desligar com `segredos.gerenciar` |
+| Técnico (12/11/2026) | `GET /automations/{id}`, `/automations/{id}/sources`, `/schedules`, `/webhooks?automacao={id}` (13/11/2026, no lugar de `/triggers`), `/instancias-diretas` (filtrados por `automation_id` no navegador; sem `maquinas.gerenciar` a lista de máquinas diz que não pode ver) | aba Técnico | `automacoes.ver` |
 
 Erros de validação vêm como `{"error": {"details": {"campos": {"<chave>": "<motivo>"}}}}`; o
 frontend lê com `enviar()` de `lib/campos.ts` e mostra cada motivo embaixo do campo.
@@ -295,8 +308,10 @@ usando `status`, que agora traduz `Agent.connectivity_status`.
 
 | Area | Rota | Tela | Permissao |
 |---|---|---|---|
-| Lista de segredos | `GET /segredos` (`chave`, `nome`, `situacao`, `versao`, `expira_em`, `vencido`, `automacoes[{id, nome, ultimo_uso}]`, `ultimo_uso`) | `/secrets` | `segredos.ver` |
-| Criar e trocar valor | `POST /secrets` (chave normalizada; 422 se inválida, 409 se repetida), `POST /secrets/{id}/rotate` | `/secrets` | `segredos.gerenciar` |
+| Lista de segredos | `GET /segredos` (`chave`, `nome`, `situacao`, `campos[{nome, oculto, valor}]` (valor só dos visíveis), `versao`, `expira_em`, `vencido`, `automacoes[{id, nome, ultimo_uso}]`, `ultimo_uso`) | `/secrets` | `segredos.ver` |
+| Criar | `POST /segredos` (`chave`, `nome`, `descricao`, `expira_em`, `campos[{nome, oculto, valor}]`) → `{id, chave}` | `/secrets` | `segredos.gerenciar` |
+| Editar campos | `PUT /segredos/{id}/campos` (`campos[{nome, oculto, valor}]`, `expira_em`): valor vazio mantém o atual; valor trocado, campo novo ou removido geram versão nova; só ocultar/mostrar, não | `/secrets` | `segredos.gerenciar` |
+| Rotas antigas | `POST /secrets` (um campo `valor`), `POST /secrets/{id}/rotate` (só segredo de um campo; 422 nos de vários) | nenhuma | `segredos.gerenciar` |
 | Situação, nome | `PUT /segredos/{id}` (`situacao` `active`/`disabled`, `nome`, `descricao`) | `/secrets` | `segredos.gerenciar` |
 | Automações que usam | `PUT /segredos/{id}/automacoes` (`{"automacoes": [ids]}`) | `/secrets` | `segredos.gerenciar` |
 | Versões | `GET /segredos/{id}/versoes` (sem valor) | `/secrets` | `segredos.ver` |
@@ -309,3 +324,28 @@ usando `status`, que agora traduz `Agent.connectivity_status`.
 
 `/service-accounts` (API antiga) responde 410. Papéis para o formulário vêm de `GET /roles`
 (sem `admin`); times de `GET /teams` (sem `times.ver`, a tela avisa).
+
+## Webhooks (13/11/2026)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Lista | `GET /webhooks?automacao=` (`url`, `automacao{id, nome}`, `ativo`, `tem_token`, `token_final`, `ips_permitidos`, `limite_por_minuto`, `ultimo_uso_em`, `migrado`, `chamadas_24h{aceitas, recusadas}`) | `/webhooks`, aba Técnico | `webhooks.ver` ou `automacoes.ver` |
+| Criar | `POST /webhooks` → `{webhook, token}` uma vez, sem cache | `/webhooks` | `webhooks.gerenciar` + executar a automação |
+| Mudar | `PUT /webhooks/{id}` (`nome`, `descricao`, `ativo`, `ips_permitidos` lista ou texto, `limite_por_minuto`) | `/webhooks` | idem |
+| Token | `POST /webhooks/{id}/token` → `{webhook, token}` | `/webhooks` | idem |
+| Apagar | `DELETE /webhooks/{id}` | `/webhooks` | idem |
+| Chamadas | `GET /webhooks/{id}/chamadas?limite=` | `/webhooks` | `webhooks.ver` |
+| Exemplo do corpo | `GET /automations/{id}/formulario` (campos de entrada e item) | detalhe do webhook | como no Catálogo |
+
+`/triggers/...` e `/webhooks/trigger/...` respondem 410. Chamada pública: `docs/webhooks.md`.
+
+## E-mails (13/11/2026)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Lista | `GET /emails?situacao=&automacao=&busca=&antes=&limite=` (`emails[{id, origem, tipo, automacao, execucao_id, para, cc, cco, assunto, situacao, motivo, meio, tentativas, proxima_tentativa_em, criado_em, enviado_em, anexos[{nome, tamanho}]}]`, `resumo_24h` por situação, `cursor`) | `/emails` | `emails.ver` |
+| Detalhe | `GET /emails/{id}` (+ `html`, `texto`) | `/emails` (HTML num iframe isolado, sem scripts) | `emails.ver` |
+| Envio | `GET /emails/configuracao` (`situacao` ligado/desligado/incompleto, `remetente`, `dominio_do_remetente`, `dominios`) | `/emails` | `emails.ver` |
+| Reenviar | `POST /emails/{id}/reenviar` (só `falhou`, com os anexos ainda guardados) | `/emails` | `emails.gerenciar` |
+| Domínios | `POST /emails/dominios` `{dominio}`, `DELETE /emails/dominios/{dominio}` | `/emails`, aba Domínios permitidos | `emails.gerenciar` |
+| Teste | `POST /emails/teste` (`{para}` opcional; padrão: quem pediu) | `/emails` | `emails.gerenciar` |

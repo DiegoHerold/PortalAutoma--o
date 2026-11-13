@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -51,12 +51,15 @@ class Settings(BaseSettings):
 
     backend_public_url: str = "http://localhost:8000"
 
-    # Notificações por e-mail pelo Microsoft Graph (Fase 6). Desligado até alguém ligar:
-    # os avisos ficam no portal e o e-mail espera. O segredo só vem do .env, nunca do código.
-    notificacoes_email_ligado: bool = False
-    graph_tenant_id: str = ""
-    graph_client_id: str = ""
-    graph_client_secret: SecretStr = SecretStr("")
+    # E-mail pelo Microsoft Graph (Fase 6; centralizado em 13/11/2026). O segredo só vem do .env.
+    # Aceita os nomes do Biason Comunica (ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET).
+    # NOTIFICACOES_EMAIL_LIGADO: true/false força; sem a variável, liga sozinho quando os quatro
+    # dados (tenant, aplicativo, segredo e remetente) estão no .env.
+    notificacoes_email_ligado: bool | None = None
+    graph_tenant_id: str = Field(default="", validation_alias=AliasChoices("graph_tenant_id", "entra_tenant_id"))
+    graph_client_id: str = Field(default="", validation_alias=AliasChoices("graph_client_id", "entra_client_id"))
+    graph_client_secret: SecretStr = Field(default=SecretStr(""),
+                                           validation_alias=AliasChoices("graph_client_secret", "entra_client_secret"))
     graph_remetente: str = ""
 
     storage_backend: Literal["local", "s3"] = "local"

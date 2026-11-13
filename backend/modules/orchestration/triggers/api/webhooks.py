@@ -14,7 +14,6 @@ from infrastructure.config import get_settings
 from infrastructure.database import get_db
 from infrastructure.github.client import verify_webhook_signature
 from modules.catalog.infrastructure.orm.models import CatalogAutomationSourceRecord, GithubIntegrationRecord
-from modules.orchestration.triggers.api.routes import dispatch_webhook_trigger
 
 router = APIRouter(prefix="/webhooks")
 
@@ -23,50 +22,7 @@ _RATE_LIMIT_WINDOW_SECONDS = 60
 _RATE_LIMIT_MAX_REQUESTS = 100
 
 
-@router.post("/trigger/{route_path:path}")
-async def webhook_trigger(
-    route_path: str,
-    request: Request,
-    x_forwarded_for: str | None = Header(None),
-    x_webhook_secret: str | None = Header(None),
-    x_trigger_secret: str | None = Header(None),
-    x_correlation_id: str | None = Header(default=None, alias="X-Correlation-ID"),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    db: Session = Depends(get_db),
-):
-    client_ip = x_forwarded_for or (request.client.host if request.client else "unknown")
-    if not _check_rate_limit(client_ip):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    if not isinstance(body, dict):
-        body = {"value": body}
-
-    headers = dict(request.headers)
-    query_params = dict(request.query_params)
-    secret_token = x_trigger_secret or x_webhook_secret or query_params.get("secret") or body.get("secret_token")
-    if not secret_token:
-        raise HTTPException(status_code=400, detail="Missing secret token (envie no header X-Trigger-Secret)")
-
-    job = dispatch_webhook_trigger(
-        db,
-        route_path=route_path,
-        secret_token=secret_token,
-        body=body,
-        headers=headers,
-        query_params=query_params,
-        ip=client_ip,
-        user_agent=request.headers.get("user-agent"),
-        idempotency_key=idempotency_key,
-        correlation_id=x_correlation_id,
-    )
-    return JSONResponse(
-        status_code=200,
-        content={"success": True, "job_id": job.id, "message": "Automation triggered successfully"},
-    )
+# POST /webhooks/trigger/... saiu em 13/11/2026: ver modules/orchestration/webhooks (resposta 410 em antigos.py).
 
 
 @router.post("/github")

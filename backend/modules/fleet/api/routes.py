@@ -58,6 +58,7 @@ from modules.fleet.domain.errors import FleetError
 from modules.fleet.domain.value_objects import generate_agent_id
 from modules.fleet.infrastructure.adapters import build_fleet_adapters
 from modules.fleet.infrastructure.orm.models import FleetWorkerRecord
+from modules.governance.infrastructure.limites import ler_limite
 
 router = APIRouter()
 
@@ -214,6 +215,7 @@ def register_agent(payload: RegisterAgentRequest, db: Session = Depends(get_db))
             adapters.audit,
             adapters.outbox,
             adapters.transaction,
+            max_agents=lambda: ler_limite(db, "agent.max_registered"),
         ).execute(payload.registration_token, payload.model_dump(exclude={"registration_token"}))
     except FleetError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

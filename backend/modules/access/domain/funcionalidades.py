@@ -122,6 +122,10 @@ FUNCIONALIDADES: tuple[Funcionalidade, ...] = (
     Funcionalidade("retencao", "Retenção", "Governança", "/governance/retention", gerenciar_da=(),
                    o_que_gerenciar="Mudar por quanto tempo telas, logs e arquivos ficam guardados",
                    ver_se=("admin.system",), gerenciar_se=("admin.system",)),
+    # E-mail centralizado (13/11/2026): o que o Portal enviou, falhas, domínios permitidos.
+    Funcionalidade("emails", "E-mails", "Governança", "/emails", gerenciar_da=(),
+                   o_que_gerenciar="Domínios permitidos, reenviar e mandar e-mail de teste",
+                   ver_se=("admin.system",), gerenciar_se=("admin.system",)),
 )
 POR_CHAVE = {f.chave: f for f in FUNCIONALIDADES}
 

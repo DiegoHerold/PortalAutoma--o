@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { CalendarClock, Check, Copy, GitBranch, KeyRound, Monitor, RotateCw, ShieldCheck, Webhook, X } from "lucide-react";
+import { CalendarClock, GitBranch, KeyRound, Monitor, RotateCw, ShieldCheck, Webhook, X } from "lucide-react";
 
 import { AutomationVersionsPanel } from "@/components/automations/automation-versions-panel";
 import { SituacaoDoSegredo, type Segredo } from "@/components/secrets/secrets-manager";
+import { SituacaoDoWebhook, type WebhookResumo } from "@/components/webhooks/webhooks-page";
 import { DetailJson } from "@/components/shared/detail-json";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,13 +24,12 @@ import { formatDuration } from "@/lib/utils";
 import type { Automation } from "@/types/automation";
 import type { AutomationSource } from "@/types/automation-import";
 import type { Schedule } from "@/types/schedule";
-import type { Trigger } from "@/types/trigger";
 
 /*
  * Aba Técnico da automação (12/11/2026): só o que faz sentido hoje, em blocos.
  * 1. Versões e publicação (com a origem do pacote).
  * 2. Como roda e onde (as instâncias diretas nas máquinas).
- * 3. Disparos automáticos (agendamentos e webhooks).
+ * 3. Disparos automáticos (agendamentos e webhooks; 13/11/2026: os webhooks novos, sem gatilho em cadeia).
  * 4. Segredos que usa (13/11/2026): senhas que a automação pede com a.segredo("chave").
  * 5. Acessos: o normal é pelo time; aqui ficam as exceções.
  * 6. Para quem desenvolve (recolhido).
@@ -70,14 +70,14 @@ export function TecnicoDaAutomacao({ id }: { id: string }) {
   const { toast } = useToast();
   const automacao = useApi<Automation>(`/automations/${id}`);
   const origens = useApi<AutomationSource[]>(`/automations/${id}/sources`);
-  const gatilhos = useApi<Trigger[]>("/triggers");
+  const webhooks = useApi<{ webhooks: WebhookResumo[] }>(`/webhooks?automacao=${id}`);
   const agendamentos = useApi<Schedule[]>("/schedules");
   const instancias = useApi<{ instancias: Instancia[] }>("/instancias-diretas");
 
   if (!automacao.data) return <div className="skeleton h-64 rounded-xl" />;
   const a = automacao.data;
   const numero = Number(id);
-  const meusGatilhos = (Array.isArray(gatilhos.data) ? gatilhos.data : []).filter((g) => g.automation_id === numero);
+  const meusWebhooks = Array.isArray(webhooks.data?.webhooks) ? webhooks.data.webhooks : [];
   const meusAgendamentos = (Array.isArray(agendamentos.data) ? agendamentos.data : []).filter((s) => s.automation_id === numero);
   const minhasInstancias = (Array.isArray(instancias.data?.instancias) ? instancias.data.instancias : []).filter((i) => i.automation_id === numero);
   const listaDeOrigens = Array.isArray(origens.data) ? origens.data : [];
@@ -151,8 +151,9 @@ export function TecnicoDaAutomacao({ id }: { id: string }) {
 
       <div className="min-w-0 space-y-6">
         <Bloco titulo="Disparos automáticos" icone={<CalendarClock className="h-5 w-5 text-primary" />} testid="tecnico-disparos"
-          acao={<Link href="/schedules" className="text-sm font-medium text-primary hover:underline">Agenda</Link>}>
-          {meusAgendamentos.length === 0 && meusGatilhos.length === 0 && (
+          acao={<span className="flex gap-3 text-sm font-medium"><Link href="/schedules" className="text-primary hover:underline">Agenda</Link>
+            <Link href="/webhooks" className="text-primary hover:underline">Webhooks</Link></span>}>
+          {meusAgendamentos.length === 0 && meusWebhooks.length === 0 && (
             <p className="text-sm text-muted-foreground">Roda só quando alguém pede.</p>
           )}
           {meusAgendamentos.length > 0 && (
@@ -165,9 +166,16 @@ export function TecnicoDaAutomacao({ id }: { id: string }) {
               ))}
             </ul>
           )}
-          {meusGatilhos.length > 0 && (
+          {meusWebhooks.length > 0 && (
             <ul className="space-y-2 border-t border-border pt-3 text-sm">
-              {meusGatilhos.map((g) => <Gatilho key={g.id} gatilho={g} />)}
+              {meusWebhooks.map((w) => (
+                <li key={w.id} className="flex items-center gap-2" data-webhook={w.nome}>
+                  <Webhook className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <Link href="/webhooks" className="min-w-0 flex-1 truncate hover:underline">{w.nome}</Link>
+                  <span className="text-xs text-muted-foreground">{w.ultimo_uso_em ? relativo(w.ultimo_uso_em) : "nunca chamado"}</span>
+                  <SituacaoDoWebhook webhook={w} />
+                </li>
+              ))}
             </ul>
           )}
         </Bloco>
@@ -186,24 +194,7 @@ export function TecnicoDaAutomacao({ id }: { id: string }) {
   );
 }
 
-function Gatilho({ gatilho }: { gatilho: Trigger }) {
-  const [copiado, setCopiado] = useState(false);
-  if (gatilho.trigger_type === "chained") {
-    return <li><Badge tone="primary">em cadeia</Badge> <span className="text-muted-foreground">roda quando a automação de origem termina ({gatilho.condition ?? "success"})</span></li>;
-  }
-  return (
-    <li className="flex items-center gap-2">
-      <Badge tone="info"><Webhook className="h-3 w-3" /> {gatilho.trigger_type}</Badge>
-      <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{gatilho.route_path}</span>
-      <button type="button" aria-label="Copiar o endereço" className="text-muted-foreground hover:text-foreground"
-        onClick={() => { void navigator.clipboard.writeText(gatilho.route_path).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1500); }).catch(() => undefined); }}>
-        {copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-      </button>
-    </li>
-  );
-}
-
-type SegredoDaAutomacao = { id: string; chave: string; nome: string; situacao: string; vencido: boolean; ultimo_uso: string | null };
+type SegredoDaAutomacao = { id: string; chave: string; nome: string; situacao: string; vencido: boolean; ultimo_uso: string | null; campos: string[] };
 
 function SegredosQueUsa({ id, gerencia }: { id: string; gerencia: boolean }) {
   const { token } = useAuth();
@@ -233,14 +224,14 @@ function SegredosQueUsa({ id, gerencia }: { id: string; gerencia: boolean }) {
     <Bloco titulo="Segredos que usa" icone={<KeyRound className="h-5 w-5 text-primary" />} testid="tecnico-segredos"
       acao={<Link href="/secrets" className="text-sm font-medium text-primary hover:underline">Segredos</Link>}>
       {lista.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum segredo ligado. Senhas ligadas aqui chegam à automação por <code className="font-mono">a.segredo(&quot;chave&quot;)</code>.</p>
+        <p className="text-sm text-muted-foreground">Nenhum segredo ligado. Acessos ligados aqui chegam à automação por <code className="font-mono">a.segredo(&quot;chave&quot;)</code>.</p>
       ) : (
         <ul className="space-y-2 text-sm">
           {lista.map((s) => (
             <li key={s.id} className="flex items-center gap-2" data-segredo={s.chave}>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{s.nome}</p>
-                <p className="truncate font-mono text-xs text-muted-foreground">{s.chave} · {s.ultimo_uso ? `usado ${relativo(s.ultimo_uso)}` : "ainda não usou"}</p>
+                <p className="truncate text-xs text-muted-foreground"><span className="font-mono">{s.chave}</span> · {(s.campos ?? []).join(", ")} · {s.ultimo_uso ? `usado ${relativo(s.ultimo_uso)}` : "ainda não usou"}</p>
               </div>
               {(s.situacao !== "active" || s.vencido) && <SituacaoDoSegredo situacao={s.situacao} vencido={s.vencido} />}
               {gerencia && (

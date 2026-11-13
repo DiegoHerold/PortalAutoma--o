@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from infrastructure.database import get_db, get_session_factory
@@ -305,7 +305,7 @@ def despachar_agora(db: Session) -> dict[str, Any]:
 
 
 @router.get("/avisos")
-def avisos(request: Request, fabrica: Any = Depends(get_session_factory)) -> StreamingResponse:
+def avisos(request: Request, fabrica: Any = Depends(get_session_factory)) -> Response:
     """SSE: "mudou" quando a fila muda. Token só no cabeçalho ``Authorization``."""
     from modules.telemetry.api.acompanhar import fluxo_de_avisos, usuario_do_cabecalho
 

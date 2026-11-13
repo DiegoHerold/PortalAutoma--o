@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from infrastructure.database import get_db, get_session_factory
@@ -279,7 +279,7 @@ def resumo_do_historico(dias: int | None = Query(default=7, ge=1, le=3650), auto
 
 
 @router.get("/painel/avisos")
-def avisos(request: Request, fabrica: Any = Depends(get_session_factory)) -> StreamingResponse:
+def avisos(request: Request, fabrica: Any = Depends(get_session_factory)) -> Response:
     with fabrica() as db:
         usuario_do_cabecalho(db, request)
     return fluxo_de_avisos(request, "*", "*")

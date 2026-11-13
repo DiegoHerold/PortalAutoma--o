@@ -39,6 +39,8 @@ class SecretRecord(Base):
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="active", index=True)
     current_version_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    # Campos do segredo (13/11/2026): [{"nome", "oculto"}]; os valores ficam cifrados na versão.
+    campos: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -99,6 +101,25 @@ class RetentionPolicyRecord(Base):
     legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class RegraDeLimpezaRecord(Base):
+    """Prazo de cada regra de limpeza do sistema (catálogo em ``domain/configuracoes.py``).
+
+    Sem linha, ou com ``personalizado`` falso, vale o padrão do catálogo. ``dias`` nulo com
+    ``personalizado`` verdadeiro: a regra foi desligada (nada sai). A última passada fica aqui.
+    """
+
+    __tablename__ = "regras_de_limpeza"
+
+    chave: Mapped[str] = mapped_column(String(80), primary_key=True)
+    personalizado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    atualizado_por: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    atualizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ultima_limpeza_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ultima_limpeza_apagados: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_apagados: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class AutomationRetentionRecord(Base):

@@ -26,9 +26,10 @@ Parar e cancelar (0.4.0): o SDK atende os comandos do Portal sozinho, em qualque
   PORTAL_LIMITE_SEM_PORTAL_S), ou o Portal dizendo que o job não vale mais (401/409), o SDK
   avisa no log local e cancela a execução do mesmo jeito: a automação não roda às cegas.
 
-Segredos (0.5.0): ``a.segredo("dominio.senha_banco")`` devolve o valor ligado à automação no
-Portal (aba Técnico), só durante a execução. O valor fica na memória e vira ``***`` em todo
-evento e no log local. Ver ``segredos.py``.
+Segredos (0.5.0): ``a.segredo("dominio")`` devolve os campos do segredo ligado à automação no
+Portal (aba Técnico), só durante a execução; ``a.segredo("dominio", "senha")``, um campo. Os
+valores ficam na memória e os campos ocultos viram ``***`` em todo evento e no log local. Ver
+``segredos.py``.
 
 ``segundo_plano=True`` (ou PORTAL_ENVIO_EM_SEGUNDO_PLANO=1): uma thread do SDK envia os
 eventos, as imagens, os arquivos entregues (``arquivo()``) e consulta os comandos. Quem emite nunca espera a rede: com o Portal
@@ -51,7 +52,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Sequence
 
 from . import eventos, imagens
-from .segredos import MINIMO_PARA_MASCARAR, SegredoIndisponivel, mascarar, normalizar
+from .emails import EmailIndisponivel, EmailRecusado, ler_anexos, lista
+from .segredos import Segredo, SegredoIndisponivel, mascarar, normalizar
 from .fila import FilaLocal
 from .transporte import FalhaDeTransporte, Recusado, Transporte, TransporteDesligado
 from .transporte_agente import TransporteAgente
@@ -137,7 +139,7 @@ class Automacao:
         self._arquivos: list[tuple[Path, str, str | None]] = []  # entregues e ainda não enviados
         self._trava_arquivos = threading.Lock()  # só protege a lista; nunca segura outra trava
         self._enviador: threading.Thread | None = None
-        self._segredos: dict[str, str] = {}  # só na memória
+        self._segredos: dict[str, Segredo] = {}  # só na memória
         self._mascarar: list[str] = []  # valores a trocar por *** (o mais longo primeiro)
         self._trava_segredos = threading.Lock()
         if segundo_plano:
@@ -604,12 +606,15 @@ class Automacao:
                 self._receber(comando["type"], motivo)
 
     # -- segredos -------------------------------------------------------------------
-    def segredo(self, chave: str) -> str:
-        """Valor do segredo ligado a esta automação no Portal. Levanta ``SegredoIndisponivel``."""
-        return self.segredos(chave)[normalizar(chave)]
+    def segredo(self, chave: str, campo: str | None = None) -> Any:
+        """O segredo ligado a esta automação no Portal: ``Segredo`` (os campos, como um dict) ou,
+        com ``campo``, só aquele valor em texto. Levanta ``SegredoIndisponivel``; campo que não
+        existe levanta ``KeyError`` dizendo quais existem."""
+        segredo = self.segredos(chave)[normalizar(chave)]
+        return segredo if campo is None else segredo[campo]
 
-    def segredos(self, *chaves: str) -> dict[str, str]:
-        """Vários de uma vez (um pedido só). Devolve ``{chave: valor}`` com as chaves normalizadas."""
+    def segredos(self, *chaves: str) -> dict[str, Segredo]:
+        """Vários de uma vez (um pedido só). Devolve ``{chave: Segredo}`` com as chaves normalizadas."""
         if not chaves:
             raise ValueError("informe ao menos uma chave")
         pedidas = list(dict.fromkeys(normalizar(c) for c in chaves))
@@ -625,17 +630,63 @@ class Automacao:
                     raise SegredoIndisponivel(f"Portal indisponível para entregar {', '.join(faltam)}: {exc}") from exc
                 except Recusado as exc:
                     raise SegredoIndisponivel(f"o Portal recusou o pedido de segredos: {exc}") from exc
-                for chave, valor in (resposta.get("segredos") or {}).items():
-                    if isinstance(valor, str):
-                        self._segredos[chave] = valor
-                        if len(valor) >= MINIMO_PARA_MASCARAR and valor not in self._mascarar:
-                            self._mascarar = sorted([*self._mascarar, valor], key=len, reverse=True)
+                for chave, dados in (resposta.get("segredos") or {}).items():
+                    if chave not in faltam or not isinstance(dados, dict) or not isinstance(dados.get("campos"), dict):
+                        continue
+                    segredo = Segredo(chave, {str(k): str(v) for k, v in dados["campos"].items()},
+                                      [str(c) for c in dados.get("ocultos") or []])
+                    self._segredos[chave] = segredo
+                    self._mascarar = sorted(set(self._mascarar) | set(segredo.para_mascarar()), key=len, reverse=True)
                 negados = {c: m for c, m in (resposta.get("negados") or {}).items() if c in faltam}
                 ausentes = [c for c in faltam if c not in self._segredos]
                 if ausentes:
                     motivos = "; ".join(f"{c}: {negados.get(c, 'não veio do Portal')}" for c in ausentes)
                     raise SegredoIndisponivel(f"segredo indisponível ({motivos})")
             return {c: self._segredos[c] for c in pedidas}
+
+    # -- e-mail pelo Portal ------------------------------------------------------------
+    def email(self, para: Any, assunto: str, *, html: str | None = None, texto: str | None = None, cc: Any = None,
+              cco: Any = None, anexos: Any = None, responder_para: str | None = None, tipo: str = "mensagem",
+              chave: str | None = None) -> dict[str, Any]:
+        """Pede ao Portal para mandar um e-mail (o padrão). Devolve ``{"email_id", "situacao"}``:
+        ``enviado`` ou ``na_fila`` (o Portal tenta de novo sozinho). ``EmailRecusado`` com o motivo
+        (domínio não permitido, anexo proibido...); ``EmailIndisponivel`` sem Portal ou no modo agente.
+        ``chave``: a mesma chave na mesma execução não manda de novo."""
+        dados = mascarar({"para": lista(para), "cc": lista(cc), "cco": lista(cco), "assunto": assunto, "html": html,
+                          "texto": texto, "responder_para": responder_para, "tipo": tipo, "chave_idempotencia": chave},
+                         self._mascarar)
+        dados["anexos"] = ler_anexos(anexos)
+        pedir = getattr(self._transporte, "email", None)
+        if pedir is None:
+            raise EmailIndisponivel(f"o modo {self.modo} não manda e-mails")
+        try:
+            resposta = pedir(dados)
+        except FalhaDeTransporte as exc:
+            raise EmailIndisponivel(f"Portal indisponível para mandar o e-mail: {exc}") from exc
+        except Recusado as exc:
+            if exc.codigo == 422:
+                raise EmailRecusado(str(exc)) from exc
+            raise EmailIndisponivel(f"o Portal recusou o pedido de e-mail: {exc}") from exc
+        if resposta.get("situacao") == "simulado":
+            self._avisar(f"e-mail (modo {self.modo}, não enviado): {dados['assunto']} para {', '.join(dados['para'])}")
+        return {"email_id": resposta.get("email_id"), "situacao": resposta.get("situacao")}
+
+    def email_enviado_pela_maquina(self, para: Any, assunto: str, *, meio: str = "outlook", cc: Any = None, cco: Any = None,
+                                   anexos: Any = None, resumo: str | None = None, enviado_em: str | None = None) -> dict[str, Any]:
+        """A automação mandou o e-mail pela máquina (Outlook, SMTP): o Portal só registra. ``anexos``:
+        os nomes (ou caminhos) dos arquivos. Se o Portal não responder, avisa no log local e segue."""
+        dados = mascarar({"para": lista(para), "cc": lista(cc), "cco": lista(cco), "assunto": assunto, "meio": meio,
+                          "resumo": resumo, "enviado_em": enviado_em,
+                          "anexos": [Path(str(a)).name for a in (anexos or [])]}, self._mascarar)
+        registrar = getattr(self._transporte, "registrar_email", None)
+        try:
+            if registrar is None:
+                raise EmailIndisponivel(f"o modo {self.modo} não registra e-mails")
+            resposta = registrar(dados)
+        except (FalhaDeTransporte, Recusado, EmailIndisponivel) as exc:
+            self._avisar(f"e-mail mandado pela máquina não ficou registrado no Portal: {exc}")
+            return {"email_id": None, "situacao": "nao_registrado", "motivo": str(exc)}
+        return {"email_id": resposta.get("email_id"), "situacao": resposta.get("situacao")}
 
     # -- envio ----------------------------------------------------------------------
     def _emitir(self, tipo: str, payload: dict[str, Any]) -> None:

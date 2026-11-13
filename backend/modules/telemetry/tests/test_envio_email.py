@@ -32,10 +32,14 @@ def _config(**kw):
     return SimpleNamespace(**{**base, **kw})
 
 
-def test_desligado_por_padrao_e_incompleto_sem_todos_os_dados() -> None:
+def test_liga_sozinho_com_os_quatro_dados_e_incompleto_sem_todos() -> None:
+    """13/11/2026: sem NOTIFICACOES_EMAIL_LIGADO, liga sozinho com tenant, aplicativo, segredo e remetente;
+    "false" força desligado; "true" sem todos os dados fica incompleto."""
     from infrastructure.config import Settings
 
-    assert Settings.model_fields["notificacoes_email_ligado"].default is False
+    assert Settings.model_fields["notificacoes_email_ligado"].default is None
+    assert situacao_do_envio(_config(notificacoes_email_ligado=None)) == "ligado"
+    assert situacao_do_envio(_config(notificacoes_email_ligado=None, graph_remetente="")) == "desligado"
     assert situacao_do_envio(_config()) == "desligado" and montar_carteiro(_config()) is None
     assert situacao_do_envio(_config(notificacoes_email_ligado=True)) == "ligado"
     for campo, vazio in [("graph_tenant_id", ""), ("graph_client_id", ""), ("graph_client_secret", SecretStr("")),

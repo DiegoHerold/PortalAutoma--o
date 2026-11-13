@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -76,6 +77,7 @@ class RegisterAgent:
         audit_repo: AuditEventRepository | None,
         outbox_repo: FleetOutbox | None,
         transaction: TransactionManager,
+        max_agents: Callable[[], int] | None = None,
     ) -> None:
         self.agents = agents
         self.tokens = tokens
@@ -84,6 +86,8 @@ class RegisterAgent:
         self.audit = audit_repo
         self.outbox = outbox_repo
         self.transaction = transaction
+        # Limite do sistema "Agents cadastrados". Um Agent que já existe sempre se registra de novo.
+        self.max_agents = max_agents
 
     def execute(self, registration_token: str, payload: dict[str, Any], actor: ActorDTO | None = None) -> RegistrationResultDTO:
         actor = actor or ActorDTO(actor_type="agent")
@@ -106,6 +110,12 @@ class RegisterAgent:
             by_fingerprint = self.agents.get_by_machine_fingerprint(str(machine_fingerprint))
             if by_fingerprint is not None:
                 raise DuplicateAgentRegistrationError("Machine fingerprint is already registered to another Agent.")
+
+        if existing is None and self.max_agents is not None:
+            limite = self.max_agents()
+            if len(self.agents.list()) >= limite:
+                raise AgentRegistrationError(
+                    f"O limite de {limite} Agents cadastrados foi atingido. Aumente em Governança > Limites ou remova um Agent.")
 
         if existing is None:
             agent = AgentDTO(

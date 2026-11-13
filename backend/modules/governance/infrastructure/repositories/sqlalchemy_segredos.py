@@ -105,8 +105,33 @@ class SqlAlchemySegredos:
         ligacao.revoked_at = agora
         self.db.flush()
 
+    def chave_existe(self, chave: str) -> bool:
+        return self.db.scalar(select(SecretRecord.id).where(SecretRecord.key == chave)) is not None
+
+    def criar(self, *, chave: str, nome: str, descricao: str | None, campos: list[dict[str, Any]], cifrado: str,
+              chave_da_cifra: str, expira_em: datetime | None, criado_por: str | None, agora: datetime) -> SecretRecord:
+        segredo = SecretRecord(id=f"sec_{uuid4().hex}", key=chave, name=nome, description=descricao, status="active",
+                               campos=campos, created_by=criado_por, created_at=agora, updated_at=agora)
+        self.db.add(segredo)
+        self.db.flush()
+        self.nova_versao(segredo, cifrado, chave_da_cifra, expira_em, criado_por, agora)
+        return segredo
+
+    def nova_versao(self, segredo: SecretRecord, cifrado: str, chave_da_cifra: str, expira_em: datetime | None,
+                    criado_por: str | None, agora: datetime) -> SecretVersionRecord:
+        ultima = self.db.scalar(select(func.max(SecretVersionRecord.version)).where(SecretVersionRecord.secret_id == segredo.id))
+        versao = SecretVersionRecord(id=f"secv_{uuid4().hex}", secret_id=segredo.id, version=int(ultima or 0) + 1,
+                                     encrypted_value=cifrado, encryption_key_id=chave_da_cifra, created_by=criado_por,
+                                     created_at=agora, expires_at=expira_em)
+        self.db.add(versao)
+        self.db.flush()
+        segredo.current_version_id = versao.id
+        segredo.updated_at = agora
+        self.db.flush()
+        return versao
+
     def mudar(self, segredo: SecretRecord, dados: dict[str, Any], agora: datetime) -> None:
-        for campo in ("name", "description", "status"):
+        for campo in ("name", "description", "status", "campos"):
             if campo in dados:
                 setattr(segredo, campo, dados[campo])
         segredo.updated_at = agora

@@ -22,7 +22,7 @@ VIEWER = ["automation.read", "execution.read", "flow.read", "schedule.read", "ar
 
 
 def test_catalogo_tem_as_22_do_menu_agrupadas() -> None:
-    assert len(FUNCIONALIDADES) == 22 and len({f.chave for f in FUNCIONALIDADES}) == 22
+    assert len(FUNCIONALIDADES) == 23 and len({f.chave for f in FUNCIONALIDADES}) == 23  # + E-mails (13/11/2026)
     grupos = [f.grupo for f in FUNCIONALIDADES]
     assert list(dict.fromkeys(grupos)) == ["Monitorar", "Operação", "Catálogo", "Infraestrutura", "Segurança",
                                            "Pessoas e acesso", "Governança"]
