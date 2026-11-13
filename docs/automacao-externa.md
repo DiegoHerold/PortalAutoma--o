@@ -108,6 +108,17 @@ a.arquivo(pasta / "resultado.csv", item=None)                        # do lote
   pasta de artefatos da tentativa e o Agent envia.
 - Prazo: em Governança > Retenção, "Arquivos entregues" (sem prazo, nada sai).
 
+## Senhas e chaves: segredos do Portal (13/11/2026)
+
+A automação não precisa guardar senha no `.env` da máquina:
+
+1. Cadastre em **Segurança > Segredos** (ex.: chave `erp.senha`).
+2. Ligue à automação: aba **Técnico** da automação, bloco **Segredos que usa**.
+3. No código: `senha = a.segredo("erp.senha")` (SDK 0.5.0, modo direto).
+
+Só sai durante a execução, só para as automações ligadas, e cada entrega fica na auditoria. O
+valor vira `***` se aparecer num log. Detalhes no README do SDK (seção "Segredos").
+
 ## HTTP provisório
 
 Decisão de 11/11/2026: "não precisa usar https vindo da automação por enquanto". O SDK aceita

@@ -58,6 +58,11 @@ class TransporteAgente:
             raise Recusado(f"Agent recusou a conexão: {resposta.get('motivo')}")
         return int(resposta.get("ultima_sequencia") or 0)
 
+    def segredos(self, chaves: list[str]) -> dict[str, Any]:
+        from .segredos import SegredoIndisponivel
+
+        raise SegredoIndisponivel("no modo agente o Agent ainda não entrega segredos; use o modo direto")
+
     def fechar(self) -> None:
         if self._arquivo is not None:
             try:

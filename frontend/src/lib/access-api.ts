@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import type { CreatedServiceAccountResponse, OrganizationCreateRequest, OrganizationResponse, OrganizationUpdateRequest, ServiceAccountCreateRequest, ServiceAccountResponse, ServiceAccountUpdateRequest, TeamCreateRequest, TeamResponse, TeamUpdateRequest } from "@/types/access";
+import type { OrganizationCreateRequest, OrganizationResponse, OrganizationUpdateRequest, TeamCreateRequest, TeamResponse, TeamUpdateRequest } from "@/types/access";
 
 export function createOrganization(token: string | null, payload: OrganizationCreateRequest) {
   return apiRequest<OrganizationResponse>("/organizations", { method: "POST", token, body: JSON.stringify(payload) });
@@ -23,20 +23,4 @@ export function updateTeam(token: string | null, teamId: number, payload: TeamUp
 
 export function deleteTeam(token: string | null, teamId: number) {
   return apiRequest<void>(`/teams/${teamId}`, { method: "DELETE", token });
-}
-
-export function createServiceAccount(token: string | null, payload: ServiceAccountCreateRequest) {
-  return apiRequest<CreatedServiceAccountResponse>("/service-accounts", { method: "POST", token, body: JSON.stringify(payload) });
-}
-
-export function updateServiceAccount(token: string | null, serviceAccountId: string, payload: ServiceAccountUpdateRequest) {
-  return apiRequest<ServiceAccountResponse>(`/service-accounts/${encodeURIComponent(serviceAccountId)}`, { method: "PUT", token, body: JSON.stringify(payload) });
-}
-
-export function deleteServiceAccount(token: string | null, serviceAccountId: string) {
-  return apiRequest<void>(`/service-accounts/${encodeURIComponent(serviceAccountId)}`, { method: "DELETE", token });
-}
-
-export function revokeServiceAccount(token: string | null, serviceAccountId: string) {
-  return apiRequest<ServiceAccountResponse>(`/service-accounts/${encodeURIComponent(serviceAccountId)}/revoke`, { method: "POST", token });
 }

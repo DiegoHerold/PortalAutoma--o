@@ -26,6 +26,7 @@ from gateway.direct_gateway.instancias import router as instancias_diretas_route
 from modules.access.api.concessoes import router as concessoes_router
 from modules.access.api.acesso_da_pessoa import router as acesso_da_pessoa_router
 from modules.access.api.papeis import router as papeis_router
+from modules.access.api.contas_de_servico import router as contas_de_servico_router
 from modules.access.api.times import router as times_router
 from modules.fleet.api.instancias_diretas import router as admin_instancias_router
 from modules.dispatch.api.fila import router as fila_router
@@ -49,6 +50,7 @@ from modules.catalog.api.formulario import router as formulario_router
 from modules.telemetry.api.notificacoes import router as notificacoes_router
 from modules.governance.api.retencao import router as retencao_router
 from modules.governance.api.auditoria import router as auditoria_router
+from modules.governance.api.segredos import router as segredos_router
 from modules.governance.api import registro_de_requisicoes
 from modules.telemetry.api.realtime import router as realtime_router
 from modules.telemetry.api.routes import automation_times_router as telemetry_times_router
@@ -148,6 +150,7 @@ def register_execution_routes(router: APIRouter) -> None:
     router.include_router(concessoes_router)
     router.include_router(times_router)
     router.include_router(papeis_router)
+    router.include_router(contas_de_servico_router)
     router.include_router(acesso_da_pessoa_router)
     router.include_router(instancias_diretas_router)
     router.include_router(admin_instancias_router)
@@ -175,6 +178,7 @@ def register_governance_routes(router: APIRouter) -> None:
     router.include_router(governance_module_router, tags=["governance"])
     router.include_router(retencao_router)
     router.include_router(auditoria_router)
+    router.include_router(segredos_router)
 
 
 def register_compatibility_routes(router: APIRouter) -> None:

@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 from infrastructure.database import get_db
 from modules.dispatch.application.use_cases.job_tokens import AuthenticateJobToken, JobTokenGrant, JobTokenRejected
 from modules.dispatch.infrastructure.repositories.sqlalchemy_job_tokens import SqlAlchemyDirectCommandStore, SqlAlchemyJobTokenStore
+from modules.governance.infrastructure.repositories.sqlalchemy_segredos import SqlAlchemySegredos
+from modules.governance.application.segredos import QuemPede, SegredoInvalido, mascarar
 from modules.governance.domain.audit import AuditEvent
 from modules.governance.infrastructure.adapters import build_governance_adapters
 from modules.telemetry.application.dto import EventBatchCommand
@@ -177,6 +179,8 @@ async def receber_eventos(job_id: str, request: Request, db: Session = Depends(g
     if not isinstance(eventos, list) or not 1 <= len(eventos) <= LIMITE_EVENTOS:
         return _erro(400, f"eventos precisa ser uma lista de 1 a {LIMITE_EVENTOS}")
 
+    # O valor de um segredo da automação nunca é gravado: vira *** em qualquer texto do evento.
+    eventos = mascarar(eventos, _valores_dos_segredos(db, grant))
     adapters = build_telemetry_adapters(db)
     ja = set(adapters.events.get_ack_sequences(grant.execution_attempt_id))
     aceitos: list[dict[str, Any]] = []
@@ -224,3 +228,36 @@ def comandos(job_id: str, request: Request, db: Session = Depends(get_db)) -> An
     pendentes = SqlAlchemyDirectCommandStore(db).take_pending(grant.execution_attempt_id, datetime.now(UTC))
     db.commit()
     return {"comandos": pendentes}
+
+
+def _valores_dos_segredos(db: Session, grant: JobTokenGrant) -> list[str]:
+    from modules.governance.api.segredos import segredos
+
+    contexto = SqlAlchemySegredos(db).contexto_do_job(grant.task_execution_id, grant.execution_attempt_id)
+    return segredos(db).valores_da_automacao(contexto[0]) if contexto else []
+
+
+@router.post("/{job_id}/segredos")
+async def entregar_segredos(job_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    """Segredos ligados à automação, só durante a execução e só com o token deste job.
+
+    Corpo ``{"chaves": ["dominio.senha_banco"]}``. Resposta ``{"segredos": {chave: valor},
+    "negados": {chave: motivo}}``, sem cache. Cada entrega e cada recusa ficam na auditoria."""
+    from modules.governance.api.segredos import segredos
+
+    grant = _autenticar(db, request, job_id)
+    if isinstance(grant, JSONResponse):
+        return grant
+    corpo = await _corpo_json(request)
+    if isinstance(corpo, JSONResponse):
+        return corpo
+    quem = QuemPede(task_execution_id=grant.task_execution_id, execution_attempt_id=grant.execution_attempt_id,
+                    instancia_id=grant.direct_instance_id, ip=request.client.host if request.client else None,
+                    user_agent=request.headers.get("user-agent"))
+    try:
+        resposta = segredos(db).entregar(quem, corpo.get("chaves"))
+        db.commit()
+    except SegredoInvalido as exc:
+        db.rollback()
+        return _erro(409 if "não está ativa" in str(exc) else 400, str(exc))
+    return JSONResponse(content=resposta, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})

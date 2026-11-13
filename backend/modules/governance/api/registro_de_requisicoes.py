@@ -35,6 +35,11 @@ def _quem(request: Request) -> str | None:
     cabecalho = request.headers.get("authorization") or ""
     if not cabecalho.lower().startswith("bearer "):
         return None
+    token = cabecalho[7:].strip()
+    if token.startswith("psa_"):  # conta de serviço: o usuário técnico é resolvido ao gravar
+        from modules.access.application.contas_de_servico import hash_da_credencial
+
+        return "psa:" + hash_da_credencial(token)
     try:
         from modules.access.infrastructure.authentication.tokens import JwtTokenIssuer
 
@@ -69,6 +74,14 @@ def _gravar(app: FastAPI, dados: dict[str, Any]) -> None:
     fabrica = app.dependency_overrides.get(get_session_factory, get_session_factory)()
     try:
         with fabrica() as db:
+            if str(dados.get("actor_id") or "").startswith("psa:"):
+                from sqlalchemy import text
+
+                linha = db.execute(text("SELECT id, user_id FROM service_accounts WHERE credential_hash = :h"),
+                                   {"h": dados["actor_id"][4:]}).first()
+                if linha is None or linha[1] is None:
+                    return  # credencial inválida: a recusa já foi auditada na autenticação
+                dados = {**dados, "actor_id": str(linha[1]), "metadata": {**dados["metadata"], "conta_de_servico": linha[0]}}
             SqlAlchemyAuditEventRepository(db).append(AuditEvent(**dados))
             db.commit()
     except Exception:  # noqa: BLE001 - a auditoria da requisição nunca derruba a resposta

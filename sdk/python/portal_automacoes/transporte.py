@@ -39,6 +39,9 @@ class Transporte(Protocol):
 
     def fechar(self) -> None: ...
 
+    def segredos(self, chaves: list[str]) -> dict[str, Any]:
+        """``{"segredos": {chave: valor}, "negados": {chave: motivo}}`` (0.5.0)."""
+
 
 class TransporteDesligado:
     """Sem Portal nem Agent (desenvolvimento): os eventos são validados e descartados."""
@@ -62,3 +65,8 @@ class TransporteDesligado:
 
     def fechar(self) -> None:
         return None
+
+    def segredos(self, chaves: list[str]) -> dict[str, Any]:
+        from .segredos import do_ambiente
+
+        return do_ambiente(chaves)

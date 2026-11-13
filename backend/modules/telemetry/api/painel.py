@@ -225,14 +225,15 @@ def historico(busca: str | None = Query(default=None, max_length=120), automacao
 
 
 @router.get("/painel/recentes", dependencies=[Depends(precisa("painel.ver"))])
-def recentes(maquina: str | None = Query(default=None, max_length=80), limite: int = Query(default=3, ge=1, le=12),
+def recentes(maquina: str | None = Query(default=None, max_length=80), limite: int = Query(default=3, ge=1, le=200),
              db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> dict[str, Any]:
-    """Uma linha por automação (a execução mais recente dela), só das que a pessoa vê."""
+    """Uma linha por automação (a execução mais recente dela), só das que a pessoa vê. O Painel pede 3;
+    o Catálogo pede todas (até 200) para mostrar a última execução em cada cartão."""
     permissoes = _Permissoes(db, user)
     leitor = SqlAlchemyPainelReader(db)
     automacoes: list[dict[str, Any]] = []
     vistas: set[int] = set()
-    for e in leitor.ultimas_execucoes(machine_id=maquina):
+    for e in leitor.ultimas_execucoes(machine_id=maquina, varredura=max(300, limite * 25)):
         if e["automation_id"] in vistas or not permissoes.pode(e["automation_id"], VER_EXECUCOES):
             continue
         vistas.add(e["automation_id"])

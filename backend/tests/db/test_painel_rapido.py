@@ -50,6 +50,10 @@ def test_ultimas_automacoes_por_maquina_e_executaveis(cliente, sessao) -> None:
     so_b = cliente.get("/api/v1/painel/recentes", params={"maquina": m2}).json()["automacoes"]
     assert [a["automation_id"] for a in so_b] == [a2]
     assert cliente.get("/api/v1/painel/recentes", params={"limite": 1}).json()["automacoes"][0]["automation_id"] == a1
+    # O Catálogo pede até 200 (a última de cada cartão); acima disso, recusa.
+    catalogo = [a["automation_id"] for a in cliente.get("/api/v1/painel/recentes", params={"limite": 200}).json()["automacoes"]]
+    assert catalogo[:2] == [a1, a2] and a3 not in catalogo
+    assert cliente.get("/api/v1/painel/recentes", params={"limite": 201}).status_code == 422
 
     # Quem só vê a2 recebe só a2, e sem poder executar; com "executar", pode.
     pessoa, _ = _usuario(sessao, "sem_permissao")

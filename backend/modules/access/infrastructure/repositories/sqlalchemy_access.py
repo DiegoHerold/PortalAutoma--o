@@ -58,12 +58,17 @@ class SqlAlchemyAccessRepository:
         row = self.get_user_record(user_id)
         return _user_to_dto(row, self.list_permissions_for_role(row.role_id)) if row else None
 
+    def e_usuario_tecnico(self, user_id: int) -> bool:
+        return self.db.scalar(select(ServiceAccountRecord.id).where(ServiceAccountRecord.user_id == user_id)) is not None
+
     def get_user_by_email(self, email: str) -> UserDTO | None:
         row = self.get_user_record_by_email(email)
         return _user_to_dto(row, self.list_permissions_for_role(row.role_id)) if row else None
 
     def list_users(self) -> list[UserDTO]:
-        rows = self.db.scalars(_user_query().order_by(AccessUserRecord.name)).unique().all()
+        # Os usuários técnicos das contas de serviço ficam em Contas de serviço, não em Usuários.
+        tecnicos = select(ServiceAccountRecord.user_id).where(ServiceAccountRecord.user_id.is_not(None))
+        rows = self.db.scalars(_user_query().where(AccessUserRecord.id.not_in(tecnicos)).order_by(AccessUserRecord.name)).unique().all()
         return [_user_to_dto(row, self.list_permissions_for_role(row.role_id)) for row in rows]
 
     def create_user(self, payload: dict) -> UserDTO:

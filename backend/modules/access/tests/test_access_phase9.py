@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from modules.access.application.dto import OrganizationDTO, ServiceAccountDTO, TeamDTO
-from modules.access.application.use_cases import CreateOrganization, CreateTeam, DeleteOrganization, DeleteServiceAccount, DeleteTeam, UpdateOrganization, UpdateServiceAccount, UpdateTeam
+from modules.access.application.use_cases import CreateOrganization, CreateTeam, DeleteOrganization, DeleteTeam, UpdateOrganization, UpdateTeam
 
 
 class AdminActor:
@@ -100,13 +100,11 @@ def test_update_access_resources_audits_the_change() -> None:
 
     organization = UpdateOrganization(repository, audit, transaction).execute(AdminActor(), 1, {"key": "biason", "name": "Biason", "status": "disabled"})
     team = UpdateTeam(repository, audit, transaction).execute(AdminActor(), 2, {"organization_id": 1, "key": "ops", "name": "Operations", "status": "active"})
-    account = UpdateServiceAccount(repository, audit, transaction).execute(AdminActor(), "sa_1", {"name": "Billing", "permissions": ["artifact.read"], "organization_id": 1, "expires_at": None})
 
     assert organization.status == "disabled"
     assert team.key == "ops"
-    assert account.permissions == ["artifact.read"]
-    assert [event.action for event in audit.events] == ["organization_updated", "team_updated", "service_account_updated"]
-    assert transaction.commits == 3
+    assert [event.action for event in audit.events] == ["organization_updated", "team_updated"]
+    assert transaction.commits == 2
 
 
 def test_delete_access_resources_audits_the_removal() -> None:
@@ -116,8 +114,7 @@ def test_delete_access_resources_audits_the_removal() -> None:
 
     DeleteOrganization(repository, audit, transaction).execute(AdminActor(), 1)
     DeleteTeam(repository, audit, transaction).execute(AdminActor(), 2)
-    DeleteServiceAccount(repository, audit, transaction).execute(AdminActor(), "sa_1")
 
-    assert repository.deleted == [("organization", 1), ("team", 2), ("service_account", "sa_1")]
-    assert [event.action for event in audit.events] == ["organization_deleted", "team_deleted", "service_account_deleted"]
-    assert transaction.commits == 3
+    assert repository.deleted == [("organization", 1), ("team", 2)]
+    assert [event.action for event in audit.events] == ["organization_deleted", "team_deleted"]
+    assert transaction.commits == 2

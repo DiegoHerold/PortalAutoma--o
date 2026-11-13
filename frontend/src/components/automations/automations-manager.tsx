@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import { Plus, Search, Workflow } from "lucide-react";
 
-import { AutomationCard } from "@/components/automations/automation-card";
+import { AutomationCard, type UltimaExecucao } from "@/components/automations/automation-card";
+import { useDisparo } from "@/components/painel/disparo-rapido";
+import { podeGerenciar } from "@/lib/permissions";
+import type { VisaoFila } from "@/lib/fila";
 import { AutomationForm, emptyAutomationForm, type AutomationFormState } from "@/components/automations/automation-form";
 import { NewAutomationDialog } from "@/components/automations/new-automation-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -64,6 +67,21 @@ export function AutomationsManager() {
   for (const e of painel.data?.execucoes ?? []) {
     if (e.automation_id != null) rodandoPor.set(e.automation_id, (rodandoPor.get(e.automation_id) ?? 0) + 1);
   }
+  const { user } = useAuth();
+  const gerencia = podeGerenciar(user, "automacoes");
+  // Para os cartões: a última execução de cada uma, quantas na fila e quais a pessoa pode executar.
+  const recentes = useApi<{ automacoes: Array<{ automation_id: number; ultima: UltimaExecucao }> }>("/painel/recentes?limite=200",
+    { pollMs: 60000 });
+  const fila = useApi<VisaoFila>("/fila", { pollMs: 30000 });
+  const executaveis = useApi<{ automacoes: Array<{ id: number }> }>("/painel/executaveis");
+  const ultimaPor = new Map<number, UltimaExecucao>();
+  for (const r of Array.isArray(recentes.data?.automacoes) ? recentes.data.automacoes : []) ultimaPor.set(r.automation_id, r.ultima);
+  const naFilaPor = new Map<number, number>();
+  for (const j of Array.isArray(fila.data?.jobs) ? fila.data.jobs : []) {
+    if (j.automation_id != null) naFilaPor.set(j.automation_id, (naFilaPor.get(j.automation_id) ?? 0) + 1);
+  }
+  const podeExecutar = new Set((Array.isArray(executaveis.data?.automacoes) ? executaveis.data.automacoes : []).map((a) => a.id));
+  const { disparar, janela } = useDisparo(() => { void fila.refetch(); void painel.refetch(); });
   const categories = useApi<Category[]>("/categories");
   const workers = useApi<Worker[]>("/workers");
   const triggers = useApi<Trigger[]>("/triggers");
@@ -198,7 +216,7 @@ export function AutomationsManager() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Buscar por nome ou slug..."
+            placeholder="Buscar automação..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -214,9 +232,11 @@ export function AutomationsManager() {
         <Button variant={verArquivadas ? "primary" : "outline"} onClick={() => setVerArquivadas((v) => !v)} aria-pressed={verArquivadas}>
           {verArquivadas ? "Voltar ao Catálogo" : `Arquivadas${arquivadas ? ` (${arquivadas})` : ""}`}
         </Button>
-        <Button onClick={openCreate} disabled={creationDependenciesLoading}>
-          <Plus className="h-4 w-4" /> Nova automação
-        </Button>
+        {gerencia && (
+          <Button onClick={openCreate} disabled={creationDependenciesLoading}>
+            <Plus className="h-4 w-4" /> Nova automação
+          </Button>
+        )}
       </div>
 
       {automations.error ? (
@@ -248,13 +268,19 @@ export function AutomationsManager() {
               automation={a}
               categoryName={categoryName.get(a.category_id)}
               rodando={rodandoPor.get(a.id) ?? 0}
-              onEdit={a.status === "archived" ? undefined : openEdit}
-              onDelete={a.status === "archived" ? undefined : deleteAutomation}
-              onRestore={a.status === "archived" ? restaurar : undefined}
+              naFila={naFilaPor.get(a.id) ?? 0}
+              ultima={ultimaPor.get(a.id) ?? null}
+              onExecutar={a.status !== "archived" && a.is_active && podeExecutar.has(a.id)
+                ? (x) => disparar({ id: x.id, nome: x.name }) : undefined}
+              onEdit={a.status === "archived" || !gerencia ? undefined : openEdit}
+              onDelete={a.status === "archived" || !gerencia ? undefined : deleteAutomation}
+              onRestore={a.status === "archived" && gerencia ? restaurar : undefined}
             />
           ))}
         </div>
       )}
+
+      {janela}
 
       <NewAutomationDialog
         open={newDialogOpen}

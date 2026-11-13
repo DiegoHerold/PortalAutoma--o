@@ -42,7 +42,9 @@ from modules.governance.application.use_cases import (
     UpsertRetentionPolicy,
     UpsertSystemLimit,
 )
+from modules.governance.application.segredos import SegredoInvalido, normalizar_chave
 from modules.governance.domain import GovernanceConflict, GovernanceResourceNotFound
+from modules.governance.infrastructure.repositories.sqlalchemy_segredos import SqlAlchemySegredos
 from modules.governance.infrastructure.adapters import build_governance_adapters
 
 
@@ -120,10 +122,15 @@ def list_secrets(
 def create_secret(payload: SecretCreateRequest, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> SecretWithVersionResponse:
     _ensure(db, user, "secret.manage")
     adapters = build_governance_adapters(db)
+    dados = payload.model_dump()
     try:
-        secret, version = CreateSecret(adapters.governance, adapters.cipher, adapters.audit, adapters.transaction).execute(user, payload.model_dump())
+        dados["key"] = normalizar_chave(dados["key"])  # é a chave que a automação pede pelo SDK
+    except SegredoInvalido as exc:
+        raise http_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", str(exc)) from exc
+    try:
+        secret, version = CreateSecret(adapters.governance, adapters.cipher, adapters.audit, adapters.transaction).execute(user, dados)
     except GovernanceConflict as exc:
-        raise http_error(status.HTTP_409_CONFLICT, "CONFLICT", str(exc)) from exc
+        raise http_error(status.HTTP_409_CONFLICT, "CONFLICT", "Já existe um segredo com esta chave.") from exc
     return SecretWithVersionResponse(secret=SecretResponse(**to_payload(secret)), version=SecretVersionResponse(**to_payload(version)))
 
 
@@ -151,6 +158,13 @@ def list_secret_grants(secret_id: str, db: Session = Depends(get_db), user: Any 
 @router.post("/secrets/{secret_id}/grants", response_model=SecretGrantResponse, status_code=status.HTTP_201_CREATED)
 def create_secret_grant(secret_id: str, payload: SecretGrantCreateRequest, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> SecretGrantResponse:
     _ensure(db, user, "secret.manage")
+    # Só existe um uso de verdade (13/11/2026): a automação recebe o segredo durante a execução.
+    # Concessão para pessoa, time ou conta de serviço não teria efeito, então é recusada.
+    if payload.grantee_type != "automation" or payload.permission != "use":
+        raise http_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR",
+                         "Segredo só é liberado para automação (grantee_type=automation, permission=use).")
+    if not payload.grantee_id.isdigit() or not SqlAlchemySegredos(db).automacao_existe(int(payload.grantee_id)):
+        raise http_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", "Automação não encontrada.")
     adapters = build_governance_adapters(db)
     try:
         grant = CreateSecretGrant(adapters.governance, adapters.audit, adapters.transaction).execute(user, secret_id, payload.model_dump())

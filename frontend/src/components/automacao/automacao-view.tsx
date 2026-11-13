@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { FileDown, History, LayoutDashboard, ListChecks, Play, Radio, Settings2, SlidersHorizontal, Wrench } from "lucide-react";
+import { FileDown, History, LayoutDashboard, ListChecks, Play, Radio, SlidersHorizontal, Wrench } from "lucide-react";
 
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
@@ -12,7 +12,7 @@ import type { Formulario } from "@/lib/campos";
 import { duracao, horario, type VisaoFila } from "@/lib/fila";
 import type { ExecucaoNoHistorico, Painel } from "@/lib/painel";
 import { cn } from "@/lib/utils";
-import { AutomationDetail } from "@/components/automations/automation-detail";
+import { TecnicoDaAutomacao } from "@/components/automacao/tecnico-da-automacao";
 import { ArquivosDaAutomacao } from "@/components/automacao/arquivos-da-automacao";
 import { ExecutarAutomacao } from "@/components/automacao/executar-automacao";
 import { EditorDeCampos } from "@/components/campos/editor-de-campos";
@@ -109,19 +109,12 @@ export function AutomacaoView({ id }: { id: string }) {
       </nav>
 
       {aba === "geral" && <VisaoGeral id={id} rodando={rodando} naFila={naFila} painel={painel.data} aoVivo={aoVivo}
-        executar={() => setExecutando(true)} verHistorico={() => abrir("historico")} verEntradas={() => abrir("campos")} />}
+        verHistorico={() => abrir("historico")} verEntradas={() => abrir("campos")} />}
       {aba === "itens" && <ItensDaAutomacao id={id} embutido nome={nome} />}
       {aba === "campos" && <EditorDeCampos id={id} />}
       {aba === "arquivos" && <ArquivosDaAutomacao id={id} />}
       {aba === "historico" && <HistoricoDaAutomacao id={id} />}
-      {aba === "tecnico" && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" asChild><Link href={`/automations/${id}/acessos`}><Settings2 className="h-4 w-4" /> Acesso a telas e logs</Link></Button>
-          </div>
-          <AutomationDetail id={id} />
-        </div>
-      )}
+      {aba === "tecnico" && <TecnicoDaAutomacao id={id} />}
 
       <ExecutarAutomacao id={id} nome={nome} aberto={executando} fechar={() => setExecutando(false)}
         pedido={() => { void fila.refetch(); abrir("geral"); }} />
@@ -129,13 +122,12 @@ export function AutomacaoView({ id }: { id: string }) {
   );
 }
 
-function VisaoGeral({ id, rodando, naFila, painel, aoVivo, executar, verHistorico, verEntradas }: {
+function VisaoGeral({ id, rodando, naFila, painel, aoVivo, verHistorico, verEntradas }: {
   id: string;
   rodando: Painel["execucoes"];
   naFila: VisaoFila["jobs"];
   painel: Painel | null;
   aoVivo: boolean;
-  executar: () => void;
   verHistorico: () => void;
   verEntradas: () => void;
 }) {
@@ -151,10 +143,9 @@ function VisaoGeral({ id, rodando, naFila, painel, aoVivo, executar, verHistoric
           <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Radio className={cn("h-4 w-4", aoVivo && "text-success")} /> {aoVivo ? "Ao vivo" : "Relendo a cada 30 s"}</span>
         </div>
         {!painel ? <div className="skeleton h-48 rounded-xl" /> : rodando.length === 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border px-6 py-8">
-            <p className="text-muted-foreground">Nada rodando desta automação agora.</p>
-            <Button onClick={executar}><Play className="h-4 w-4" /> Executar</Button>
-          </div>
+          <p className="rounded-xl border border-dashed border-border px-6 py-8 text-muted-foreground">
+            Nada rodando desta automação agora.
+          </p>
         ) : (
           <div className="grid gap-5 xl:grid-cols-2" data-testid="rodando-agora">
             {rodando.map((e) => <Monitor key={e.execucao_id} e={e} passou={passou} />)}

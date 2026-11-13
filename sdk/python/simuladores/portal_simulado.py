@@ -22,7 +22,7 @@ from typing import Any, Callable
 LIMITE_CORPO = 1_000_000
 LIMITE_IMAGEM = 5_000_000
 LIMITE_ARQUIVO = 100 * 1024 * 1024
-ROTA = re.compile(r"^/api/v1/direto/jobs/(?P<job>[A-Za-z0-9_-]{1,80})/(?P<recurso>eventos/estado|eventos|comandos|arquivos|imagens/(?P<imagem>[A-Za-z0-9_-]{1,80}))$")
+ROTA = re.compile(r"^/api/v1/direto/jobs/(?P<job>[A-Za-z0-9_-]{1,80})/(?P<recurso>eventos/estado|eventos|comandos|arquivos|segredos|imagens/(?P<imagem>[A-Za-z0-9_-]{1,80}))$")
 
 
 @dataclass
@@ -33,6 +33,8 @@ class JobSimulado:
     imagens: dict[str, bytes] = field(default_factory=dict)
     arquivos: list[dict[str, Any]] = field(default_factory=list)  # nome, item, tipo, conteudo
     comandos: list[dict[str, Any]] = field(default_factory=list)
+    segredos: dict[str, str] = field(default_factory=dict)  # os ligados à automação no Portal
+    pedidos_de_segredo: list[list[str]] = field(default_factory=list)
     ultima_sequencia: int = 0
 
 
@@ -124,6 +126,12 @@ class PortalSimulado:
                 if achado is None:
                     return
                 job, rota = achado
+                if rota["recurso"] == "segredos":
+                    chaves = json.loads(self._corpo(LIMITE_CORPO) or b"{}").get("chaves") or []
+                    job.pedidos_de_segredo.append(chaves)
+                    return self._responder(200, {
+                        "segredos": {c: job.segredos[c] for c in chaves if c in job.segredos},
+                        "negados": {c: "não existe ou não está liberado para esta automação" for c in chaves if c not in job.segredos}})
                 if rota["recurso"] != "eventos":
                     return self._responder(405, {"erro": "método não permitido"})
                 if not (self.headers.get("Content-Type") or "").startswith("application/json"):

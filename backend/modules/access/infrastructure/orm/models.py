@@ -177,12 +177,19 @@ class ServiceAccountRecord(Base):
     organization_id: Mapped[int | None] = mapped_column(ForeignKey("access_organizations.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="active", index=True)
-    credential_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # "sha256:<hex>" da credencial psa_... (13/11/2026); procurada pelo hash, nunca guardada em texto.
+    credential_hash: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    # Legado (não vale mais): o acesso vem do papel e dos times do usuário técnico (user_id).
     permissions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    credential_hint: Mapped[str | None] = mapped_column(String(16))
+    credential_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(String(120))
 
 class AutomationGrantRecord(Base):
     """Concessão por automação (Fase 4): um usuário ou um time, e as ações."""

@@ -54,6 +54,37 @@ with Automacao.conectar(versao_automacao="2.3.0") as a:
 | `with a.pausa("reinicio", detalhe)` | `pausa.iniciada` / `pausa.concluida`: tempo fora da estimativa |
 | `a.deve_parar()`, `a.verificar_parada()`, `a.cancelamento_pedido()` | Consulta os comandos do Portal |
 | `a.ao_cancelar(funcao)`, `a.ao_parar(funcao)` | Chamadas na hora em que o pedido chega (0.4.0) |
+| `a.segredo(chave)`, `a.segredos(*chaves)` | Sem evento: senha ou chave ligada à automação no Portal (0.5.0) |
+
+### Segredos (0.5.0)
+
+Senhas e chaves ficam no Portal (Segurança > Segredos), não no `.env` de cada máquina:
+
+```python
+with Automacao.conectar() as a:
+    senha = a.segredo("dominio.senha_banco")
+    smtp = a.segredos("smtp.usuario", "smtp.senha")  # vários num pedido só
+```
+
+1. Cadastre o segredo no Portal com a chave (`dominio.senha_banco`).
+2. Ligue o segredo à automação: aba **Técnico** da automação, bloco **Segredos que usa**.
+3. Na execução, `segredo()` pede ao Portal com o token do job. Só sai o que está ligado à
+   automação, ativo e dentro da validade, e só enquanto a execução está ativa.
+
+| Situação | O que acontece |
+|---|---|
+| Liberado | Devolve o valor. Ele fica só na memória; o SDK não pede de novo na mesma execução |
+| Não ligado, desativado, vencido ou execução encerrada | `SegredoIndisponivel` com a chave e o motivo (nunca o valor) |
+| Portal fora do ar | `SegredoIndisponivel` ("Portal indisponível"); a automação decide se espera ou encerra |
+| Modo desligado (desenvolvimento) | Lê `PORTAL_SEGREDO_<CHAVE>` do ambiente (`PORTAL_SEGREDO_DOMINIO_SENHA_BANCO`) |
+| Modo agente | `SegredoIndisponivel`: o Agent ainda não entrega segredos |
+
+- O valor vira `***` em todo evento (log, passo, atenção) antes de ir para a fila local, e no
+  log local do SDK. O Portal faz o mesmo ao receber. Valores com menos de 4 caracteres não são
+  mascarados (apagariam palavras comuns).
+- Cada entrega e cada recusa ficam na auditoria do Portal (qual automação, execução e versão).
+- Trocar o valor no Portal vale para o próximo pedido; uma execução que já pegou o valor segue
+  com ele.
 
 ### Parar, cancelar e sem comunicação (0.4.0)
 

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import secrets
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from modules.access.application.dto import AuthenticatedUserDTO, CreatedServiceAccountDTO, ServiceAccountDTO, TokenDTO, UserDTO
+from modules.access.application.dto import AuthenticatedUserDTO, TokenDTO, UserDTO
 from modules.access.application.ports import AccessRepository, PasswordHasher, TokenIssuer, TransactionManager
 from modules.access.domain import AccessConflict, AccessResourceNotFound, AuthenticationFailed, AuthorizationDenied, RoleSlug, UserStatus, normalize_email
 from modules.access.domain.times import efetivas
@@ -68,6 +67,11 @@ class LoginUser:
         user = self.access.get_user_by_email(normalized)
         if user is None or not user.is_active:
             self._audit("login_failed", normalized, "unknown", ip, user_agent, {"reason": "invalid_user"})
+            self.transaction.commit()
+            raise AuthenticationFailed("Invalid email or password.")
+        if _usuario_tecnico(self.access, user.id):
+            # Usuário de conta de serviço: entra só pela credencial psa_..., nunca pela tela de login.
+            self._audit("login_failed", str(user.id), str(user.id), ip, user_agent, {"reason": "service_account_user", "email": normalized})
             self.transaction.commit()
             raise AuthenticationFailed("Invalid email or password.")
         record = self.access.get_user_record_by_email(normalized)
@@ -187,6 +191,8 @@ class UpdateUser:
         current = self.access.get_user(user_id)
         if current is None:
             raise AccessResourceNotFound("User not found.")
+        if _usuario_tecnico(self.access, user_id):
+            raise AccessConflict("Este usuário é de uma conta de serviço: mude em Contas de serviço.")
         if self.access.get_role(int(payload["role_id"])) is None:
             raise AccessResourceNotFound("Selected role was not found.")
         update = {
@@ -234,6 +240,8 @@ class DeleteUser:
         current = self.access.get_user(user_id)
         if current is None:
             raise AccessResourceNotFound("User not found.")
+        if _usuario_tecnico(self.access, user_id):
+            raise AccessConflict("Este usuário é de uma conta de serviço: apague a conta em Contas de serviço.")
         _audit(self.audit, actor, "user_deleted", "user", str(user_id), before={"email": current.email})
         if self.access.user_has_requested_jobs(user_id):
             self.access.update_user(user_id, {"is_active": False, "status": UserStatus.DISABLED})
@@ -362,78 +370,10 @@ class DeleteTeam:
         self.transaction.commit()
 
 
-class ListServiceAccounts:
-    def __init__(self, access: AccessRepository) -> None:
-        self.access = access
-
-    def execute(self, actor: Any) -> list[ServiceAccountDTO]:
-        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.ver")
-        return self.access.list_service_accounts()
-
-
-class CreateServiceAccount:
-    def __init__(self, access: AccessRepository, passwords: PasswordHasher, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
-        self.access = access
-        self.passwords = passwords
-        self.audit = audit
-        self.transaction = transaction
-
-    def execute(self, actor: Any, payload: dict[str, Any]) -> CreatedServiceAccountDTO:
-        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.gerenciar")
-        credential = f"psa_{secrets.token_urlsafe(32)}"
-        created = self.access.create_service_account(
-            {
-                "organization_id": payload.get("organization_id"),
-                "name": payload["name"],
-                "credential_hash": self.passwords.hash(credential),
-                "permissions": payload.get("permissions") or [],
-                "expires_at": payload.get("expires_at"),
-            }
-        )
-        _audit(self.audit, actor, "service_account_created", "service_account", created.id, after={"permission_count": len(created.permissions)})
-        self.transaction.commit()
-        return CreatedServiceAccountDTO(service_account=created, credential=credential)
-
-
-class RevokeServiceAccount:
-    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
-        self.access = access
-        self.audit = audit
-        self.transaction = transaction
-
-    def execute(self, actor: Any, service_account_id: str) -> ServiceAccountDTO:
-        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.gerenciar")
-        revoked = self.access.revoke_service_account(service_account_id)
-        _audit(self.audit, actor, "service_account_revoked", "service_account", service_account_id)
-        self.transaction.commit()
-        return revoked
-
-
-class UpdateServiceAccount:
-    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
-        self.access = access
-        self.audit = audit
-        self.transaction = transaction
-
-    def execute(self, actor: Any, service_account_id: str, payload: dict[str, Any]) -> ServiceAccountDTO:
-        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.gerenciar")
-        updated = self.access.update_service_account(service_account_id, payload)
-        _audit(self.audit, actor, "service_account_updated", "service_account", service_account_id, after={"permission_count": len(updated.permissions), "status": updated.status})
-        self.transaction.commit()
-        return updated
-
-
-class DeleteServiceAccount:
-    def __init__(self, access: AccessRepository, audit: SqlAlchemyAuditEventRepository, transaction: TransactionManager) -> None:
-        self.access = access
-        self.audit = audit
-        self.transaction = transaction
-
-    def execute(self, actor: Any, service_account_id: str) -> None:
-        PermissionChecker(self.access).ensure_permission(actor, "contas_de_servico.gerenciar")
-        self.access.delete_service_account(service_account_id)
-        _audit(self.audit, actor, "service_account_deleted", "service_account", service_account_id)
-        self.transaction.commit()
+def _usuario_tecnico(access: Any, user_id: int) -> bool:
+    """Usuário por trás de uma conta de serviço (13/11/2026). Repositórios de teste sem o método: não é."""
+    conferir = getattr(access, "e_usuario_tecnico", None)
+    return bool(conferir(user_id)) if callable(conferir) else False
 
 
 def _role_slug(user: Any) -> str | None:

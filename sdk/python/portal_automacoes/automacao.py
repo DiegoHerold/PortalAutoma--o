@@ -26,6 +26,10 @@ Parar e cancelar (0.4.0): o SDK atende os comandos do Portal sozinho, em qualque
   PORTAL_LIMITE_SEM_PORTAL_S), ou o Portal dizendo que o job não vale mais (401/409), o SDK
   avisa no log local e cancela a execução do mesmo jeito: a automação não roda às cegas.
 
+Segredos (0.5.0): ``a.segredo("dominio.senha_banco")`` devolve o valor ligado à automação no
+Portal (aba Técnico), só durante a execução. O valor fica na memória e vira ``***`` em todo
+evento e no log local. Ver ``segredos.py``.
+
 ``segundo_plano=True`` (ou PORTAL_ENVIO_EM_SEGUNDO_PLANO=1): uma thread do SDK envia os
 eventos, as imagens, os arquivos entregues (``arquivo()``) e consulta os comandos. Quem emite nunca espera a rede: com o Portal
 fora do ar, o robô segue no mesmo ritmo e tudo fica na fila local. Recomendado para
@@ -47,13 +51,14 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Sequence
 
 from . import eventos, imagens
+from .segredos import MINIMO_PARA_MASCARAR, SegredoIndisponivel, mascarar, normalizar
 from .fila import FilaLocal
 from .transporte import FalhaDeTransporte, Recusado, Transporte, TransporteDesligado
 from .transporte_agente import TransporteAgente
 from .enderecos import ligado
 from .transporte_direto import TransporteDireto
 
-VERSAO_SDK = "0.4.0"
+VERSAO_SDK = "0.5.0"
 INTERVALO_COMANDOS_S = 2.0
 PRAZO_CANCELAR_S = 60.0  # depois de "cancelar", quanto a automação tem para parar sozinha
 FOLGA_ENCERRAR_S = 15.0  # depois da interrupção, quanto até encerrar o processo (só processo próprio)
@@ -132,6 +137,9 @@ class Automacao:
         self._arquivos: list[tuple[Path, str, str | None]] = []  # entregues e ainda não enviados
         self._trava_arquivos = threading.Lock()  # só protege a lista; nunca segura outra trava
         self._enviador: threading.Thread | None = None
+        self._segredos: dict[str, str] = {}  # só na memória
+        self._mascarar: list[str] = []  # valores a trocar por *** (o mais longo primeiro)
+        self._trava_segredos = threading.Lock()
         if segundo_plano:
             self._enviador = threading.Thread(target=self._enviar_em_segundo_plano, name="portal-automacoes-envio",
                                               daemon=True)
@@ -595,8 +603,43 @@ class Automacao:
             if comando["type"] in ("cancelar", "parar_apos_item"):
                 self._receber(comando["type"], motivo)
 
+    # -- segredos -------------------------------------------------------------------
+    def segredo(self, chave: str) -> str:
+        """Valor do segredo ligado a esta automação no Portal. Levanta ``SegredoIndisponivel``."""
+        return self.segredos(chave)[normalizar(chave)]
+
+    def segredos(self, *chaves: str) -> dict[str, str]:
+        """Vários de uma vez (um pedido só). Devolve ``{chave: valor}`` com as chaves normalizadas."""
+        if not chaves:
+            raise ValueError("informe ao menos uma chave")
+        pedidas = list(dict.fromkeys(normalizar(c) for c in chaves))
+        with self._trava_segredos:
+            faltam = [c for c in pedidas if c not in self._segredos]
+            if faltam:
+                buscar = getattr(self._transporte, "segredos", None)
+                if buscar is None:
+                    raise SegredoIndisponivel(f"o modo {self.modo} não entrega segredos")
+                try:
+                    resposta = buscar(faltam)
+                except FalhaDeTransporte as exc:
+                    raise SegredoIndisponivel(f"Portal indisponível para entregar {', '.join(faltam)}: {exc}") from exc
+                except Recusado as exc:
+                    raise SegredoIndisponivel(f"o Portal recusou o pedido de segredos: {exc}") from exc
+                for chave, valor in (resposta.get("segredos") or {}).items():
+                    if isinstance(valor, str):
+                        self._segredos[chave] = valor
+                        if len(valor) >= MINIMO_PARA_MASCARAR and valor not in self._mascarar:
+                            self._mascarar = sorted([*self._mascarar, valor], key=len, reverse=True)
+                negados = {c: m for c, m in (resposta.get("negados") or {}).items() if c in faltam}
+                ausentes = [c for c in faltam if c not in self._segredos]
+                if ausentes:
+                    motivos = "; ".join(f"{c}: {negados.get(c, 'não veio do Portal')}" for c in ausentes)
+                    raise SegredoIndisponivel(f"segredo indisponível ({motivos})")
+            return {c: self._segredos[c] for c in pedidas}
+
     # -- envio ----------------------------------------------------------------------
     def _emitir(self, tipo: str, payload: dict[str, Any]) -> None:
+        payload = mascarar(payload, self._mascarar)  # nem a fila local guarda o valor
         with self._trava:
             self._sequencia += 1
             evento = eventos.montar(self._sequencia, tipo, payload)
@@ -671,7 +714,7 @@ class Automacao:
 
     def _avisar(self, texto: str) -> None:
         try:
-            print(f"[portal-automacoes] {texto}", file=self._log_local, flush=True)
+            print(f"[portal-automacoes] {mascarar(texto, self._mascarar)}", file=self._log_local, flush=True)
         except (OSError, ValueError):
             pass
 

@@ -102,7 +102,7 @@ test("voltar: de dentro de uma automação volta para onde estava", async ({ pag
   await page.getByTestId("botao-voltar").click();
   await expect(page).toHaveURL(/\/automations$/);
   await expect(page.getByTestId("botao-voltar")).toHaveCount(0);
-  await page.getByText(AUTOMACAO.name).first().click();  // navegando pelo Portal: volta para a anterior
+  await page.getByRole("link", { name: `Abrir ${AUTOMACAO.name}` }).click();  // navegando pelo Portal: volta para a anterior
   await expect(page).toHaveURL(/\/automations\/7/);
   await page.getByRole("button", { name: "Itens" }).click();
   await page.getByTestId("botao-voltar").click();

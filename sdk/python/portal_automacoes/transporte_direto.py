@@ -73,6 +73,11 @@ class TransporteDireto:
     def fechar(self) -> None:
         return None
 
+    def segredos(self, chaves: list[str]) -> dict[str, Any]:
+        """Só durante a execução e com o token deste job; a resposta não é guardada em disco."""
+        resposta = self._pedir("POST", "/segredos", {"chaves": chaves})
+        return {"segredos": dict(resposta.get("segredos") or {}), "negados": dict(resposta.get("negados") or {})}
+
     def _pedir(self, metodo: str, caminho: str, corpo: Any = None, corpo_bruto: Any = None,
                tipo: str = "application/json", tamanho: int | None = None,
                tempo_limite_s: float | None = None) -> dict[str, Any]:

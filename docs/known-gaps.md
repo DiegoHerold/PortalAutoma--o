@@ -15,11 +15,14 @@ envio individual, retomada e finalizacao transacional.
 
 ## Metadados de secret e auditoria estruturada
 
-O Catalogo de Secrets nao possui endpoint para consultar o historico de
-`SecretVersion`. A criacao e a rotacao retornam metadados da versao criada,
-mas a listagem de secrets nao inclui a expiracao da versao atual. Por isso, a
-interface nao infere expiracao, nao inventa historico e nunca oferece consulta
-do valor protegido.
+Resolvido em 13/11/2026: `GET /segredos` traz versao, validade e ultimo uso, e
+`GET /segredos/{id}/versoes` traz o historico (sem valor). A interface nunca
+oferece consulta do valor protegido.
+
+Segredos no modo agente (13/11/2026): o Agent ainda nao entrega segredos a
+automacao. No modo agente, `Automacao.segredo()` levanta `SegredoIndisponivel`
+dizendo isso. Para entregar, o Agent precisa pedir ao Portal (com a identidade
+dele e a tentativa) e passar pelo pipe da tentativa; nao implementado.
 
 `GET /governance/audit-events` aceita busca geral, tipo de ator, recurso,
 acao, intervalo de datas, limite e deslocamento, mas nao retorna um total nem

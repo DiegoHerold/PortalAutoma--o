@@ -10,15 +10,11 @@ from infrastructure.database import get_db
 from modules.access.api.dependencies import get_current_user
 from modules.access.api.schemas import (
     AuthenticatedUserResponse,
-    CreatedServiceAccountResponse,
     LoginRequest,
     OrganizationCreateRequest,
     OrganizationResponse,
     OrganizationUpdateRequest,
     RoleResponse,
-    ServiceAccountCreateRequest,
-    ServiceAccountResponse,
-    ServiceAccountUpdateRequest,
     TeamCreateRequest,
     TeamResponse,
     TeamUpdateRequest,
@@ -31,23 +27,18 @@ from modules.access.api.schemas import (
 from modules.access.application.dto import to_payload
 from modules.access.application.use_cases import (
     CreateOrganization,
-    CreateServiceAccount,
     CreateTeam,
     CreateUser,
     DeleteOrganization,
-    DeleteServiceAccount,
     DeleteTeam,
     DeleteUser,
     GetAuthenticatedUser,
     ListOrganizations,
     ListRoles,
-    ListServiceAccounts,
     ListTeams,
     ListUsers,
     LoginUser,
-    RevokeServiceAccount,
     UpdateOrganization,
-    UpdateServiceAccount,
     UpdateTeam,
     UpdateUser,
 )
@@ -113,6 +104,8 @@ def update_user(user_id: int, payload: UserUpdateRequest, db: Session = Depends(
         result = UpdateUser(adapters.access, adapters.passwords, adapters.audit, adapters.transaction).execute(user, user_id, payload.model_dump())
     except AuthorizationDenied as exc:
         raise http_error(status.HTTP_403_FORBIDDEN, "PERMISSION_DENIED", str(exc)) from exc
+    except AccessConflict as exc:
+        raise http_error(status.HTTP_409_CONFLICT, "CONFLICT", str(exc)) from exc
     except AccessResourceNotFound as exc:
         raise http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc)) from exc
     return UserResponse(**to_payload(result))
@@ -249,56 +242,10 @@ def delete_team(team_id: int, db: Session = Depends(get_db), user: Any = Depends
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/service-accounts", response_model=list[ServiceAccountResponse])
-def list_service_accounts(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> list[ServiceAccountResponse]:
-    adapters = build_access_adapters(db)
-    try:
-        return [ServiceAccountResponse(**to_payload(item)) for item in ListServiceAccounts(adapters.access).execute(user)]
-    except AuthorizationDenied as exc:
-        raise http_error(status.HTTP_403_FORBIDDEN, "PERMISSION_DENIED", str(exc)) from exc
-
-
-@router.post("/service-accounts", response_model=CreatedServiceAccountResponse, status_code=status.HTTP_201_CREATED)
-def create_service_account(payload: ServiceAccountCreateRequest, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> CreatedServiceAccountResponse:
-    adapters = build_access_adapters(db)
-    try:
-        result = CreateServiceAccount(adapters.access, adapters.passwords, adapters.audit, adapters.transaction).execute(user, payload.model_dump())
-    except AuthorizationDenied as exc:
-        raise http_error(status.HTTP_403_FORBIDDEN, "PERMISSION_DENIED", str(exc)) from exc
-    return CreatedServiceAccountResponse(**to_payload(result))
-
-
-@router.put("/service-accounts/{service_account_id}", response_model=ServiceAccountResponse)
-def update_service_account(service_account_id: str, payload: ServiceAccountUpdateRequest, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> ServiceAccountResponse:
-    adapters = build_access_adapters(db)
-    try:
-        result = UpdateServiceAccount(adapters.access, adapters.audit, adapters.transaction).execute(user, service_account_id, payload.model_dump())
-    except AuthorizationDenied as exc:
-        raise http_error(status.HTTP_403_FORBIDDEN, "PERMISSION_DENIED", str(exc)) from exc
-    except AccessResourceNotFound as exc:
-        raise http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc)) from exc
-    return ServiceAccountResponse(**to_payload(result))
-
-
-@router.delete("/service-accounts/{service_account_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-def delete_service_account(service_account_id: str, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> Response:
-    adapters = build_access_adapters(db)
-    try:
-        DeleteServiceAccount(adapters.access, adapters.audit, adapters.transaction).execute(user, service_account_id)
-    except AuthorizationDenied as exc:
-        raise http_error(status.HTTP_403_FORBIDDEN, "PERMISSION_DENIED", str(exc)) from exc
-    except AccessResourceNotFound as exc:
-        raise http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc)) from exc
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/service-accounts/{service_account_id}/revoke", response_model=ServiceAccountResponse)
-def revoke_service_account(service_account_id: str, db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> ServiceAccountResponse:
-    adapters = build_access_adapters(db)
-    try:
-        result = RevokeServiceAccount(adapters.access, adapters.audit, adapters.transaction).execute(user, service_account_id)
-    except AuthorizationDenied as exc:
-        raise http_error(status.HTTP_403_FORBIDDEN, "PERMISSION_DENIED", str(exc)) from exc
-    except ValueError as exc:
-        raise http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc)) from exc
-    return ServiceAccountResponse(**to_payload(result))
+@router.api_route("/service-accounts", methods=["GET", "POST"], include_in_schema=False)
+@router.api_route("/service-accounts/{service_account_id}", methods=["PUT", "DELETE"], include_in_schema=False)
+@router.api_route("/service-accounts/{service_account_id}/revoke", methods=["POST"], include_in_schema=False)
+def service_accounts_antigo(service_account_id: str | None = None) -> Response:
+    """Desligadas em 13/11/2026: as contas de serviço têm papel e times e ficam em
+    ``/contas-de-servico`` (``api/contas_de_servico.py``)."""
+    raise http_error(status.HTTP_410_GONE, "GONE", "As contas de serviço ficam em /contas-de-servico.")

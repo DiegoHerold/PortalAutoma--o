@@ -154,6 +154,31 @@ Histórico para uma execução.
   Monitorar, Operação, Catálogo, Infraestrutura, Segurança, Pessoas e acesso, Governança.
 - Cartões (`Card`, `SectionCard`, `EmptyState`) com canto `rounded-xl` e título em Arial
   (`titulo-condensado`). Texto de tela sempre com acento.
+- **Cartão do Catálogo** (`automation-card.tsx`, 12/11/2026): só o que serve para usar a
+  automação: categoria (em caixa alta, acima do nome), nome, selos (Arquivada, Inativa,
+  Rodando, "N na fila"), descrição e, no rodapé, a última execução ("Última há 2 h ·
+  Concluída" ou "Ainda não rodou") e **Executar**. Executar só aparece para quem pode executar
+  e abre a mesma janela do Painel (`useDisparo`). Editar e Arquivar ficam como ícones e só para
+  quem gerencia automações. O cartão inteiro é um link; os botões ficam por cima dele. Executor,
+  prioridade, tempo limite, slug e pacote não vão no cartão: ficam na aba Técnico.
+- **Página da automação**: um único Executar, no cabeçalho. Quando nada roda, a Visão geral
+  mostra só o texto "Nada rodando desta automação agora.", sem outro botão.
+- **Aba Técnico** (`tecnico-da-automacao.tsx`), em blocos: Versões e publicação (com a origem
+  do pacote e "Verificar atualização" para GitHub); Como roda (tipo, prioridade padrão, tempo
+  limite, tentativas extras, e em quais máquinas a automação direta está inscrita); Disparos
+  automáticos (agendamentos e webhooks); Acessos (explica que vem dos times e leva às
+  exceções); "Para quem desenvolve" (ID, chave, slug e JSON), recolhido. Não mostra mais
+  preferência de workers nem a lista de workers, que o despacho pela Fila não usa.
+
+- **Segredos** (`secrets-manager.tsx`, 13/11/2026): tabela com o segredo (nome e chave em
+  mono, versão), **Usado por** (automações), **Último uso** e situação (Ativo, Desativado,
+  Vencido). O painel lateral tem Trocar valor, Desativar/Reativar, a lista de automações com
+  caixas de marcar (Salvar automações), o trecho `a.segredo("chave")` e as versões. O valor
+  nunca aparece. Na aba Técnico da automação, o bloco **Segredos que usa** lista, liga e desliga.
+- **Contas de serviço** (`service-accounts-manager.tsx`): explicação curta no topo (papel =
+  áreas, times = automações; para disparar de fora, webhook), tabela com papel, times,
+  credencial (`psa_…abcd`), último uso e situação. A credencial nova aparece numa janela que só
+  fecha depois de marcar "Guardei a credencial", com Copiar e o exemplo `curl`.
 
 ## Estimativas e motivos (regra de tela)
 

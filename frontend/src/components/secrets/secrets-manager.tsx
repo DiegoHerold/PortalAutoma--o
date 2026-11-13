@@ -1,57 +1,338 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { KeyRound, Plus, RotateCw, ShieldCheck, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { KeyRound, Plus, RotateCw, Search } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
-import { FiltrosEscondidos } from "@/components/shared/filtros-escondidos";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
+import { Field, Input, Label, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Sheet } from "@/components/ui/sheet";
-import { SecretStatusBadge } from "@/components/ui/status-badge";
-import { Tabs } from "@/components/ui/tabs";
-import { useAuth } from "@/hooks/use-auth";
-import { useApi } from "@/hooks/use-api";
-import { createSecret, createSecretGrant, revokeSecretGrant, rotateSecret } from "@/lib/governance-api";
-import { hasPermission } from "@/lib/permissions";
-import { SECRET_STATUS } from "@/lib/status";
-import { formatDateTime } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
-import type { SecretGrantResponse, SecretResponse, SecretVersionResponse } from "@/types/governance";
+import { useApi } from "@/hooks/use-api";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/api";
+import { relativo } from "@/lib/fila";
+import { createSecret, rotateSecret } from "@/lib/governance-api";
+import { podeGerenciar } from "@/lib/permissions";
+import { formatDateTime } from "@/lib/utils";
 
-type VersionMap = Record<string, SecretVersionResponse>;
+/*
+ * Segredos (13/11/2026): senhas e chaves que as automações recebem do Portal durante a execução.
+ * A lista mostra o que importa: quais automações usam cada segredo, quando foi usado pela última
+ * vez e se está ativo. O valor nunca volta do Portal; dá para trocar, não para ver.
+ */
+
+export type AutomacaoQueUsa = { id: number; nome: string; ligado_em: string | null; ultimo_uso: string | null };
+export type Segredo = {
+  id: string; chave: string; nome: string; descricao: string | null; situacao: "active" | "disabled" | string;
+  versao: number | null; versao_criada_em: string | null; expira_em: string | null; vencido: boolean;
+  atualizado_em: string | null; automacoes: AutomacaoQueUsa[]; ultimo_uso: string | null;
+};
+type Versao = { versao: number; criada_em: string | null; criada_por: string | null; expira_em: string | null; atual: boolean };
+type Automacao = { id: number; name: string; status?: string };
+
+export function SituacaoDoSegredo({ situacao, vencido }: { situacao: string; vencido: boolean }) {
+  if (situacao !== "active") return <Badge tone="neutral">Desativado</Badge>;
+  if (vencido) return <Badge tone="warning">Vencido</Badge>;
+  return <Badge tone="success">Ativo</Badge>;
+}
+
+function chaveDe(texto: string) {
+  return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9._-]/g, "");
+}
 
 export function SecretsManager() {
-  const { user } = useAuth(); const { toast } = useToast(); const canManage = hasPermission(user, "secret.manage"); const selectedOrganizationId = organizationIdFromParam(useSearchParams().get("organization_id")); const organizationId = selectedOrganizationId ?? user?.organization_id ?? null;
-  const path = organizationId == null ? "/secrets" : `/secrets?organization_id=${organizationId}`;
-  const secrets = useApi<SecretResponse[]>(path);
-  const [query, setQuery] = useState(""); const [status, setStatus] = useState(""); const [selected, setSelected] = useState<SecretResponse | null>(null); const [createOpen, setCreateOpen] = useState(false); const [rotate, setRotate] = useState<SecretResponse | null>(null); const [versions, setVersions] = useState<VersionMap>({});
-  const filtered = useMemo(() => (secrets.data ?? []).filter((secret) => { const search = query.trim().toLowerCase(); return (!search || secret.key.toLowerCase().includes(search) || secret.name.toLowerCase().includes(search)) && (!status || secret.status === status); }), [secrets.data, query, status]);
-  function rememberVersion(secret: SecretResponse, version: SecretVersionResponse) { setVersions((current) => ({ ...current, [secret.id]: version })); }
-  if (secrets.error) return <ErrorState message={secrets.error.includes("403") ? "Você não tem permissão para consultar metadados de secrets." : secrets.error} onRetry={secrets.refetch} />;
-  return <div className="space-y-4"><div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-end lg:justify-between"><FiltrosEscondidos className="sm:grid-cols-2"><Field><Label htmlFor="secret-query">Pesquisar</Label><Input id="secret-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Chave ou nome" /></Field><Field><Label htmlFor="secret-status">Status</Label><Select id="secret-status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos os status</option>{Object.entries(SECRET_STATUS).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}</Select></Field></FiltrosEscondidos>{canManage && <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> Novo secret</Button>}</div>{secrets.loading ? <div className="h-64 animate-pulse rounded-lg bg-muted" /> : filtered.length === 0 ? <EmptyState icon={KeyRound} title="Nenhum secret encontrado" description="O valor das credenciais nunca é exibido nesta área." action={canManage ? <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> Criar secret</Button> : undefined} /> : <div className="overflow-x-auto rounded-xl border border-border bg-card"><table className="min-w-[720px] w-full text-sm"><thead className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-4 py-3">Secret</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Escopo</th><th className="px-4 py-3">Atualizado</th><th className="px-4 py-3" /></tr></thead><tbody>{filtered.map((secret) => <tr key={secret.id} className="border-b border-border last:border-b-0"><td className="px-4 py-3"><p className="font-medium">{secret.name}</p><p className="tabular text-xs text-muted-foreground">{secret.key}</p></td><td className="px-4 py-3"><SecretStatusBadge status={secret.status} /></td><td className="px-4 py-3 text-muted-foreground">{secret.organization_id ?? "Global"}</td><td className="px-4 py-3 text-muted-foreground">{formatDateTime(secret.updated_at)}</td><td className="px-4 py-3 text-right"><Button size="sm" variant="outline" onClick={() => setSelected(secret)}>Detalhes</Button></td></tr>)}</tbody></table></div>}<SecretCreateModal open={createOpen} organizationId={organizationId} onClose={() => setCreateOpen(false)} onCreated={async (secret, version) => { rememberVersion(secret, version); setSelected(secret); await secrets.refetch(); toast({ title: "Secret criado", description: "O valor foi protegido e não pode ser consultado aqui.", kind: "success" }); }} /><SecretRotateModal secret={rotate} onClose={() => setRotate(null)} onRotated={async (secret, version) => { rememberVersion(secret, version); setSelected(secret); await secrets.refetch(); toast({ title: "Secret rotacionado", description: "O novo valor foi protegido e não pode ser consultado aqui.", kind: "success" }); }} /><SecretDetails secret={selected} version={selected ? versions[selected.id] : undefined} canManage={canManage} onClose={() => setSelected(null)} onRotate={() => selected && setRotate(selected)} /></div>;
+  const { user } = useAuth();
+  const gerencia = podeGerenciar(user, "segredos");
+  const segredos = useApi<{ segredos: Segredo[] }>("/segredos");
+  const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [novo, setNovo] = useState(false);
+
+  const lista = useMemo(() => (Array.isArray(segredos.data?.segredos) ? segredos.data.segredos : []), [segredos.data]);
+  const filtrada = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return lista;
+    return lista.filter((s) => [s.nome, s.chave, ...s.automacoes.map((a) => a.nome)].some((t) => t.toLowerCase().includes(termo)));
+  }, [lista, busca]);
+  const selecionado = lista.find((s) => s.id === aberto) ?? null;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar segredo ou automação..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+        {gerencia && <Button onClick={() => setNovo(true)}><Plus className="h-4 w-4" /> Novo segredo</Button>}
+      </div>
+
+      {segredos.error ? (
+        <ErrorState message={segredos.error} onRetry={segredos.refetch} />
+      ) : segredos.loading && !segredos.data ? (
+        <div className="skeleton h-64 rounded-xl" />
+      ) : filtrada.length === 0 ? (
+        <EmptyState icon={KeyRound} title={lista.length ? "Nenhum segredo encontrado" : "Nenhum segredo cadastrado"}
+          description="Cadastre a senha uma vez aqui e ligue às automações que precisam dela, em vez de deixar no .env de cada máquina."
+          action={gerencia && !lista.length ? <Button onClick={() => setNovo(true)}><Plus className="h-4 w-4" /> Novo segredo</Button> : undefined} />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+          <table className="w-full min-w-[760px] text-sm" data-testid="lista-de-segredos">
+            <thead className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wider text-muted-foreground">
+              <tr><th className="px-4 py-3">Segredo</th><th className="px-4 py-3">Usado por</th><th className="px-4 py-3">Último uso</th>
+                <th className="px-4 py-3">Situação</th></tr>
+            </thead>
+            <tbody>
+              {filtrada.map((s) => (
+                <tr key={s.id} data-segredo={s.chave} className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/30"
+                  onClick={() => setAberto(s.id)}>
+                  <td className="px-4 py-3">
+                    <button type="button" className="text-left font-semibold text-titulo hover:underline" onClick={() => setAberto(s.id)}>{s.nome}</button>
+                    <p className="font-mono text-xs text-muted-foreground">{s.chave}{s.versao ? ` · versão ${s.versao}` : ""}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    {s.automacoes.length === 0 ? <span className="text-muted-foreground">nenhuma automação</span> : (
+                      <div className="flex flex-wrap gap-1">{s.automacoes.map((a) => <Badge key={a.id} tone="outline">{a.nome}</Badge>)}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{s.ultimo_uso ? relativo(s.ultimo_uso) : "nunca"}</td>
+                  <td className="px-4 py-3"><SituacaoDoSegredo situacao={s.situacao} vencido={s.vencido} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <NovoSegredo aberto={novo} onFechar={() => setNovo(false)} onCriado={async (id) => { setNovo(false); await segredos.refetch(); setAberto(id); }} />
+      <DetalhesDoSegredo segredo={selecionado} gerencia={gerencia} onFechar={() => setAberto(null)} onMudou={segredos.refetch} />
+    </div>
+  );
 }
 
-function SecretCreateModal({ open, organizationId, onClose, onCreated }: { open: boolean; organizationId: number | null; onClose: () => void; onCreated: (secret: SecretResponse, version: SecretVersionResponse) => Promise<void> }) {
-  const { token } = useAuth(); const { toast } = useToast(); const [form, setForm] = useState({ key: "", name: "", description: "", value: "", confirmation: "", expiresAt: "" }); const [scope, setScope] = useState<"current" | "global">(organizationId == null ? "global" : "current"); const [expires, setExpires] = useState("never"); const [reveal, setReveal] = useState(false); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (!open) return; setForm({ key: "", name: "", description: "", value: "", confirmation: "", expiresAt: "" }); setScope(organizationId == null ? "global" : "current"); setExpires("never"); setReveal(false); setError(null); }, [open, organizationId]);
-  function close() { setForm((current) => ({ ...current, value: "", confirmation: "" })); setError(null); onClose(); }
-  async function submit() { if (!form.key.trim() || !form.name.trim() || !form.value || form.value !== form.confirmation || (expires === "date" && !form.expiresAt)) { setError("Informe identificação, valor confirmado e uma data quando houver expiração."); return; } setSubmitting(true); setError(null); try { const result = await createSecret(token, { key: form.key.trim(), name: form.name.trim(), value: form.value, description: form.description.trim() || undefined, organization_id: scope === "current" ? organizationId ?? undefined : undefined, expires_at: expires === "date" ? toIso(form.expiresAt) : undefined }); await onCreated(result.secret, result.version); close(); } catch { setForm((current) => ({ ...current, value: "", confirmation: "" })); setError("Não foi possível criar o secret. Nenhum valor permanece guardado no navegador."); toast({ title: "Falha ao criar secret", kind: "error" }); } finally { setSubmitting(false); } }
-  return <Modal open={open} onClose={close} title="Novo secret" description="Cadastre a credencial e defina onde ela podera ser usada." className="max-w-3xl" footer={<><Button variant="ghost" onClick={close}>Cancelar</Button><Button onClick={submit} disabled={submitting}>{submitting ? "Protegendo..." : "Criar secret"}</Button></>}><div className="space-y-6">{error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}<section className="space-y-4"><div><h3 className="text-sm font-semibold">Identificação</h3><p className="mt-1 text-xs text-muted-foreground">A chave é usada nas automações. Escolha um nome compreensivel para quem vai administrar a credencial.</p></div><div className="grid gap-4 sm:grid-cols-2"><Field><Label htmlFor="secret-name">Nome</Label><Input id="secret-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="API de pagamentos" /></Field><Field><Label htmlFor="secret-key">Chave</Label><Input id="secret-key" value={form.key} onChange={(event) => setForm({ ...form, key: event.target.value })} autoComplete="off" placeholder="payments_api" /><p className="text-xs text-muted-foreground">Espacos sao normalizados para sublinhado.</p></Field><Field className="sm:col-span-2"><Label htmlFor="secret-description">Finalidade</Label><Textarea id="secret-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Qual integração usa esta credencial?" /></Field></div></section><section className="border-y border-border py-5"><div className="mb-4"><h3 className="text-sm font-semibold">Proteção e validade</h3><p className="mt-1 text-xs text-muted-foreground">O valor é enviado apenas nesta operação e não pode ser revelado depois de salvo.</p></div><div className="grid gap-4 sm:grid-cols-2"><Field><Label htmlFor="secret-scope">Escopo</Label><Select id="secret-scope" value={scope} onChange={(event) => setScope(event.target.value as "current" | "global")}><option value="global">Global</option>{organizationId != null && <option value="current">Organizacao {organizationId}</option>}</Select></Field><Field><Label htmlFor="secret-expiration">Validade</Label><Select id="secret-expiration" value={expires} onChange={(event) => setExpires(event.target.value)}><option value="never">Sem expiração</option><option value="date">Expira em uma data</option></Select></Field>{expires === "date" && <Field className="sm:col-span-2"><Label htmlFor="secret-expires">Data de expiração</Label><Input id="secret-expires" type="datetime-local" value={form.expiresAt} onChange={(event) => setForm({ ...form, expiresAt: event.target.value })} /></Field>}<Field className="sm:col-span-2"><Label htmlFor="secret-value">Valor</Label><Input id="secret-value" type={reveal ? "text" : "password"} value={form.value} onChange={(event) => setForm({ ...form, value: event.target.value })} autoComplete="new-password" /><label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={reveal} onChange={(event) => setReveal(event.target.checked)} /> Revelar apenas o valor digitado localmente</label></Field><Field className="sm:col-span-2"><Label htmlFor="secret-confirmation">Confirmar valor</Label><Input id="secret-confirmation" type="password" value={form.confirmation} onChange={(event) => setForm({ ...form, confirmation: event.target.value })} autoComplete="new-password" /></Field></div></section><div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm"><p className="font-medium">Revisao de segurança</p><p className="mt-1 text-xs text-muted-foreground">Depois de criar, use a aba de acessos para conceder somente a permissão necessaria e rotacione a credencial quando ela for renovada.</p></div></div></Modal>;
+function NovoSegredo({ aberto, onFechar, onCriado }: { aberto: boolean; onFechar: () => void; onCriado: (id: string) => Promise<void> }) {
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const vazio = { nome: "", chave: "", chaveMexida: false, descricao: "", valor: "", confirmar: "", expira: "" };
+  const [f, setF] = useState(vazio);
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  function fechar() { setF(vazio); setErro(null); onFechar(); }
+
+  async function salvar() {
+    if (!f.nome.trim() || !f.chave.trim() || !f.valor) return setErro("Preencha nome, chave e valor.");
+    if (f.valor !== f.confirmar) return setErro("O valor e a confirmação não são iguais.");
+    setSalvando(true); setErro(null);
+    try {
+      const r = await createSecret(token, { name: f.nome.trim(), key: f.chave.trim(), value: f.valor, description: f.descricao.trim() || undefined,
+        expires_at: f.expira ? new Date(f.expira).toISOString() : undefined });
+      toast({ title: "Segredo criado", description: "Agora ligue às automações que vão usá-lo.", kind: "success" });
+      setF(vazio);
+      await onCriado(r.secret.id);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível criar o segredo.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal open={aberto} onClose={fechar} title="Novo segredo" description="O valor é guardado criptografado e nunca mais aparece no Portal."
+      footer={<><Button variant="ghost" onClick={fechar}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando..." : "Criar segredo"}</Button></>}>
+      <div className="space-y-4">
+        {erro && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{erro}</p>}
+        <Field><Label htmlFor="segredo-nome">Nome</Label>
+          <Input id="segredo-nome" value={f.nome} placeholder="Senha do banco da Domínio"
+            onChange={(e) => setF({ ...f, nome: e.target.value, chave: f.chaveMexida ? f.chave : chaveDe(e.target.value) })} /></Field>
+        <Field><Label htmlFor="segredo-chave">Chave</Label>
+          <Input id="segredo-chave" className="font-mono" value={f.chave} placeholder="dominio.senha_banco" autoComplete="off"
+            onChange={(e) => setF({ ...f, chave: e.target.value, chaveMexida: true })} />
+          <p className="text-xs text-muted-foreground">É o nome que a automação usa: <code className="font-mono">a.segredo(&quot;{f.chave || "dominio.senha_banco"}&quot;)</code></p></Field>
+        <Field><Label htmlFor="segredo-descricao">Para que serve <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+          <Textarea id="segredo-descricao" rows={2} value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} /></Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field><Label htmlFor="segredo-valor">Valor</Label>
+            <Input id="segredo-valor" type="password" autoComplete="new-password" value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} /></Field>
+          <Field><Label htmlFor="segredo-confirmar">Confirmar valor</Label>
+            <Input id="segredo-confirmar" type="password" autoComplete="new-password" value={f.confirmar} onChange={(e) => setF({ ...f, confirmar: e.target.value })} /></Field>
+        </div>
+        <Field><Label htmlFor="segredo-expira">Vence em <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+          <Input id="segredo-expira" type="datetime-local" value={f.expira} onChange={(e) => setF({ ...f, expira: e.target.value })} /></Field>
+      </div>
+    </Modal>
+  );
 }
 
-function SecretRotateModal({ secret, onClose, onRotated }: { secret: SecretResponse | null; onClose: () => void; onRotated: (secret: SecretResponse, version: SecretVersionResponse) => Promise<void> }) { const { token } = useAuth(); const { toast } = useToast(); const [value, setValue] = useState(""); const [confirmation, setConfirmation] = useState(""); const [expiresAt, setExpiresAt] = useState(""); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState<string | null>(null); useEffect(() => { if (!secret) { setValue(""); setConfirmation(""); setExpiresAt(""); setError(null); } }, [secret]); async function submit() { if (!secret || !value || value !== confirmation) { setError("Informe e confirme o novo valor."); return; } setSubmitting(true); setError(null); try { const result = await rotateSecret(token, secret.id, { value, expires_at: toIso(expiresAt) }); await onRotated(result.secret, result.version); onClose(); } catch { setValue(""); setConfirmation(""); setError("Não foi possível rotacionar o secret."); toast({ title: "Falha ao rotacionar secret", kind: "error" }); } finally { setSubmitting(false); } } return <Modal open={!!secret} onClose={onClose} title="Rotacionar secret" description={secret ? `${secret.name} (${secret.key})` : ""} footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button variant="destructive" onClick={submit} disabled={submitting}>{submitting ? "Rotacionando..." : "Confirmar rotação"}</Button></>}><div className="space-y-4"><p className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">A nova versão substitui a credencial em uso. O valor anterior não pode ser recuperado por esta tela.</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Field><Label htmlFor="rotate-value">Novo valor</Label><Input id="rotate-value" type="password" value={value} onChange={(event) => setValue(event.target.value)} autoComplete="new-password" /></Field><Field><Label htmlFor="rotate-confirm">Confirmar novo valor</Label><Input id="rotate-confirm" type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" /></Field><Field><Label htmlFor="rotate-expire">Expira em (opcional)</Label><Input id="rotate-expire" type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></Field></div></Modal>; }
+function DetalhesDoSegredo({ segredo, gerencia, onFechar, onMudou }: { segredo: Segredo | null; gerencia: boolean; onFechar: () => void; onMudou: () => Promise<unknown> }) {
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const versoes = useApi<{ versoes: Versao[] }>(segredo ? `/segredos/${segredo.id}/versoes` : null, { enabled: !!segredo });
+  const automacoes = useApi<Automacao[]>(segredo && gerencia ? "/automations" : null, { enabled: !!segredo && gerencia });
+  const [escolhidas, setEscolhidas] = useState<number[] | null>(null);
+  const [trocando, setTrocando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
 
-function SecretDetails({ secret, version, canManage, onClose, onRotate }: { secret: SecretResponse | null; version?: SecretVersionResponse; canManage: boolean; onClose: () => void; onRotate: () => void }) { const [tab, setTab] = useState("overview"); useEffect(() => { if (secret) setTab("overview"); }, [secret?.id]); return <Sheet open={!!secret} onClose={onClose} title={secret?.name} description={secret?.key} widthClassName="w-full sm:max-w-3xl">{secret && <div className="space-y-5"><Tabs items={[{ value: "overview", label: "Visao geral" }, { value: "access", label: "Acessos" }, { value: "version", label: "Versão atual" }]} value={tab} onValueChange={setTab} />{tab === "overview" && <div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><SecretStatusBadge status={secret.status} />{canManage && <Button variant="outline" onClick={onRotate}><RotateCw className="h-4 w-4" /> Rotacionar</Button>}</div><p className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">Valor protegido e indisponível para consulta.</p><dl className="grid gap-4 text-sm sm:grid-cols-2"><Detail label="Chave" value={secret.key} /><Detail label="Organização" value={secret.organization_id ?? "Global"} /><Detail label="Versão atual" value={secret.current_version_id ?? "Não informada"} /><Detail label="Criado por" value={secret.created_by ?? "Não informado"} /><Detail label="Criado em" value={formatDateTime(secret.created_at)} /><Detail label="Atualizado em" value={formatDateTime(secret.updated_at)} /></dl>{secret.description && <p className="text-sm text-muted-foreground">{secret.description}</p>}</div>}{tab === "access" && <SecretGrants secret={secret} canManage={canManage} />}{tab === "version" && version ? <dl className="grid gap-4 text-sm sm:grid-cols-2"><Detail label="Versão" value={version.version} /><Detail label="Chave de criptografia" value={version.encryption_key_id} /><Detail label="Criada em" value={formatDateTime(version.created_at)} /><Detail label="Expira em" value={version.expires_at ? formatDateTime(version.expires_at) : "Não definida"} /><Detail label="Revogada em" value={version.revoked_at ? formatDateTime(version.revoked_at) : "Não revogada"} /></dl> : <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">O backend atual não expoe histórico de versões. A nova versão aparece aqui apenas após a operação recem-concluida.</p>}</div>}</Sheet>; }
+  const ligadas = segredo?.automacoes.map((a) => a.id) ?? [];
+  const marcadas = escolhidas ?? ligadas;
+  const mudouLigacoes = escolhidas !== null && [...escolhidas].sort().join(",") !== [...ligadas].sort().join(",");
 
-function SecretGrants({ secret, canManage }: { secret: SecretResponse; canManage: boolean }) { const { token } = useAuth(); const { toast } = useToast(); const grants = useApi<SecretGrantResponse[]>(canManage ? `/secrets/${secret.id}/grants` : null, { enabled: canManage }); const [open, setOpen] = useState(false); const [revoke, setRevoke] = useState<SecretGrantResponse | null>(null); const [submitting, setSubmitting] = useState(false); async function revokeGrant() { if (!revoke) return; setSubmitting(true); try { await revokeSecretGrant(token, revoke.id); await grants.refetch(); toast({ title: "Acesso revogado", kind: "success" }); setRevoke(null); } catch { toast({ title: "Não foi possível revogar o acesso", kind: "error" }); } finally { setSubmitting(false); } } if (!canManage) return <p className="rounded-md border border-border p-4 text-sm text-muted-foreground">Você não tem permissão para gerenciar acessos deste secret.</p>; return <div className="space-y-4"><div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">Conceda somente a permissão necessaria para o destinatario.</p><Button size="sm" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Conceder acesso</Button></div>{grants.error ? <ErrorState message={grants.error} onRetry={grants.refetch} /> : grants.loading ? <div className="h-32 animate-pulse rounded bg-muted" /> : (grants.data?.length ?? 0) === 0 ? <EmptyState icon={ShieldCheck} title="Sem concessões" description="Nenhum acesso foi concedido para este secret." /> : <div className="space-y-2">{grants.data?.map((grant) => <div key={grant.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3"><div><p className="text-sm font-medium">{grant.grantee_type} / <span className="tabular">{grant.grantee_id}</span></p><p className="mt-1 text-xs text-muted-foreground">{grant.permission} | expira {grant.expires_at ? formatDateTime(grant.expires_at) : "sem prazo"}</p></div>{grant.revoked_at ? <Badge tone="destructive">Revogado</Badge> : <Button size="sm" variant="destructive" onClick={() => setRevoke(grant)}><Trash2 className="h-4 w-4" /> Revogar</Button>}</div>)}</div>}<GrantModal open={open} secretId={secret.id} onClose={() => setOpen(false)} onCreated={async () => { await grants.refetch(); setOpen(false); toast({ title: "Acesso concedido", kind: "success" }); }} /><Modal open={!!revoke} onClose={() => setRevoke(null)} title="Revogar concessão" description="O acesso sera removido e o registro continuara na auditoria." footer={<><Button variant="ghost" onClick={() => setRevoke(null)}>Cancelar</Button><Button variant="destructive" disabled={submitting} onClick={revokeGrant}>{submitting ? "Revogando..." : "Revogar acesso"}</Button></>}>{revoke && <p className="text-sm">Revogar <span className="font-medium">{revoke.permission}</span> de <span className="tabular font-medium">{revoke.grantee_type} / {revoke.grantee_id}</span>?</p>}</Modal></div>; }
+  async function enviar(caminho: string, metodo: string, corpo: unknown, sucesso: string) {
+    setOcupado(true);
+    try {
+      await apiRequest(caminho, { token, method: metodo, body: JSON.stringify(corpo) });
+      toast({ title: sucesso, kind: "success" });
+      setEscolhidas(null);
+      await Promise.all([onMudou(), versoes.refetch()]);
+    } catch (err) {
+      toast({ title: "Não foi possível salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
+    } finally {
+      setOcupado(false);
+    }
+  }
 
-function GrantModal({ open, secretId, onClose, onCreated }: { open: boolean; secretId: string; onClose: () => void; onCreated: () => Promise<void> }) { const { token } = useAuth(); const { toast } = useToast(); const [form, setForm] = useState({ granteeType: "automation", granteeId: "", permission: "use", expiresAt: "" }); const [expires, setExpires] = useState("never"); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState<string | null>(null); useEffect(() => { if (open) { setForm({ granteeType: "automation", granteeId: "", permission: "use", expiresAt: "" }); setExpires("never"); setError(null); } }, [open]); async function submit() { if (!form.granteeId.trim() || (expires === "date" && !form.expiresAt)) { setError("Informe o destinatario e uma data quando houver expiração."); return; } setSubmitting(true); setError(null); try { await createSecretGrant(token, secretId, { grantee_type: form.granteeType, grantee_id: form.granteeId.trim(), permission: form.permission, expires_at: expires === "date" ? toIso(form.expiresAt) : undefined }); await onCreated(); } catch (err) { setError(err instanceof Error ? err.message : "Não foi possível conceder acesso."); toast({ title: "Falha ao conceder acesso", kind: "error" }); } finally { setSubmitting(false); } } return <Modal open={open} onClose={onClose} title="Conceder acesso" description="Defina destinatario, permissão e validade desta concessão." footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button onClick={submit} disabled={submitting}>{submitting ? "Concedendo..." : "Conceder"}</Button></>}><div className="space-y-4">{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="grid gap-4 sm:grid-cols-2"><Field><Label htmlFor="grant-type">Destinatario</Label><Select id="grant-type" value={form.granteeType} onChange={(event) => setForm({ ...form, granteeType: event.target.value })}><option value="automation">Automação</option><option value="service_account">Conta de serviço</option><option value="team">Equipe</option><option value="user">Usuário</option></Select></Field><Field><Label htmlFor="grant-permission">Permissão</Label><Select id="grant-permission" value={form.permission} onChange={(event) => setForm({ ...form, permission: event.target.value })}><option value="use">Usar o secret</option><option value="read_metadata">Ler metadados</option><option value="manage">Administrar</option></Select></Field><Field className="sm:col-span-2"><Label htmlFor="grant-id">Identificador do destinatario</Label><Input id="grant-id" value={form.granteeId} onChange={(event) => setForm({ ...form, granteeId: event.target.value })} placeholder="ID da automação, conta, equipe ou usuário" /></Field><Field><Label htmlFor="grant-expiration">Validade</Label><Select id="grant-expiration" value={expires} onChange={(event) => setExpires(event.target.value)}><option value="never">Sem expiração</option><option value="date">Expira em uma data</option></Select></Field>{expires === "date" && <Field><Label htmlFor="grant-expire">Data de expiração</Label><Input id="grant-expire" type="datetime-local" value={form.expiresAt} onChange={(event) => setForm({ ...form, expiresAt: event.target.value })} /></Field>}</div></div></Modal>; }
+  function fechar() { setEscolhidas(null); onFechar(); }
 
-function Detail({ label, value }: { label: string; value: React.ReactNode }) { return <div><dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt><dd className="mt-1 break-words">{value}</dd></div>; }
-function toIso(value: string): string | undefined { return value ? new Date(value).toISOString() : undefined; }
-function organizationIdFromParam(value: string | null): number | null { const parsed = Number(value); return value && Number.isInteger(parsed) && parsed > 0 ? parsed : null; }
+  const todas = (Array.isArray(automacoes.data) ? automacoes.data : []).filter((a) => a.status !== "archived" || ligadas.includes(a.id));
+
+  return (
+    <Sheet open={!!segredo} onClose={fechar} title={segredo?.nome} description={segredo ? <span className="font-mono">{segredo.chave}</span> : undefined}
+      widthClassName="w-full sm:max-w-2xl">
+      {segredo && (
+        <div className="space-y-6" data-testid="detalhes-do-segredo">
+          <section className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <SituacaoDoSegredo situacao={segredo.situacao} vencido={segredo.vencido} />
+              <span className="text-sm text-muted-foreground">
+                versão {segredo.versao ?? "—"}{segredo.expira_em ? ` · vence ${formatDateTime(segredo.expira_em)}` : ""}
+              </span>
+            </div>
+            {gerencia && (
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setTrocando(true)}><RotateCw className="h-4 w-4" /> Trocar valor</Button>
+                <Button size="sm" variant="outline" disabled={ocupado}
+                  onClick={() => void enviar(`/segredos/${segredo.id}`, "PUT", { situacao: segredo.situacao === "active" ? "disabled" : "active" },
+                    segredo.situacao === "active" ? "Segredo desativado: nenhuma automação recebe mais" : "Segredo reativado")}>
+                  {segredo.situacao === "active" ? "Desativar" : "Reativar"}
+                </Button>
+              </div>
+            )}
+          </section>
+          {segredo.descricao && <p className="text-sm text-muted-foreground">{segredo.descricao}</p>}
+
+          <section className="space-y-3">
+            <h3 className="font-semibold text-titulo">Automações que usam</h3>
+            {!gerencia ? (
+              segredo.automacoes.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma automação usa este segredo.</p> : (
+                <ul className="divide-y divide-border rounded-lg border border-border">
+                  {segredo.automacoes.map((a) => (
+                    <li key={a.id} className="flex justify-between px-3 py-2 text-sm"><span>{a.nome}</span>
+                      <span className="text-muted-foreground">{a.ultimo_uso ? `usado ${relativo(a.ultimo_uso)}` : "ainda não usou"}</span></li>
+                  ))}
+                </ul>
+              )
+            ) : (
+              <>
+                <ul className="max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border" data-testid="automacoes-do-segredo">
+                  {todas.map((a) => {
+                    const uso = segredo.automacoes.find((x) => x.id === a.id)?.ultimo_uso;
+                    return (
+                      <li key={a.id}>
+                        <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-muted/30">
+                          <input type="checkbox" className="h-4 w-4" checked={marcadas.includes(a.id)}
+                            onChange={(e) => setEscolhidas(e.target.checked ? [...marcadas, a.id] : marcadas.filter((x) => x !== a.id))} />
+                          <span className="flex-1">{a.name}</span>
+                          {uso && <span className="text-xs text-muted-foreground">usado {relativo(uso)}</span>}
+                        </label>
+                      </li>
+                    );
+                  })}
+                  {todas.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">Nenhuma automação cadastrada.</li>}
+                </ul>
+                <div className="flex justify-end gap-2">
+                  {mudouLigacoes && <Button size="sm" variant="ghost" onClick={() => setEscolhidas(null)}>Desfazer</Button>}
+                  <Button size="sm" disabled={!mudouLigacoes || ocupado}
+                    onClick={() => void enviar(`/segredos/${segredo.id}/automacoes`, "PUT", { automacoes: marcadas }, "Automações atualizadas")}>
+                    Salvar automações
+                  </Button>
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className="space-y-2 rounded-lg border border-border bg-muted/20 p-4 text-sm">
+            <h3 className="font-semibold text-titulo">Como a automação usa</h3>
+            <pre className="overflow-x-auto rounded-md bg-card p-3 font-mono text-xs">{`senha = a.segredo("${segredo.chave}")`}</pre>
+            <p className="text-muted-foreground">
+              Só durante a execução e só nas automações marcadas acima (SDK 0.5.0, modo direto). O valor vira *** no log.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="font-semibold text-titulo">Versões</h3>
+            <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+              {(versoes.data?.versoes ?? []).map((v) => (
+                <li key={v.versao} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                  <span className="font-medium">Versão {v.versao} {v.atual && <Badge tone="primary">em uso</Badge>}</span>
+                  <span className="text-muted-foreground">{formatDateTime(v.criada_em)}{v.expira_em ? ` · vence ${formatDateTime(v.expira_em)}` : ""}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      )}
+      <TrocarValor segredo={trocando ? segredo : null} onFechar={() => setTrocando(false)}
+        onTrocado={async () => { setTrocando(false); await Promise.all([onMudou(), versoes.refetch()]); }} />
+    </Sheet>
+  );
+}
+
+function TrocarValor({ segredo, onFechar, onTrocado }: { segredo: Segredo | null; onFechar: () => void; onTrocado: () => Promise<void> }) {
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const [valor, setValor] = useState("");
+  const [confirmar, setConfirmar] = useState("");
+  const [expira, setExpira] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  function fechar() { setValor(""); setConfirmar(""); setExpira(""); setErro(null); onFechar(); }
+
+  async function salvar() {
+    if (!segredo) return;
+    if (!valor) return setErro("Digite o novo valor.");
+    if (valor !== confirmar) return setErro("O valor e a confirmação não são iguais.");
+    setSalvando(true); setErro(null);
+    try {
+      await rotateSecret(token, segredo.id, { value: valor, expires_at: expira ? new Date(expira).toISOString() : undefined });
+      toast({ title: "Valor trocado", description: "As próximas execuções já recebem o novo.", kind: "success" });
+      setValor(""); setConfirmar(""); setExpira("");
+      await onTrocado();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível trocar o valor.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal open={!!segredo} onClose={fechar} title="Trocar valor" description={segredo ? `${segredo.nome} (${segredo.chave})` : undefined}
+      footer={<><Button variant="ghost" onClick={fechar}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando..." : "Trocar valor"}</Button></>}>
+      <div className="space-y-4">
+        <p className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">
+          O valor novo vale a partir do próximo pedido. Execuções que já pegaram o valor antigo seguem com ele.
+        </p>
+        {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
+        <Field><Label htmlFor="troca-valor">Novo valor</Label>
+          <Input id="troca-valor" type="password" autoComplete="new-password" value={valor} onChange={(e) => setValor(e.target.value)} /></Field>
+        <Field><Label htmlFor="troca-confirmar">Confirmar novo valor</Label>
+          <Input id="troca-confirmar" type="password" autoComplete="new-password" value={confirmar} onChange={(e) => setConfirmar(e.target.value)} /></Field>
+        <Field><Label htmlFor="troca-expira">Vence em <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+          <Input id="troca-expira" type="datetime-local" value={expira} onChange={(e) => setExpira(e.target.value)} /></Field>
+      </div>
+    </Modal>
+  );
+}

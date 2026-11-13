@@ -1,101 +1,106 @@
 import Link from "next/link";
-import { ArrowUpRight, PackageCheck, Pencil, Timer, Trash2 } from "lucide-react";
+import { Archive, Pencil, Play } from "lucide-react";
 
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PriorityBadge } from "@/components/ui/status-badge";
-import { executorLabel } from "@/lib/status";
-import { formatDuration } from "@/lib/utils";
+import { SITUACOES } from "@/lib/acompanhar";
+import { relativo } from "@/lib/fila";
 import type { Automation } from "@/types/automation";
+
+/*
+ * Cartão do Catálogo (12/11/2026): o que importa para USAR a automação — nome, categoria, se está
+ * rodando ou na fila, a descrição, a última execução e o botão Executar. Os detalhes técnicos
+ * (executor, prioridade, tempo limite, slug, pacote) ficam na aba Técnico da automação.
+ */
+
+export type UltimaExecucao = { execucao_id: string; status: string; quando: string | null };
 
 export function AutomationCard({
   automation,
   categoryName,
+  rodando = 0,
+  naFila = 0,
+  ultima,
+  onExecutar,
   onEdit,
   onDelete,
   onRestore,
-  rodando = 0,
 }: {
-  onRestore?: (automation: Automation) => void;
   automation: Automation;
+  categoryName?: string;
   /** Execuções desta automação rodando agora (do Painel). */
   rodando?: number;
-  categoryName?: string;
+  /** Jobs desta automação esperando na Fila. */
+  naFila?: number;
+  ultima?: UltimaExecucao | null;
+  /** Só aparece para quem pode executar. */
+  onExecutar?: (automation: Automation) => void;
   onEdit?: (automation: Automation) => void;
   onDelete?: (automation: Automation) => void;
+  onRestore?: (automation: Automation) => void;
 }) {
+  const arquivada = automation.status === "archived";
+  const situacao = ultima ? SITUACOES[ultima.status] ?? { texto: ultima.status, tom: "neutral" as const } : null;
+  const parar = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); };
+
   return (
-    <Link href={`/automations/${automation.id}`} className="group block">
-      <Card className="h-full p-5 transition-colors hover:border-primary/40">
+    <article className="group relative flex h-full flex-col rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/40"
+      data-automacao={automation.id}>
+      <Link href={`/automations/${automation.id}`} className="absolute inset-0 z-0 rounded-xl" aria-label={`Abrir ${automation.name}`} />
+      <div className="pointer-events-none relative flex flex-1 flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate font-display text-base font-semibold">{automation.name}</h3>
-              {automation.status === "archived" ? <Badge tone="neutral">Arquivada</Badge>
-                : !automation.is_active && <Badge tone="neutral">Inativa</Badge>}
-              {rodando > 0 && (
-                <span className="flex items-center gap-1.5 rounded-md bg-success/15 px-2 py-0.5 text-xs font-medium text-success" data-testid="rodando">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" /> Rodando{rodando > 1 ? ` (${rodando})` : ""}
-                </span>
+            {categoryName && <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{categoryName}</p>}
+            <h3 className="mt-0.5 line-clamp-2 text-lg font-semibold leading-snug text-titulo group-hover:underline">{automation.name}</h3>
+          </div>
+          {(onEdit || onDelete) && (
+            <div className="pointer-events-auto relative z-10 flex shrink-0 opacity-60 transition-opacity group-hover:opacity-100">
+              {onEdit && (
+                <button className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Editar ${automation.name}`}
+                  title="Editar" onClick={(e) => { parar(e); onEdit(automation); }}>
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+              {onDelete && (
+                <button className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive" aria-label={`Arquivar ${automation.name}`}
+                  title="Arquivar" onClick={(e) => { parar(e); onDelete(automation); }}>
+                  <Archive className="h-4 w-4" />
+                </button>
               )}
             </div>
-            <p className="tabular mt-0.5 truncate text-xs text-muted-foreground">{automation.slug}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {onRestore && (
-              <Button size="sm" variant="outline" onClick={(e) => { e.preventDefault(); onRestore(automation); }}>
-                Restaurar
-              </Button>
-            )}
-            {onEdit && (
-              <Button
-                size="icon"
-                variant="ghost"
-                title="Editar automação"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onEdit(automation);
-                }}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            )}
-            {onDelete && (
-              <Button
-                size="icon"
-                variant="ghost"
-                title="Arquivar automação"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onDelete(automation);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
-            <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
-          </div>
-        </div>
-
-        <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">
-          {automation.description || "Sem descricao cadastrada."}
-        </p>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <PriorityBadge priority={automation.default_priority} />
-          <Badge tone="outline">{executorLabel(automation.executor_type)}</Badge>
-          {automation.package_url && (
-            <Badge tone="neutral">
-              <PackageCheck className="h-3 w-3" /> pacote
-            </Badge>
           )}
-          {categoryName && <Badge tone="neutral">{categoryName}</Badge>}
-          <span className="tabular ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Timer className="h-3.5 w-3.5" /> {formatDuration(automation.timeout_seconds)}
-          </span>
         </div>
-      </Card>
-    </Link>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {arquivada && <Badge tone="neutral">Arquivada</Badge>}
+          {!arquivada && !automation.is_active && <Badge tone="neutral">Inativa</Badge>}
+          {rodando > 0 && (
+            <span className="flex items-center gap-1.5 rounded-md bg-success/15 px-2 py-0.5 text-xs font-medium text-success" data-testid="rodando">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" /> Rodando{rodando > 1 ? ` (${rodando})` : ""}
+            </span>
+          )}
+          {naFila > 0 && <Badge tone="info">{naFila} na fila</Badge>}
+        </div>
+
+        <p className="line-clamp-2 text-sm text-muted-foreground">{automation.description || "Sem descrição."}</p>
+
+        <div className="mt-auto flex items-center justify-between gap-3 border-t border-border pt-3">
+          <p className="min-w-0 truncate text-sm text-muted-foreground" data-testid="ultima-execucao">
+            {ultima && situacao ? (
+              <>Última {relativo(ultima.quando)} · <span className={situacao.tom === "destructive" ? "text-destructive" : undefined}>{situacao.texto}</span></>
+            ) : "Ainda não rodou"}
+          </p>
+          {onRestore ? (
+            <Button size="sm" variant="outline" className="pointer-events-auto relative z-10" onClick={(e) => { parar(e); onRestore(automation); }}>
+              Restaurar
+            </Button>
+          ) : onExecutar && (
+            <Button size="sm" className="pointer-events-auto relative z-10" onClick={(e) => { parar(e); onExecutar(automation); }}>
+              <Play className="h-4 w-4" /> Executar
+            </Button>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }

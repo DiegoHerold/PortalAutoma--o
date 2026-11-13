@@ -211,6 +211,9 @@ O que fica registrado:
 | Itens | `POST/PUT /automations/{id}/itens...`: com campos editados no Portal, os atributos passam pelas colunas (o que não é coluna fica guardado) | aba Itens | `editar_itens` |
 | Ao vivo | `GET /painel` e `GET /fila`, filtrados por `automation_id` no navegador | aba Visão geral, selo "Rodando" no Catálogo | como no Painel |
 | Histórico | `GET /historico?automacao={id}` | abas Visão geral e Histórico | `ver_execucoes` |
+| Cartões do Catálogo (12/11/2026) | `GET /painel/recentes?limite=200` (última execução de cada cartão; o limite vai de 1 a 200, padrão 3), `GET /fila` ("N na fila") e `GET /painel/executaveis` (quem vê Executar) | `/automations` | como no Painel; Editar/Arquivar/Nova só com `automacoes.gerenciar` |
+| Segredos da automação (13/11/2026) | `GET /segredos/da-automacao/{id}`; `POST`/`DELETE /segredos/da-automacao/{id}/{segredo_id}` | aba Técnico, bloco "Segredos que usa" | `segredos.ver`; ligar e desligar com `segredos.gerenciar` |
+| Técnico (12/11/2026) | `GET /automations/{id}`, `/automations/{id}/sources`, `/schedules`, `/triggers`, `/instancias-diretas` (filtrados por `automation_id` no navegador; sem `maquinas.gerenciar` a lista de máquinas diz que não pode ver) | aba Técnico | `automacoes.ver` |
 
 Erros de validação vêm como `{"error": {"details": {"campos": {"<chave>": "<motivo>"}}}}`; o
 frontend lê com `enviar()` de `lib/campos.ts` e mostra cada motivo embaixo do campo.
@@ -287,3 +290,22 @@ usando `status`, que agora traduz `Agent.connectivity_status`.
 4. Migrar Telemetry e trocar logs textuais por timeline estruturada.
 5. Ajustar tipos TypeScript somente depois que o contrato backend estiver
    disponivel.
+
+## Segredos e contas de serviço (13/11/2026)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Lista de segredos | `GET /segredos` (`chave`, `nome`, `situacao`, `versao`, `expira_em`, `vencido`, `automacoes[{id, nome, ultimo_uso}]`, `ultimo_uso`) | `/secrets` | `segredos.ver` |
+| Criar e trocar valor | `POST /secrets` (chave normalizada; 422 se inválida, 409 se repetida), `POST /secrets/{id}/rotate` | `/secrets` | `segredos.gerenciar` |
+| Situação, nome | `PUT /segredos/{id}` (`situacao` `active`/`disabled`, `nome`, `descricao`) | `/secrets` | `segredos.gerenciar` |
+| Automações que usam | `PUT /segredos/{id}/automacoes` (`{"automacoes": [ids]}`) | `/secrets` | `segredos.gerenciar` |
+| Versões | `GET /segredos/{id}/versoes` (sem valor) | `/secrets` | `segredos.ver` |
+| Concessão genérica | `POST /secrets/{id}/grants` só aceita `grantee_type=automation`, `permission=use` (422 no resto) | nenhuma | `segredos.gerenciar` |
+| Contas | `GET /contas-de-servico` (`papel`, `times`, `credencial_final`, `ultimo_uso`, `situacao`, `vencida`) | `/service-accounts` | `contas_de_servico.ver` |
+| Criar | `POST /contas-de-servico` (`nome`, `descricao`, `papel_id`, `times`, `expira_em`) → `{conta, credencial}` uma vez, sem cache | `/service-accounts` | `contas_de_servico.gerenciar` |
+| Mudar | `PUT /contas-de-servico/{id}` (mesmos campos + `situacao`) | `/service-accounts` | `contas_de_servico.gerenciar` |
+| Nova credencial | `POST /contas-de-servico/{id}/credencial` → `{conta, credencial}` | `/service-accounts` | `contas_de_servico.gerenciar` |
+| Apagar | `DELETE /contas-de-servico/{id}` (409 se a conta tem registros ligados) | `/service-accounts` | `contas_de_servico.gerenciar` |
+
+`/service-accounts` (API antiga) responde 410. Papéis para o formulário vêm de `GET /roles`
+(sem `admin`); times de `GET /teams` (sem `times.ver`, a tela avisa).
