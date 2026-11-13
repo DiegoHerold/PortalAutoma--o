@@ -17,7 +17,7 @@ const DESCRICOES: Record<string, string> = {
   "/maquinas": "Linha do tempo por máquina e automações diretas.",
   "/historico": "Execuções terminadas e tempos por item.",
   "/executions": "Detalhes técnicos de cada execução.",
-  "/flows": "Automações encadeadas em fluxos.",
+  "/flows": "Programas em blocos que encadeiam automações (em reconstrução).",
   "/webhooks": "Gatilhos chamados por outros sistemas.",
   "/schedules": "Execuções com dia e hora marcados.",
   "/automations": "Cadastro das automações, versões e itens.",
@@ -34,6 +34,7 @@ const DESCRICOES: Record<string, string> = {
   "/organizations": "Contextos administrativos.",
   "/governance/limits": "Limites de uso do sistema.",
   "/governance/retention": "Por quanto tempo guardar imagens e logs.",
+  "/pendencias": "Itens esperando uma pessoa e o botão para continuar o processo.",
   "/emails": "O que o Portal enviou por e-mail e para quais domínios as automações podem mandar.",
 };
 

@@ -107,7 +107,7 @@ test("e-mails: domínios permitidos e e-mail de teste", async ({ page }) => {
   await page.goto("/emails");
   await page.getByRole("button", { name: "Mandar um teste para mim" }).click();
   await expect.poll(() => pedidos.some((p) => p.caminho === "/emails/teste")).toBe(true);
-  await page.getByRole("button", { name: /Domínios permitidos/ }).click();
+  await page.getByRole("button", { name: /Destinos permitidos/ }).click();
   const dominios = page.getByTestId("dominios-permitidos");
   await expect(dominios).toContainText("domínio do remetente: sempre permitido");
   await expect(dominios.locator("[data-dominio='strass.com.br']")).toBeVisible();

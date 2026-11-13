@@ -140,6 +140,10 @@ class PortalSimulado:
                     fora = sorted({e.rsplit("@", 1)[-1] for e in todos if job.dominios_permitidos is not None
                                    and e.rsplit("@", 1)[-1] not in job.dominios_permitidos})
                     situacao = "recusado" if fora else "enviado"
+                    if dados.get("continuar") and not fora:  # como o Portal: o botão entra no lugar marcado
+                        bloco = "<a href='https://portal.simulado/pendencias/pav_1'>Continuar processo</a>"
+                        corpo = dados.get("html") or ""
+                        dados["html"] = corpo.replace("{{continuar}}", bloco) if "{{continuar}}" in corpo else corpo + bloco
                     job.emails.append({**dados, "situacao": situacao})
                     if fora:
                         motivo = f"domínio não permitido: {', '.join(fora)}"

@@ -228,10 +228,12 @@ test("usuário: escolher os times ao criar e ao editar", async ({ page }) => {
   await page.getByRole("button", { name: /Novo usuário|Novo/ }).first().click();
   await page.getByLabel("Nome").fill("Bruno de Teste");
   await page.getByLabel("E-mail").fill("bruno@teste.invalid");
-  await page.getByLabel("Senha inicial").fill("Senha-de-teste-1");
+  await expect(page.getByText("A pessoa recebe um e-mail para criar a própria senha")).toBeVisible();
   await page.getByLabel("Papel").selectOption("3");
   await page.getByTestId("times-do-usuario").getByLabel("Time Fiscal").check();
   await page.getByRole("button", { name: "Criar" }).click();
   await expect.poll(() => pedidos.find((p) => p.metodo === "PUT" && p.caminho === "/users/3/times")?.corpo).toEqual({ times: [5] });
+  // sem senha no cadastro: a pessoa cria a dela pelo convite
+  expect(pedidos.find((p) => p.metodo === "POST" && p.caminho === "/users")?.corpo).not.toHaveProperty("password");
   expect(erros).toEqual([]);
 });

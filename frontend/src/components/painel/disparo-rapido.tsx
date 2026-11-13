@@ -92,7 +92,8 @@ function BuscaParaExecutar({ fechar, escolher }: { fechar: () => void; escolher:
       <div className="space-y-3" data-testid="busca-executar">
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-          <input ref={campo} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={tecla}
+          {/* autoFocus: a janela abre num portal (um render depois); o efeito sozinho chegava antes do campo */}
+          <input ref={campo} autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={tecla}
             placeholder="Nome da automação" aria-label="Buscar automação para executar"
             className="h-12 w-full rounded-lg border border-input bg-background pl-11 pr-3 text-base" />
         </label>

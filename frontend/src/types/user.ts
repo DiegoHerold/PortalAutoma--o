@@ -24,6 +24,10 @@ export type User = {
   email: string;
   status?: "pending" | "active" | "disabled" | "locked" | "archived" | string;
   is_active: boolean;
+  /** Ainda não criou a senha pelo convite (13/11/2026). */
+  aguardando_senha?: boolean;
+  /** Só na criação: o convite saiu por e-mail? null quando a pessoa já tinha senha. */
+  convite_enviado?: boolean | null;
   role: Role;
   organization_id?: number | null;
   permissions?: string[];

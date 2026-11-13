@@ -92,6 +92,10 @@ def pedir_execucao(corpo: dict[str, Any] = Body(...), db: Session = Depends(get_
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     fila.transaction.commit()
+    from modules.catalog.api.itens import fechar_pendencias_substituidas
+
+    fechar_pendencias_substituidas(db, fila.reader.automation_id(versao), [str(i.get("chave")) for i in itens if i.get("chave")],
+                                   resultado.get("execution_id"), str(getattr(user, "id", "") or "") or None)
     _mudou()
     return resultado
 

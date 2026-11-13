@@ -311,7 +311,27 @@ async def pedir_email(job_id: str, request: Request, db: Session = Depends(get_d
                 raise EmailInvalido("anexo com conteudo_base64 inválido.") from exc
         mensagem = validar(corpo, anexos)
         tipo = str(corpo.get("tipo") or "mensagem").strip().lower()[:40] or "mensagem"
+        continuar = corpo.get("continuar") or []
+        if not isinstance(continuar, list) or len(continuar) > 500:
+            raise EmailInvalido("continuar: lista com as chaves dos itens (até 500).")
+        aviso = None
+        if continuar:  # o botão "Continuar processo" no e-mail da automação (13/11/2026)
+            from modules.orchestration.pendencias.api import pendencias as _pendencias
+
+            servico = _pendencias(db)
+            aviso = servico.preparar_aviso_da_automacao(contexto.execution_id, contexto.automation_id, [str(c) for c in continuar],
+                                                        [*mensagem.para, *mensagem.cc])
+            if aviso is not None:
+                from modules.orchestration.pendencias.aplicacao import injetar_botao
+
+                mensagem.html = injetar_botao(mensagem.html or (mensagem.texto or "").replace("\n", "<br>"), servico.link(aviso.id),
+                                              len(aviso.item_keys))
+                tipo = "pendencia"
         registro = build_correio(db).pedir(replace(contexto, tipo=tipo), mensagem, corpo.get("chave_idempotencia"))
+        if aviso is not None:
+            from modules.orchestration.pendencias.repositorio import SqlAlchemyPendencias
+
+            SqlAlchemyPendencias(db).ligar_email(aviso, registro.id)
         db.commit()
     except EmailInvalido as exc:
         db.rollback()

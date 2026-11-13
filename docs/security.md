@@ -33,6 +33,28 @@ diretamente do GitHub.
   mesmo ao receber. Valores com menos de 4 caracteres nao sao mascarados.
 - Modo agente: ainda nao entrega segredos (ver `known-gaps.md`).
 
+## Login, codigo e senha (13/11/2026)
+
+- Login em dois passos: senha e depois um codigo de 6 digitos por e-mail (vale 10 minutos,
+  5 tentativas, reenvio no maximo 3 por minuto). Entre os passos, um desafio de 15 minutos.
+- "Confiar neste navegador": por 30 dias o navegador entra so com a senha (o codigo e
+  pulado; a senha nunca). O token do navegador fica no `localStorage` dele; o Portal guarda
+  so o HMAC. Em Configuracoes > Sua conta a pessoa ve e esquece os navegadores.
+- Sem envio de e-mail ligado, ou com e-mail que nao recebe (`.local`, `.invalid`, `.test`,
+  `.example`, `.localhost`), nao ha como mandar o codigo: entra so com a senha, com aviso na
+  tela e `via: sem_codigo` na auditoria. Contas assim devem ganhar um e-mail real.
+- 10 senhas erradas seguidas travam a conta por 15 minutos.
+- Esqueci a senha e convite: link de uso unico `{FRONTEND_URL}/redefinir-senha#t=...`. O token
+  vai no fragmento (`#`), que o navegador nao manda ao servidor nem a logs; a pagina le e manda
+  no corpo. Esqueci: 1 hora, mesma resposta exista ou nao a conta. Convite: 48 horas.
+- Ninguem define a senha de outra pessoa: o cadastro manda o convite e a pessoa cria a dela.
+  Quem gerencia usuarios pode mandar o link de novo.
+- Criar a senha pelo link ou troca-la no perfil (pede a atual) corta os navegadores
+  confiaveis e os links pendentes, e avisa por e-mail.
+- Regras da senha: 8 a 128 caracteres, nao um caractere repetido, nao conter o nome do e-mail.
+- Tudo o que da acesso (desafio, codigo, navegador, link) fica so como HMAC-SHA256 com a chave
+  do Portal (`acesso_tokens`). Os e-mails de acesso saem pelo Portal sem guardar o conteudo.
+
 ## Contas de servico (13/11/2026)
 
 - Para sistemas que chamam a API. Cada conta tem um usuario tecnico com um papel e

@@ -38,7 +38,8 @@ class CategoryPermissionResponse(BaseModel):
 class UserCreateRequest(BaseModel):
     name: str = Field(min_length=1)
     email: str = Field(min_length=3)
-    password: str = Field(min_length=1)
+    # Sem senha (o normal desde 13/11/2026): a pessoa recebe o convite e cria a dela.
+    password: str | None = None
     role_id: int = Field(gt=0)
     is_active: bool = True
     organization_id: int | None = None
@@ -67,6 +68,8 @@ class UserResponse(BaseModel):
     organization_id: int | None = None
     category_permissions: list[CategoryPermissionResponse] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
+    aguardando_senha: bool = False  # convidada, ainda sem senha (13/11/2026)
+    convite_enviado: bool | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     last_login_at: datetime | None = None

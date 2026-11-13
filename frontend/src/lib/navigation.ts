@@ -16,6 +16,7 @@ import {
   Gauge,
   Archive,
   Mail,
+  Hand,
   Users,
   Building2,
   UsersRound,
@@ -56,6 +57,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/fila", funcionalidade: "fila", label: "Fila", icon: ListOrdered },
       { href: "/maquinas", funcionalidade: "maquinas", label: "Máquinas", icon: Monitor },
       { href: "/historico", funcionalidade: "historico", label: "Histórico", icon: History },
+      // Pendências (13/11/2026): cada um vê só as das automações que vê; todo papel tem.
+      // Fora do padrão para o menu caber sem rolagem: o botão do e-mail leva direto ao aviso.
+      { href: "/pendencias", funcionalidade: "painel", label: "Pendências", icon: Hand, padrao: false },
     ],
   },
   {

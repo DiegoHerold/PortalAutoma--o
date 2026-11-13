@@ -86,7 +86,7 @@ export function EmailsPage() {
       </div>
 
       <Tabs value={aba} onValueChange={(v) => setAba(v as "emails" | "dominios")} items={[
-        { value: "emails", label: "E-mails" }, { value: "dominios", label: "Domínios permitidos", count: config.data?.dominios.length },
+        { value: "emails", label: "E-mails" }, { value: "dominios", label: "Destinos permitidos", count: config.data?.dominios.length },
       ]} />
 
       {aba === "dominios" ? <Dominios config={config.data} gerencia={gerencia} onMudou={config.refetch} /> : (
@@ -203,14 +203,15 @@ function Dominios({ config, gerencia, onMudou }: { config: Configuracao | null |
   return (
     <div className="space-y-4" data-testid="dominios-permitidos">
       <p className="text-sm text-muted-foreground">
-        As automações só mandam e-mail para estes domínios (e os subdomínios deles). Fora da lista, o pedido é recusado e fica registrado.
+        As automações só mandam e-mail para o que está aqui: um domínio (libera o domínio inteiro e os subdomínios) ou um e-mail
+        (libera só aquele endereço). Fora da lista, o pedido é recusado e fica registrado.
         Os e-mails do próprio Portal (notificações, login) não passam por esta lista.
       </p>
       <ul className="divide-y divide-border rounded-xl border border-border bg-card">
         {config?.dominio_do_remetente && (
           <li className="flex items-center justify-between px-4 py-3">
             <span className="font-mono">{config.dominio_do_remetente}</span>
-            <span className="text-sm text-muted-foreground">domínio do remetente: sempre permitido</span>
+            <span className="text-sm text-muted-foreground">domínio do remetente: sempre permitido (todos os @{config.dominio_do_remetente})</span>
           </li>
         )}
         {(config?.dominios ?? []).filter((d) => d !== config?.dominio_do_remetente).map((d) => (
@@ -225,7 +226,7 @@ function Dominios({ config, gerencia, onMudou }: { config: Configuracao | null |
       </ul>
       {gerencia && (
         <form className="flex gap-2" onSubmit={(ev) => { ev.preventDefault(); if (novo.trim()) void mudar("/emails/dominios", "POST", { dominio: novo }); }}>
-          <Input aria-label="Novo domínio" className="max-w-sm font-mono" placeholder="cliente.com.br" value={novo} onChange={(e) => setNovo(e.target.value)} />
+          <Input aria-label="Novo domínio" className="max-w-sm font-mono" placeholder="cliente.com.br ou joao@cliente.com.br" value={novo} onChange={(e) => setNovo(e.target.value)} />
           <Button type="submit" disabled={!novo.trim() || ocupado}><Plus className="h-4 w-4" /> Permitir</Button>
         </form>
       )}

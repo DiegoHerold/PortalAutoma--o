@@ -16,6 +16,8 @@ type AuthContextValue = {
   token: string | null;
   loading: boolean;
   signIn: (input: LoginInput) => Promise<CurrentUser>;
+  /** Fim do login em dois passos (13/11/2026): guarda o token e carrega a pessoa. */
+  concluirLogin: (accessToken: string) => Promise<CurrentUser>;
   signOut: () => void;
 };
 
@@ -64,13 +66,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSAO_EXPIRADA, expirou);
   }, []);
 
-  async function signIn(input: LoginInput) {
-    const result = await login(input);
-    setStoredToken(result.access_token);
-    const currentUser = await fetchCurrentUser(result.access_token);
-    setToken(result.access_token);
+  async function concluirLogin(accessToken: string) {
+    setStoredToken(accessToken);
+    const currentUser = await fetchCurrentUser(accessToken);
+    setToken(accessToken);
     setUser(currentUser);
     return currentUser;
+  }
+
+  /** Só para quando não há código (envio de e-mail desligado); a tela de login usa o passo a passo. */
+  async function signIn(input: LoginInput) {
+    const result = await login(input);
+    if (!("access_token" in result)) throw new Error("Este login pede o código enviado por e-mail.");
+    return concluirLogin(result.access_token);
   }
 
   function signOut() {
@@ -85,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       loading,
       signIn,
+      concluirLogin,
       signOut,
     }),
     [loading, token, user],

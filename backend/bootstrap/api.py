@@ -27,6 +27,7 @@ from modules.access.api.concessoes import router as concessoes_router
 from modules.access.api.acesso_da_pessoa import router as acesso_da_pessoa_router
 from modules.access.api.papeis import router as papeis_router
 from modules.access.api.contas_de_servico import router as contas_de_servico_router
+from modules.access.api.acesso import router as acesso_router
 from modules.access.api.times import router as times_router
 from modules.fleet.api.instancias_diretas import router as admin_instancias_router
 from modules.dispatch.api.fila import router as fila_router
@@ -34,7 +35,6 @@ from modules.fleet.api.routes import router as fleet_module_router
 from modules.governance.api.routes import router as governance_module_router
 from modules.orchestration.api.job_compat import router as job_compat_router
 from modules.orchestration.api.routes import router as orchestration_module_router
-from modules.orchestration.flows.api.routes import router as flow_module_router
 from modules.orchestration.scheduling.api.routes import (
     router as schedule_module_router,
     schedule_executions_router as schedule_executions_module_router,
@@ -53,6 +53,7 @@ from modules.governance.api.configuracoes import router as configuracoes_router
 from modules.governance.api.retencao import router as retencao_router
 from modules.governance.api.auditoria import router as auditoria_router
 from modules.telemetry.correio.api import router as emails_router
+from modules.orchestration.pendencias.api import router as pendencias_router
 from modules.governance.api.segredos import router as segredos_router
 from modules.governance.api import registro_de_requisicoes
 from modules.telemetry.api.realtime import router as realtime_router
@@ -95,7 +96,6 @@ def create_api_application() -> FastAPI:
     register_catalog_routes(api_router)
     register_fleet_routes(api_router)
     register_execution_routes(api_router)
-    register_flow_routes(api_router)
     register_schedule_routes(api_router)
     register_governance_routes(api_router)
     register_compatibility_routes(api_router)
@@ -155,6 +155,7 @@ def register_execution_routes(router: APIRouter) -> None:
     router.include_router(times_router)
     router.include_router(papeis_router)
     router.include_router(contas_de_servico_router)
+    router.include_router(acesso_router)
     router.include_router(acesso_da_pessoa_router)
     router.include_router(instancias_diretas_router)
     router.include_router(admin_instancias_router)
@@ -169,10 +170,6 @@ def register_execution_routes(router: APIRouter) -> None:
     router.include_router(arquivos_da_automacao_router)
 
 
-def register_flow_routes(router: APIRouter) -> None:
-    router.include_router(flow_module_router, tags=["flows"])
-
-
 def register_schedule_routes(router: APIRouter) -> None:
     router.include_router(schedule_module_router, prefix="/schedules", tags=["schedules"])
     router.include_router(schedule_executions_module_router, prefix="/schedule-executions", tags=["schedules"])
@@ -184,6 +181,7 @@ def register_governance_routes(router: APIRouter) -> None:
     router.include_router(configuracoes_router)
     router.include_router(auditoria_router)
     router.include_router(emails_router)
+    router.include_router(pendencias_router)
     router.include_router(segredos_router)
 
 

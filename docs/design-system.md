@@ -284,6 +284,26 @@ De cima para baixo:
 Seção vazia não aparece. Sem nada em andamento, fica só o aviso "Nada rodando agora". A faixa de
 números e a seção "Máquinas" do pé saíram: o que elas mostravam está nas abas e nas seções.
 
+## Telas de acesso (regra de tela, 13/11/2026)
+
+- **Layout único** (`components/auth/tela-de-acesso.tsx`) para login, código, esqueci a senha e criar a senha.
+  - Desktop: faixa azul-marinho com o logo branco, a frase do Portal e três destaques à esquerda; formulário à direita.
+  - Celular: só o formulário, com o logo azul (o branco no tema escuro).
+- **Passo da senha:** e-mail e senha vazios, com olho para mostrar a senha e "Esqueci a senha" ao lado do rótulo. O texto embaixo lembra o convite.
+- **Passo do código:**
+  - caixa com o e-mail mascarado e a validade;
+  - campo grande e centralizado, só dígitos (colar "123 456" funciona);
+  - "Confiar neste navegador por 30 dias", com o aviso de computador compartilhado;
+  - "Voltar" e "Reenviar código em Ns".
+  - Errar 5 vezes volta ao passo da senha, com o motivo.
+- **Criar a senha:** as três regras aparecem enquanto a pessoa digita (verde quando ok), com "Repita a senha" e o aviso quando as duas diferem. Link vencido ou incompleto leva a "Pedir outro link".
+- **Configurações › Sua conta › Senha e acesso:** "Trocar a senha" (pede a atual) ao lado de "Navegadores confiáveis" (nome curto do navegador, desde e vale até, "Esquecer todos").
+- **Usuários:**
+  - o cadastro não tem senha: um aviso diz que a pessoa recebe o convite;
+  - quem não criou a senha aparece como "Aguardando criar senha";
+  - o ícone de chave manda o link de novo.
+- Telas em `docs/login-telas/`.
+
 ## Papéis globais (regra de tela, 12/11/2026)
 
 - **Uma tabela:** funcionalidades nas linhas, agrupadas e na ordem do menu (com "Gerenciar: o que dá" embaixo do nome), e papéis nas colunas (nome, pessoas, "sistema", editar e apagar).

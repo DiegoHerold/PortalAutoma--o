@@ -73,3 +73,13 @@ def test_portal_fora_do_ar_e_modos(tmp_path: Path) -> None:
     agente = _automacao(tmp_path / "g", TransporteAgente("pipe", "token", tmp_path))
     with pytest.raises(EmailIndisponivel, match="modo agente"):
         agente.email("a@biason.net", "x", texto="y")
+
+
+def test_continuar_pede_o_botao_no_email(tmp_path: Path) -> None:
+    with PortalSimulado(None, None, validar) as portal:
+        job = portal.criar_job("tsk_1", "jbt_1")
+        a = _automacao(tmp_path, TransporteDireto(portal.url, "tsk_1", "jbt_1", permitir_http=True))
+        a.email("analista@biason.net", "Rubricas", html="<p>Falta parametrizar</p>{{continuar}}<p>fim</p>", continuar=[101, "102"])
+        pedido = job.emails[0]
+        assert pedido["continuar"] == ["101", "102"]
+        assert pedido["html"].index("Falta") < pedido["html"].index("Continuar processo") < pedido["html"].index("fim")

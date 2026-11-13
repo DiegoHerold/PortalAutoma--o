@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { ChevronDown, Pencil, Plus, ShieldCheck, Trash2, Users as UsersIcon } from "lucide-react";
+import { ChevronDown, KeyRound, Pencil, Plus, ShieldCheck, Trash2, Users as UsersIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
@@ -28,7 +28,7 @@ import { ResumoDeAcesso } from "@/components/users/resumo-de-acesso";
  */
 type TimeDaPessoa = { id: number; nome: string; ativo: boolean };
 
-const emptyForm = { name: "", email: "", password: "", role_id: "", is_active: true, times: [] as number[] };
+const emptyForm = { name: "", email: "", role_id: "", is_active: true, times: [] as number[] };
 
 export function UsersManager() {
   const { token } = useAuth();
@@ -54,7 +54,7 @@ export function UsersManager() {
 
   async function openEdit(user: User) {
     setEditing(user);
-    const base = { name: user.name, email: user.email, password: "", role_id: String(user.role.id), is_active: user.is_active };
+    const base = { name: user.name, email: user.email, role_id: String(user.role.id), is_active: user.is_active };
     setForm({ ...base, times: [] });
     setModalOpen(true);
     try {
@@ -78,7 +78,7 @@ export function UsersManager() {
         email: form.email,
         role_id: Number(form.role_id),
         is_active: form.is_active,
-        ...(editing || form.password ? { password: form.password || null } : { password: form.password }),
+        // Sem senha: a pessoa recebe o convite por e-mail e cria a dela (13/11/2026).
       };
       const salvo = await apiRequest<User>(editing ? `/users/${editing.id}` : "/users", {
         method: editing ? "PUT" : "POST",
@@ -88,7 +88,11 @@ export function UsersManager() {
       if (teams.data) {
         await apiRequest(`/users/${salvo.id ?? editing?.id}/times`, { method: "PUT", token, body: JSON.stringify({ times: form.times }) });
       }
-      toast({ title: editing ? "Usuário atualizado" : "Usuário criado", kind: "success" });
+      const convite = salvo.convite_enviado;
+      toast({ title: editing ? "Usuário atualizado" : "Usuário criado",
+        description: editing ? undefined : convite ? `Mandamos o convite para ${form.email}: a pessoa cria a senha pelo link (vale 48 h).`
+          : "O convite não saiu (envio de e-mail desligado ou e-mail que não recebe). Use \"Mandar link de senha\" depois.",
+        kind: editing || convite ? "success" : "info" });
       setForm(emptyForm);
       setEditing(null);
       setModalOpen(false);
@@ -97,6 +101,17 @@ export function UsersManager() {
       toast({ title: "Falha ao salvar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  /** Convite (quem ainda não criou a senha) ou link para criar uma senha nova. O link vale 48 h. */
+  async function mandarLink(user: User) {
+    if (!token) return;
+    try {
+      await apiRequest(`/users/${user.id}/convite`, { method: "POST", token });
+      toast({ title: "Link mandado", description: `${user.email} recebe um e-mail para criar a senha (vale 48 h).`, kind: "success" });
+    } catch (err) {
+      toast({ title: "Não foi possível mandar", description: err instanceof Error ? err.message : undefined, kind: "error" });
     }
   }
 
@@ -159,7 +174,11 @@ export function UsersManager() {
                       </div>
                     </TD>
                     <TD>
-                      <Badge tone={user.is_active ? "success" : "neutral"}>{user.is_active ? "Ativo" : "Inativo"}</Badge>
+                      {user.aguardando_senha && user.is_active ? (
+                        <Badge tone="warning">Aguardando criar senha</Badge>
+                      ) : (
+                        <Badge tone={user.is_active ? "success" : "neutral"}>{user.is_active ? "Ativo" : "Inativo"}</Badge>
+                      )}
                     </TD>
                     <TD>
                       <div className="flex justify-end gap-1">
@@ -171,6 +190,10 @@ export function UsersManager() {
                         >
                           <ShieldCheck className="h-4 w-4" />
                           <ChevronDown className={cn("h-3 w-3 transition-transform", expanded === user.id && "rotate-180")} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => void mandarLink(user)} disabled={!user.is_active}
+                          title="Mandar link de senha" aria-label={`Mandar link de senha para ${user.name}`}>
+                          <KeyRound className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => void openEdit(user)} title="Editar usuário">
                           <Pencil className="h-4 w-4" />
@@ -206,7 +229,7 @@ export function UsersManager() {
             </Button>
             <Button
               onClick={saveUser}
-              disabled={submitting || !form.name || !form.email || !form.role_id || (!editing && !form.password)}
+              disabled={submitting || !form.name || !form.email || !form.role_id}
             >
               {submitting && <Spinner />} {editing ? "Salvar" : "Criar"}
             </Button>
@@ -222,10 +245,11 @@ export function UsersManager() {
             <Label htmlFor="u-email">E-mail</Label>
             <Input id="u-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Field>
-          <Field>
-            <Label htmlFor="u-pass">{editing ? "Nova senha (opcional)" : "Senha inicial"}</Label>
-            <Input id="u-pass" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-          </Field>
+          {!editing && (
+            <p className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+              A pessoa recebe um e-mail para criar a própria senha (o link vale 48 horas). Ninguém mais conhece a senha dela.
+            </p>
+          )}
           <Field>
             <Label htmlFor="u-role">Papel <span className="font-normal text-muted-foreground">— quais telas a pessoa usa</span></Label>
             <Select id="u-role" value={form.role_id} onChange={(e) => setForm({ ...form, role_id: e.target.value })}>

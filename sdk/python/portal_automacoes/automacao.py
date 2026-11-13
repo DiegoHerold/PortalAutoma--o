@@ -647,13 +647,16 @@ class Automacao:
     # -- e-mail pelo Portal ------------------------------------------------------------
     def email(self, para: Any, assunto: str, *, html: str | None = None, texto: str | None = None, cc: Any = None,
               cco: Any = None, anexos: Any = None, responder_para: str | None = None, tipo: str = "mensagem",
-              chave: str | None = None) -> dict[str, Any]:
+              chave: str | None = None, continuar: Any = None) -> dict[str, Any]:
         """Pede ao Portal para mandar um e-mail (o padrão). Devolve ``{"email_id", "situacao"}``:
         ``enviado`` ou ``na_fila`` (o Portal tenta de novo sozinho). ``EmailRecusado`` com o motivo
         (domínio não permitido, anexo proibido...); ``EmailIndisponivel`` sem Portal ou no modo agente.
-        ``chave``: a mesma chave na mesma execução não manda de novo."""
+        ``chave``: a mesma chave na mesma execução não manda de novo.
+        ``continuar``: chaves de itens em atenção; o Portal põe no e-mail o botão "Continuar
+        processo" (no lugar de ``{{continuar}}`` no html, ou no fim). Vale uma vez, com login."""
         dados = mascarar({"para": lista(para), "cc": lista(cc), "cco": lista(cco), "assunto": assunto, "html": html,
-                          "texto": texto, "responder_para": responder_para, "tipo": tipo, "chave_idempotencia": chave},
+                          "texto": texto, "responder_para": responder_para, "tipo": tipo, "chave_idempotencia": chave,
+                          "continuar": [str(c) for c in (continuar or [])]},
                          self._mascarar)
         dados["anexos"] = ler_anexos(anexos)
         pedir = getattr(self._transporte, "email", None)

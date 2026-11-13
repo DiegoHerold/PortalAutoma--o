@@ -109,6 +109,11 @@ def test_dominios_recusa_registrada_e_idempotencia() -> None:
     enviado = correio.pedir(_automacao(), m, chave_idempotencia="folha-101")
     assert enviado.situacao == "enviado" and len(carteiro.enviados) == 1 and carteiro.enviados[0]["cc"] == ["ana@biason.net"]
     assert correio.pedir(_automacao(), m, chave_idempotencia="folha-101") is enviado and len(carteiro.enviados) == 1
+    # Um endereço só, sem abrir o domínio inteiro (13/11/2026).
+    assert correio.adicionar_dominio(" Joao@Outro.com.br ", "1") == "joao@outro.com.br"
+    assert correio.permitido("JOAO@outro.com.br") and not correio.permitido("maria@outro.com.br")
+    with pytest.raises(EmailInvalido, match="E-mail inválido"):
+        correio.adicionar_dominio("joao@", "1")
     # O próprio Portal (notificação, login) não passa pela lista de domínios.
     assert correio.pedir(Contexto(origem="portal", tipo="teste"), validar({"para": "x@gmail.com", "assunto": "a", "html": "b"})).situacao == "enviado"
 

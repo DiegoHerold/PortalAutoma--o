@@ -14,6 +14,13 @@ function sessaoExpirada(response: Response, token: string | null | undefined): b
   return true;
 }
 
+/** Erro da API com o status e o corpo (13/11/2026): quem precisar lê ``dados`` (ex.: tentativas restantes). */
+export class ErroDaApi extends Error {
+  constructor(mensagem: string, readonly status: number, readonly dados: Record<string, unknown> | null) {
+    super(mensagem);
+  }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
@@ -30,7 +37,15 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!response.ok) {
     if (sessaoExpirada(response, options.token)) throw new Error(TEXTO_SESSAO_EXPIRADA);
-    throw new Error(await errorMessage(response));
+    const bruto = await response.clone().text().catch(() => "");
+    let dados: Record<string, unknown> | null = null;
+    try {
+      const lido = bruto ? (JSON.parse(bruto) as unknown) : null;
+      dados = lido && typeof lido === "object" ? (lido as Record<string, unknown>) : null;
+    } catch {
+      dados = null;
+    }
+    throw new ErroDaApi(await errorMessage(response), response.status, dados);
   }
 
   if (response.status === 204) {
@@ -100,7 +115,9 @@ async function errorMessage(response: Response): Promise<string> {
     const parsed = JSON.parse(text) as {
       error?: { code?: string; message?: string; correlation_id?: string };
       detail?: string | Array<{ msg?: string }>;
+      erro?: string;
     };
+    if (typeof parsed.erro === "string") return parsed.erro;  // rotas novas: {"erro": "..."}
     if (parsed.error?.message) {
       const suffix = parsed.error.correlation_id ? ` (${parsed.error.correlation_id})` : "";
       return `${parsed.error.message}${suffix}`;

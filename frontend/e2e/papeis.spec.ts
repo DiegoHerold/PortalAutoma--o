@@ -153,6 +153,8 @@ test("sessão vencida: avisa, leva ao login e volta para a mesma tela", async ({
   await expect(page).toHaveURL(/\/login/);
   await expect(page.getByTestId("sessao-expirada")).toContainText("Sua sessão expirou");
   vencida = false;
+  await page.getByLabel("E-mail").fill("ti@teste.invalid");
+  await page.getByLabel("Senha", { exact: true }).fill("senha-de-teste");
   await page.getByRole("button", { name: /Entrar no portal/ }).click();
   await expect(page).toHaveURL(/\/roles$/);  // voltou para onde estava
   expect(erros).toEqual([]);

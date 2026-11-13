@@ -96,9 +96,16 @@ def dominio_de(email: str) -> str:
 
 
 def normalizar_dominio(valor: Any) -> str:
-    dominio = str(valor or "").strip().lower().lstrip("@")
+    """Um domínio (``cliente.com.br``: o domínio inteiro e os subdomínios) ou um e-mail
+    (``joao@cliente.com.br``: só aquele endereço)."""
+    texto = str(valor or "").strip().lower()
+    if "@" in texto.lstrip("@"):
+        if not EMAIL.match(texto) or len(texto) > 255:
+            raise EmailInvalido(f"E-mail inválido: {texto}")
+        return texto
+    dominio = texto.lstrip("@")
     if not DOMINIO.match(dominio) or len(dominio) > 255:
-        raise EmailInvalido(f"Domínio inválido: {dominio or '(vazio)'}")
+        raise EmailInvalido(f"Domínio ou e-mail inválido: {dominio or '(vazio)'}")
     return dominio
 
 
@@ -159,9 +166,13 @@ class Correio:
         return self.repo.dominios()
 
     def permitido(self, email: str) -> bool:
+        """Domínio da lista (ou subdomínio dele), o domínio do remetente ou o endereço exato da lista."""
         alvo = dominio_de(email)
-        permitidos = set(self.dominios()) | ({self.dominio_do_remetente()} - {None})
-        return any(alvo == d or alvo.endswith("." + d) for d in permitidos)
+        lista = set(self.dominios())
+        if email.lower() in lista:
+            return True
+        dominios = {d for d in lista if "@" not in d} | ({self.dominio_do_remetente()} - {None})
+        return any(alvo == d or alvo.endswith("." + d) for d in dominios)
 
     def adicionar_dominio(self, valor: Any, por: str | None) -> str:
         dominio = normalizar_dominio(valor)
@@ -172,8 +183,11 @@ class Correio:
         self.repo.remover_dominio(normalizar_dominio(valor))
 
     # -- pedir -------------------------------------------------------------------------------------
-    def pedir(self, contexto: Contexto, mensagem: Mensagem, chave_idempotencia: str | None = None) -> Any:
-        """Registra e tenta mandar na hora. Devolve o registro (situação: enviado, na_fila, falhou ou recusado)."""
+    def pedir(self, contexto: Contexto, mensagem: Mensagem, chave_idempotencia: str | None = None, sigiloso: bool = False) -> Any:
+        """Registra e tenta mandar na hora. Devolve o registro (situação: enviado, na_fila, falhou ou recusado).
+
+        ``sigiloso`` (código de acesso, links de senha): o registro não guarda o corpo (a tela E-mails
+        não mostra o código) e não há nova tentativa (o conteúdo não fica guardado para reenviar)."""
         chave = (chave_idempotencia or "").strip()[:120] or None
         if chave and contexto.execution_id:
             anterior = self.repo.por_chave(contexto.execution_id, chave)
@@ -185,11 +199,14 @@ class Correio:
             fora = [e for e in [*mensagem.para, *mensagem.cc, *mensagem.cco] if not self.permitido(e)]
             if fora:
                 recusa = f"domínio não permitido: {', '.join(sorted({dominio_de(e) for e in fora}))[:400]}"
-        registro = self.repo.criar(id=f"eml_{uuid4().hex[:24]}", contexto=contexto, mensagem=mensagem, meio="graph",
+        guardado = mensagem if not sigiloso else Mensagem(
+            para=mensagem.para, cc=mensagem.cc, cco=mensagem.cco, assunto=mensagem.assunto,
+            texto="(mensagem de acesso: o conteúdo não fica guardado)")
+        registro = self.repo.criar(id=f"eml_{uuid4().hex[:24]}", contexto=contexto, mensagem=guardado, meio="graph",
                                    situacao="recusado" if recusa else "na_fila", motivo=recusa, chave=chave, agora=agora,
-                                   guardar_anexos=recusa is None)
+                                   guardar_anexos=recusa is None and not sigiloso)
         if recusa is None:
-            self._tentar(registro, mensagem, agora)
+            self._tentar(registro, mensagem, agora, sem_nova_tentativa=sigiloso)
         return registro
 
     def registrar_da_maquina(self, contexto: Contexto, dados: dict[str, Any]) -> Any:
@@ -237,7 +254,10 @@ class Correio:
         self._tentar(registro, self.repo.mensagem(registro), self._agora())
         return registro
 
-    def _tentar(self, registro: Any, mensagem: Mensagem, agora: datetime) -> str:
+    def _tentar(self, registro: Any, mensagem: Mensagem, agora: datetime, sem_nova_tentativa: bool = False) -> str:
+        if self.carteiro is None and sem_nova_tentativa:
+            self.repo.marcar(registro, situacao="falhou", motivo="envio de e-mail desligado no Portal", proxima=None)
+            return "falhou"
         if self.carteiro is None:
             self.repo.marcar(registro, situacao="na_fila", motivo="envio de e-mail desligado no Portal", proxima=agora + ESPERAS[0])
             return "na_fila"
@@ -246,7 +266,7 @@ class Correio:
                                  cco=mensagem.cco, anexos=mensagem.anexos, responder_para=mensagem.responder_para)
         except ErroDeEnvio as exc:
             tentativas = registro.tentativas + 1
-            if exc.temporario and tentativas < MAXIMO_DE_TENTATIVAS:
+            if exc.temporario and tentativas < MAXIMO_DE_TENTATIVAS and not sem_nova_tentativa:
                 self.repo.marcar(registro, situacao="na_fila", tentativas=tentativas, motivo=str(exc)[:500],
                                  proxima=agora + ESPERAS[min(tentativas - 1, len(ESPERAS) - 1)])
                 return "na_fila"

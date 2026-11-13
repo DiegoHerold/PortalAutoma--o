@@ -168,7 +168,9 @@ class CreateUser:
             {
                 "name": str(payload["name"]).strip(),
                 "email": email,
-                "password_hash": self.passwords.hash(payload["password"]),
+                # Sem senha: inutilizável até a pessoa criar a dela pelo convite (13/11/2026).
+                "password_hash": self.passwords.hash(payload["password"]) if payload.get("password")
+                else f"!convite!{__import__('secrets').token_hex(16)}",
                 "role_id": int(payload["role_id"]),
                 "is_active": bool(payload.get("is_active", True)),
                 "organization_id": payload.get("organization_id"),

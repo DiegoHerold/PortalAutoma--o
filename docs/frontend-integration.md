@@ -10,7 +10,7 @@ sera feita depois, sem redesenhar as telas.
 
 | Tela ou area | Endpoint atual | Contrato atual | Novo modulo responsavel | Mudanca necessaria | Momento recomendado |
 |---|---|---|---|---|---|
-| Login | `/auth/login`, `/auth/me` | `TokenResponse`, `CurrentUser` | Access | Manter adaptador enquanto Access e migrado | Etapa Access |
+| Login | `/auth/login`, `/auth/codigo`, `/auth/me` (ver "Login com código") | `RespostaDoLogin`, `TokenResponse`, `CurrentUser` | Access | Login em dois passos desde 13/11/2026 | Etapa Access |
 | Dashboard | `/jobs`, `/workers`, `/automations`, WS `/ws/executions` | `Job`, `Worker`, `Automation` | Orchestration, Fleet, Catalog, Telemetry | Renomear Jobs/Workers para Execution/Agent no contrato, preservando layout | Apos modelos persistentes |
 | Automacoes | `/automations`, `/automations/{id}`, imports ZIP/GitHub | `Automation`, `AutomationVersion`, import preview | Catalog, Storage, Governance | Migrar services para casos de uso Catalog | Etapa Catalog |
 | Jobs | `/jobs`, `/jobs/{id}`, `/jobs/{id}:cancel` | `Job` | Orchestration, Dispatch | Substituir por Execution/TaskExecution/Attempt/Offer | Etapa Orchestration/Dispatch |
@@ -310,9 +310,10 @@ usando `status`, que agora traduz `Agent.connectivity_status`.
 |---|---|---|---|
 | Lista de segredos | `GET /segredos` (`chave`, `nome`, `situacao`, `campos[{nome, oculto, valor}]` (valor só dos visíveis), `versao`, `expira_em`, `vencido`, `automacoes[{id, nome, ultimo_uso}]`, `ultimo_uso`) | `/secrets` | `segredos.ver` |
 | Criar | `POST /segredos` (`chave`, `nome`, `descricao`, `expira_em`, `campos[{nome, oculto, valor}]`) → `{id, chave}` | `/secrets` | `segredos.gerenciar` |
-| Editar campos | `PUT /segredos/{id}/campos` (`campos[{nome, oculto, valor}]`, `expira_em`): valor vazio mantém o atual; valor trocado, campo novo ou removido geram versão nova; só ocultar/mostrar, não | `/secrets` | `segredos.gerenciar` |
+| Editar campos | `PUT /segredos/{id}/campos` (`campos[{nome, oculto, valor}]`, `expira_em`): valor vazio mantém o atual; campo renomeado é campo novo (pede valor); valor trocado, campo novo ou removido geram versão nova; só ocultar/mostrar, não | `/secrets` | `segredos.gerenciar` |
 | Rotas antigas | `POST /secrets` (um campo `valor`), `POST /secrets/{id}/rotate` (só segredo de um campo; 422 nos de vários) | nenhuma | `segredos.gerenciar` |
-| Situação, nome | `PUT /segredos/{id}` (`situacao` `active`/`disabled`, `nome`, `descricao`) | `/secrets` | `segredos.gerenciar` |
+| Situação, nome, chave | `PUT /segredos/{id}` (`situacao` `active`/`disabled`, `nome`, `chave`, `descricao`); chave repetida ou inválida: 422. Trocar a chave exige trocar `a.segredo("...")` no código das automações | `/secrets` (Editar nome e chave) | `segredos.gerenciar` |
+| Apagar | `DELETE /segredos/{id}?confirmar=<chave>`: apaga segredo, versões e ligações (sem volta); sem a chave certa, 422. A auditoria (`segredo.apagado`) guarda chave, nome, campos e automações, nunca valores. A chave fica livre para refazer | `/secrets` (Apagar) | `segredos.gerenciar` |
 | Automações que usam | `PUT /segredos/{id}/automacoes` (`{"automacoes": [ids]}`) | `/secrets` | `segredos.gerenciar` |
 | Versões | `GET /segredos/{id}/versoes` (sem valor) | `/secrets` | `segredos.ver` |
 | Concessão genérica | `POST /secrets/{id}/grants` só aceita `grantee_type=automation`, `permission=use` (422 no resto) | nenhuma | `segredos.gerenciar` |
@@ -349,3 +350,35 @@ usando `status`, que agora traduz `Agent.connectivity_status`.
 | Reenviar | `POST /emails/{id}/reenviar` (só `falhou`, com os anexos ainda guardados) | `/emails` | `emails.gerenciar` |
 | Domínios | `POST /emails/dominios` `{dominio}`, `DELETE /emails/dominios/{dominio}` | `/emails`, aba Domínios permitidos | `emails.gerenciar` |
 | Teste | `POST /emails/teste` (`{para}` opcional; padrão: quem pediu) | `/emails` | `emails.gerenciar` |
+
+## Pendências (13/11/2026)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Lista | `GET /pendencias` (`execucoes[{execucao_id, automacao, pode_continuar, desde, itens[{id, item, rotulo, motivo, situacao, ...}]}]`) | `/pendencias` (menu Monitorar) | ver a automação |
+| Aviso do e-mail | `GET /pendencias/avisos/{id}` (`itens`, `aguardando`, `pode_continuar`, `resolucao{situacao, resolvida_em, resolvida_via, resolvida_por, continuacao_execucao_id}`) | `/pendencias/{aviso}` (o botão do e-mail; sem login, entra e volta) | ver a automação |
+| Continuar | `POST /pendencias/avisos/{id}/continuar`, `POST /pendencias/execucoes/{id}/continuar` (`{itens}` opcional) → `{execucao_id, itens}`; já continuado: `409 {erro, resolucao}` | aviso, `/pendencias`, aviso na tela da execução | executar a automação |
+| Da execução | `GET /pendencias/execucoes/{id}` | `/execucoes/{id}` (faixa "itens aguardando") | ver a automação |
+
+Erros no formato `{"erro": "..."}` agora aparecem com o texto certo (`lib/api.ts`).
+
+## Login com código (13/11/2026)
+
+| Area | Rota | Tela | Permissao |
+|---|---|---|---|
+| Senha | `POST /auth/login` `{email, password, dispositivo?}` → `{access_token, token_type, aviso?}` (navegador confiável, ou sem como mandar o código) ou `{precisa_codigo, desafio, email (mascarado), codigo_vale_ate, tentativas}` | `/login` | público |
+| Código | `POST /auth/codigo` `{desafio, codigo, confiar}` → `{access_token, token_type, dispositivo?, dispositivo_vale_ate?}`; errado: `401 {erro, restantes, voltar_ao_login}` | `/login` (2º passo) | público |
+| Reenviar | `POST /auth/codigo/reenviar` `{desafio}` | `/login` (30 s de espera na tela) | público |
+| Esqueci | `POST /auth/esqueci` `{email}` → sempre a mesma `{mensagem}` | `/esqueci-senha` | público |
+| Link | `POST /auth/senha/ver` `{token}` → `{tipo: convite\|redefinir, email, nome, vale_ate}`; vencido/usado: `410` | `/redefinir-senha#t=...` | público |
+| Criar a senha | `POST /auth/senha` `{token, senha}`; senha fraca: `422` | `/redefinir-senha` | público |
+| Trocar | `POST /auth/trocar-senha` `{atual, nova}`; atual errada ou fraca: `422` | Configurações › Conta | logado |
+| Navegadores | `GET /auth/navegadores` (`navegadores[{id, desde, vale_ate, navegador}]`, `navegador` = User-Agent), `DELETE /auth/navegadores` | Configurações › Conta | logado |
+| Convite | `POST /users/{id}/convite`; sem envio: `422` | `/users` (botão "Mandar link de senha") | `usuarios.gerenciar` |
+
+- `POST /users` sem `password` (o normal agora) guarda a conta sem senha e manda o convite;
+  a resposta traz `convite_enviado`. `GET /users` traz `aguardando_senha`.
+- O token do navegador confiável fica em `localStorage["portal_dispositivos"]` (`{email: token}`)
+  e vai no `dispositivo` do login. Trocar a senha ou "Esquecer todos" apaga o deste navegador.
+- O login não vem mais preenchido.
+- A volta depois do login (`portal.voltar_para`) guarda também o `#` (ex.: `/settings#conta`).

@@ -39,6 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ImagemDoPasso } from "@/components/acompanhar/imagem-do-passo";
+import { PendenciasDaExecucao } from "@/components/pendencias/pendencias";
 
 const MAX_LINHAS = 1000;
 
@@ -146,6 +147,8 @@ export function AcompanharExecucao({ id }: { id: string }) {
       />
 
       <Faixa data={data} passou={passou} situacao={situacao} />
+
+      {!data.rodando && <PendenciasDaExecucao execucaoId={data.execucao.id} />}
 
       {data.situacao && data.situacao.tipo !== "pausa" && <LinhaDaSituacao situacao={data.situacao} className="py-2.5 text-base" />}
       {(data.execucao.continua_de || data.execucao.continuada_em) && (

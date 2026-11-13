@@ -76,6 +76,15 @@ a.email("analista@cliente.com.br", "Folha 10/2026", html="<p>...</p>", cc=["gest
 | Portal fora do ar, execução encerrada, modo agente | `EmailIndisponivel` |
 | Modo desligado (desenvolvimento) | Não manda nada; escreve no log local |
 
+**Itens em atenção com o botão "Continuar processo"**: passe `continuar=[chaves dos itens]`.
+O Portal põe o botão no lugar de `{{continuar}}` no html (ou no fim do e-mail). A pessoa resolve
+o que faltava, aperta o botão (com login no Portal) e só esses itens entram na fila de novo. Vale
+uma vez; continuar pelo Portal também invalida o botão.
+
+```python
+a.email(responsavel, "Rubricas a parametrizar", html="<p>...</p>{{continuar}}", continuar=["5081"])
+```
+
 Mandou pela máquina (Outlook, SMTP)? Avise: `a.email_enviado_pela_maquina(para, assunto,
 meio="outlook", anexos=[...])`. O Portal só registra; se ele não responder, o aviso vai para o log
 local e a automação segue. Campos ocultos de segredos viram `***` no assunto e no corpo.

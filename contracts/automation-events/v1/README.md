@@ -216,3 +216,12 @@ até 100 destinatários, 2,5 MB de anexos, sem executáveis. Falha temporária d
 o Portal tenta de novo sozinho. Mesma `chave_idempotencia` na mesma execução: o mesmo e-mail.
 Mandou pela máquina: `emails/registro` só registra. SDK: `Automacao.email()` e
 `Automacao.email_enviado_pela_maquina()` (0.5.0). No modo agente ainda não há.
+
+### Pendências e o botão "Continuar processo" (13/11/2026)
+
+Item que termina em atenção (`item.concluido` com `situacao: atencao`) vira uma pendência no
+Portal. No pedido de e-mail, `continuar: ["101", ...]` (chaves de itens) faz o Portal pôr no e-mail
+o botão **Continuar processo** no lugar de `{{continuar}}` no `html` (ou no fim). O botão leva ao
+Portal (com login); continuar põe na Fila uma execução nova só com esses itens, com os mesmos
+campos de entrada. Vale uma vez: depois, qualquer caminho mostra quem já continuou. Sem e-mail da
+automação com o botão, o Portal avisa quem pediu a execução quando ela termina.

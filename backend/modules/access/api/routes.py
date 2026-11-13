@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from api.errors import http_error
@@ -10,7 +10,6 @@ from infrastructure.database import get_db
 from modules.access.api.dependencies import get_current_user
 from modules.access.api.schemas import (
     AuthenticatedUserResponse,
-    LoginRequest,
     OrganizationCreateRequest,
     OrganizationResponse,
     OrganizationUpdateRequest,
@@ -18,7 +17,6 @@ from modules.access.api.schemas import (
     TeamCreateRequest,
     TeamResponse,
     TeamUpdateRequest,
-    TokenResponse,
     UserCreateRequest,
     UserPermissionsUpdateRequest,
     UserResponse,
@@ -37,31 +35,18 @@ from modules.access.application.use_cases import (
     ListRoles,
     ListTeams,
     ListUsers,
-    LoginUser,
     UpdateOrganization,
     UpdateTeam,
     UpdateUser,
 )
-from modules.access.domain import AccessConflict, AccessResourceNotFound, AuthenticationFailed, AuthorizationDenied
+from modules.access.domain import AccessConflict, AccessResourceNotFound, AuthorizationDenied
 from modules.access.infrastructure.adapters import build_access_adapters
 
 
 router = APIRouter()
 
 
-@router.post("/auth/login", response_model=TokenResponse)
-def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
-    adapters = build_access_adapters(db)
-    try:
-        token = LoginUser(adapters.access, adapters.passwords, adapters.tokens, adapters.audit, adapters.transaction).execute(
-            payload.email,
-            payload.password,
-            ip=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-        )
-    except AuthenticationFailed as exc:
-        raise http_error(status.HTTP_401_UNAUTHORIZED, "AUTHENTICATION_REQUIRED", str(exc)) from exc
-    return TokenResponse(**to_payload(token))
+# POST /auth/login: em api/acesso.py desde 13/11/2026 (código por e-mail e navegador confiável).
 
 
 @router.get("/auth/me", response_model=AuthenticatedUserResponse)
@@ -78,7 +63,8 @@ def me(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> 
 def list_users(db: Session = Depends(get_db), user: Any = Depends(get_current_user)) -> list[UserResponse]:
     adapters = build_access_adapters(db)
     try:
-        return [UserResponse(**to_payload(item)) for item in ListUsers(adapters.access).execute(user)]
+        sem_senha = _sem_senha(db)
+        return [UserResponse(**to_payload(item), aguardando_senha=item.id in sem_senha) for item in ListUsers(adapters.access).execute(user)]
     except AuthorizationDenied as exc:
         raise http_error(status.HTTP_403_FORBIDDEN, "PERMISSION_DENIED", str(exc)) from exc
 
@@ -94,7 +80,13 @@ def create_user(payload: UserCreateRequest, db: Session = Depends(get_db), user:
         raise http_error(status.HTTP_409_CONFLICT, "CONFLICT", str(exc)) from exc
     except AccessResourceNotFound as exc:
         raise http_error(status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc)) from exc
-    return UserResponse(**to_payload(result))
+    convite = False
+    if not payload.password:  # 13/11/2026: a pessoa cria a própria senha pelo link do e-mail (48 h)
+        from modules.access.api.acesso import acesso
+
+        convite = acesso(db).convidar(result.id)
+        db.commit()
+    return UserResponse(**to_payload(result), aguardando_senha=not payload.password, convite_enviado=convite)
 
 
 @router.put("/users/{user_id}", response_model=UserResponse)
@@ -249,3 +241,10 @@ def service_accounts_antigo(service_account_id: str | None = None) -> Response:
     """Desligadas em 13/11/2026: as contas de serviço têm papel e times e ficam em
     ``/contas-de-servico`` (``api/contas_de_servico.py``)."""
     raise http_error(status.HTTP_410_GONE, "GONE", "As contas de serviço ficam em /contas-de-servico.")
+
+
+def _sem_senha(db: Session) -> set[int]:
+    """Quem ainda não criou a senha pelo link do convite (13/11/2026)."""
+    from sqlalchemy import text
+
+    return {i for (i,) in db.execute(text("SELECT id FROM users WHERE password_hash LIKE '!%'"))}

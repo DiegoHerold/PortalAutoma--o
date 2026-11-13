@@ -7,6 +7,7 @@ import { Bell, Github, LayoutList, Moon, Server, Sun, UserRound } from "lucide-r
 import { PageTitle } from "@/components/shared/page-title";
 import { AreasDoPortal } from "@/components/settings/areas-do-portal";
 import { NotificacoesPreferencias } from "@/components/settings/notificacoes";
+import { SenhaEAcesso } from "@/components/settings/senha-e-acesso";
 import { useTheme } from "@/components/theme/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { API_BASE_URL } from "@/lib/constants";
@@ -88,6 +89,8 @@ function ContaEAparencia() {
         </div>
         <p className="text-sm text-muted-foreground">Nome, e-mail e papel são definidos por um administrador, na área Usuários.</p>
       </section>
+
+      <SenhaEAcesso />
 
       <section className="space-y-4">
         <h2 className="titulo-condensado text-2xl">Aparência</h2>

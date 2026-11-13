@@ -284,5 +284,19 @@ def pedir_execucao_da_automacao(db: Session, automation_id: int, corpo: dict[str
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     fila.transaction.commit()
+    if origem != "pendencia":
+        fechar_pendencias_substituidas(db, automation_id, [i["chave"] for i in itens], resultado.get("execution_id"), solicitante)
     _mudou()
     return {**resultado, "itens": [i["chave"] for i in itens]}
+
+
+def fechar_pendencias_substituidas(db: Session, automation_id: int | None, chaves: list[str], nova_execucao: str | None,
+                                   por: str | None) -> None:
+    """O item rodou de novo por outro caminho: a pendência dele (se houver) fecha como substituída."""
+    if not automation_id or not chaves or not nova_execucao:
+        return
+    from modules.orchestration.pendencias.repositorio import SqlAlchemyPendencias
+    from datetime import UTC, datetime as _datetime
+
+    if SqlAlchemyPendencias(db).substituir(automation_id, [str(c) for c in chaves], nova_execucao, por, _datetime.now(UTC)):
+        db.commit()
